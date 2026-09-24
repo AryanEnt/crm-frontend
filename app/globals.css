@@ -1,26 +1,142 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Brand */
+  --brand: #6c63d9;
+  --brand-dark: #403a8f;
+  --brand-soft: #eeecff;
+
+  /* Surfaces */
+  --background: #faf9fc;
+  --surface: #ffffff;
+  --surface-muted: #f4f3f8;
+
+  /* Text — neutral dark, not pure black */
+  --foreground: #2a2838;
+  --foreground-muted: #6b6780;
+  --foreground-subtle: #9a96ab;
+
+  /* Borders */
+  --border: #e8e6f0;
+  --border-strong: #d4d0e3;
+
+  /* Semantic */
+  --primary: #6c63d9;
+  --primary-foreground: #ffffff;
+  --primary-hover: #5a52c7;
+  --destructive: #d14343;
+  --destructive-foreground: #ffffff;
+  --destructive-soft: #fdecec;
+  --success: #2f9e6b;
+  --success-soft: #e8f7f0;
+  --warning: #c4841d;
+  --warning-soft: #fff6e5;
+  --info: #3b82c4;
+  --info-soft: #eaf3fb;
+
+  /* Focus / ring */
+  --ring: #6c63d9;
+  --ring-offset: #faf9fc;
+
+  /* Sidebar */
+  --sidebar-bg: #ffffff;
+  --sidebar-border: #e8e6f0;
+  --sidebar-active: #eeecff;
+  --sidebar-active-text: #403a8f;
+  --sidebar-hover: #f4f3f8;
+
+  /* Radius — restrained */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.625rem;
+
+  /* Spacing scale reference: 4 / 8 / 12 / 16 / 20 / 24 / 32 */
+  --header-height: 3.25rem;
+  --sidebar-width: 15.5rem;
+  --sidebar-collapsed-width: 4rem;
+
+  /* Shadows — subtle only */
+  --shadow-sm: 0 1px 2px rgba(42, 40, 56, 0.04);
+  --shadow-md: 0 2px 8px rgba(42, 40, 56, 0.06);
 }
 
 @theme inline {
   --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
   --color-foreground: var(--foreground);
+  --color-foreground-muted: var(--foreground-muted);
+  --color-foreground-subtle: var(--foreground-subtle);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-brand: var(--brand);
+  --color-brand-dark: var(--brand-dark);
+  --color-brand-soft: var(--brand-soft);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-soft: var(--destructive-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar-bg);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-active: var(--sidebar-active);
+  --color-sidebar-active-text: var(--sidebar-active-text);
+  --color-sidebar-hover: var(--sidebar-hover);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  border-color: var(--border);
+}
+
+html,
+body {
+  height: 100%;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: var(--brand-soft);
+  color: var(--brand-dark);
+}
+
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* Compact scrollbar for dense CRM surfaces */
+.crm-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.crm-scroll::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+}
+.crm-scroll::-webkit-scrollbar-track {
+  background: transparent;
 }
