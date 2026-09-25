@@ -133,7 +133,7 @@ export function SystemSettingsAdminView() {
       void qc.invalidateQueries({ queryKey: ["org-settings"] });
       toast.success("Settings saved");
     },
-    onError: (err: Error) => toast.error(err.message || "Save failed"),
+    onError: (err: Error) => toast.error(err.message || "Couldn't save. Check required fields and try again."),
   });
 
   const dynamicOptions = React.useMemo(() => {

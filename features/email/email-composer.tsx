@@ -172,7 +172,9 @@ export function EmailComposer({
     },
     onSuccess: (msg: EmailMessage) => {
       if (msg.status === "failed") {
-        toast.error("Failed to send. Your Gmail connection may need attention.");
+        toast.error(
+          "Couldn't send the email. Reconnect Gmail in Email accounts, then try again.",
+        );
         return;
       }
       toast.success("Email sent");
@@ -182,7 +184,9 @@ export function EmailComposer({
       onOpenChange(false);
     },
     onError: (err: Error) => {
-      toast.error(err instanceof ApiError ? err.message : "Could not send email");
+      toast.error(
+        err instanceof ApiError ? err.message : "Couldn't send the email. Try again.",
+      );
     },
   });
 

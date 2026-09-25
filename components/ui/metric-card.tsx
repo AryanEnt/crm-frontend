@@ -25,25 +25,25 @@ export function MetricCard({
       ? "text-foreground-muted"
       : delta > 0
         ? "text-success"
-        : "text-destructive";
+        : "text-danger";
 
   return (
     <div
       className={cn(
-        "rounded-lg border border-border bg-surface p-3.5 shadow-sm",
+        "rounded-lg border border-border bg-surface p-3.5",
         className,
       )}
     >
       <div className="flex items-start justify-between gap-2">
-        <p className="text-xs font-medium text-foreground-muted">{label}</p>
+        <p className="text-label text-foreground-muted">{label}</p>
         {Icon ? (
-          <span className="flex size-7 items-center justify-center rounded-md bg-brand-soft text-brand-dark">
+          <span className="flex size-7 items-center justify-center rounded-[var(--radius-md)] bg-surface-muted text-foreground-muted">
             <Icon className="size-3.5" />
           </span>
         ) : null}
       </div>
-      <p className="mt-2 text-xl font-semibold tracking-tight text-foreground">{value}</p>
-      <div className="mt-1.5 flex items-center gap-2 text-[11px]">
+      <p className="mt-2 text-kpi">{value}</p>
+      <div className="mt-1.5 flex items-center gap-2 text-meta">
         {delta !== undefined ? (
           <span className={cn("inline-flex items-center gap-0.5 font-medium", deltaTone)}>
             <DeltaIcon className="size-3" />

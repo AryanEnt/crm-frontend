@@ -4,6 +4,7 @@ import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "@/components/shared/page-header";
 import { MetricCard } from "@/components/ui/metric-card";
+import { KpiStripSkeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ErrorState } from "@/components/ui/error-state";
 import {
@@ -96,17 +97,21 @@ export function AnalyticsView() {
 
       <AnalyticsFilterBar value={filters} onChange={setFilters} />
 
-      <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-        <MetricCard label="Lead volume" value={String(summary?.leadVolume ?? "—")} />
-        <MetricCard label="Qualified" value={String(summary?.qualifiedLeads ?? "—")} />
-        <MetricCard label="Deals" value={String(summary?.deals ?? "—")} />
-        <MetricCard label="Pipeline value" value={summary ? formatMoney(summary.pipelineValue) : "—"} />
-        <MetricCard label="Conversion rate" value={summary ? formatPct(summary.conversionRate) : "—"} />
-        <MetricCard
-          label="Avg stage time"
-          value={formatDuration(summary?.averageStageDurationSeconds)}
-        />
-      </section>
+      {summaryQuery.isLoading ? (
+        <KpiStripSkeleton count={6} className="md:grid-cols-3 xl:grid-cols-6" />
+      ) : (
+        <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+          <MetricCard label="Lead volume" value={String(summary?.leadVolume ?? "—")} />
+          <MetricCard label="Qualified" value={String(summary?.qualifiedLeads ?? "—")} />
+          <MetricCard label="Deals" value={String(summary?.deals ?? "—")} />
+          <MetricCard label="Pipeline value" value={summary ? formatMoney(summary.pipelineValue) : "—"} />
+          <MetricCard label="Conversion rate" value={summary ? formatPct(summary.conversionRate) : "—"} />
+          <MetricCard
+            label="Avg stage time"
+            value={formatDuration(summary?.averageStageDurationSeconds)}
+          />
+        </section>
+      )}
 
       <Tabs defaultValue="leads">
         <TabsList>

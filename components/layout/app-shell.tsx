@@ -5,6 +5,7 @@ import { Suspense } from "react";
 import { cn } from "@/lib/utils";
 import { Sidebar } from "@/components/layout/sidebar";
 import { TopBar } from "@/components/layout/top-bar";
+import { DensityProvider } from "@/lib/density";
 import { QuickCreateProvider } from "@/components/forms/quick-create-provider";
 
 const COLLAPSE_KEY = "crm.sidebar.collapsed";
@@ -42,27 +43,29 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = React.useState(false);
 
   return (
-    <QuickCreateProvider>
-      <div className="min-h-full bg-background">
-        <Suspense fallback={null}>
-          <Sidebar
-            collapsed={collapsed}
-            onCollapsedChange={setCollapsed}
-            mobileOpen={mobileOpen}
-            onMobileOpenChange={setMobileOpen}
-          />
-        </Suspense>
-        <div
-          className={cn(
-            "flex min-h-full flex-col transition-[padding] duration-200",
-            "lg:pl-[var(--sidebar-width)]",
-            collapsed && "lg:pl-[var(--sidebar-collapsed-width)]",
-          )}
-        >
-          <TopBar onMenuClick={() => setMobileOpen(true)} />
-          <main className="flex-1 px-3 py-4 sm:px-4 lg:px-5">{children}</main>
+    <DensityProvider>
+      <QuickCreateProvider>
+        <div className="min-h-full bg-background">
+          <Suspense fallback={null}>
+            <Sidebar
+              collapsed={collapsed}
+              onCollapsedChange={setCollapsed}
+              mobileOpen={mobileOpen}
+              onMobileOpenChange={setMobileOpen}
+            />
+          </Suspense>
+          <div
+            className={cn(
+              "flex min-h-full flex-col transition-[padding] duration-200",
+              "lg:pl-[var(--sidebar-width)]",
+              collapsed && "lg:pl-[var(--sidebar-collapsed-width)]",
+            )}
+          >
+            <TopBar onMenuClick={() => setMobileOpen(true)} />
+            <main className="flex-1 px-3 py-4 sm:px-4 lg:px-5">{children}</main>
+          </div>
         </div>
-      </div>
-    </QuickCreateProvider>
+      </QuickCreateProvider>
+    </DensityProvider>
   );
 }

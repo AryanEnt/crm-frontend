@@ -24,12 +24,14 @@ export const CommandInput = React.forwardRef<
   React.ElementRef<typeof CommandPrimitive.Input>,
   React.ComponentPropsWithoutRef<typeof CommandPrimitive.Input>
 >(({ className, ...props }, ref) => (
-  <div className="flex items-center border-b border-border px-2.5" cmdk-input-wrapper="">
+  <div className="flex items-center border-b border-line bg-transparent px-2.5" cmdk-input-wrapper="">
     <Search className="mr-2 size-3.5 shrink-0 text-foreground-subtle" />
     <CommandPrimitive.Input
       ref={ref}
       className={cn(
-        "flex h-9 w-full bg-transparent text-sm outline-none placeholder:text-foreground-subtle disabled:cursor-not-allowed disabled:opacity-50",
+        "flex h-9 w-full border-0 bg-transparent text-sm shadow-none outline-none",
+        "focus-visible:outline-none focus-visible:ring-0",
+        "placeholder:text-foreground-subtle disabled:cursor-not-allowed disabled:opacity-50",
         className,
       )}
       {...props}
@@ -84,8 +86,9 @@ export const CommandItem = React.forwardRef<
   <CommandPrimitive.Item
     ref={ref}
     className={cn(
-      "relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none",
-      "data-[selected=true]:bg-brand-soft data-[selected=true]:text-brand-dark data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50",
+      "relative flex cursor-default select-none items-center gap-2 rounded-sm bg-transparent px-2 py-1.5 text-sm outline-none",
+      "hover:bg-surface-muted data-[selected=true]:bg-surface-muted data-[selected=true]:text-foreground",
+      "data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50",
       className,
     )}
     {...props}

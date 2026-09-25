@@ -24,16 +24,27 @@ export function CustomFieldsSection({
   values,
   onChange,
   enabled = true,
+  pipelineId,
+  stageId,
 }: {
   entity: CustomFieldsEntity;
   recordId?: string;
   values: Record<string, unknown>;
   onChange: (values: Record<string, unknown>) => void;
   enabled?: boolean;
+  pipelineId?: string;
+  stageId?: string;
 }) {
   const fieldsQuery = useQuery({
-    queryKey: ["custom-fields", entity, "form"],
-    queryFn: () => crmApi.listCustomFields({ entity, activeOnly: true }),
+    queryKey: ["custom-fields", entity, "form", pipelineId ?? "", stageId ?? ""],
+    queryFn: () =>
+      crmApi.listCustomFields({
+        entity,
+        activeOnly: true,
+        applyScope: true,
+        pipelineId,
+        stageId,
+      }),
     enabled,
   });
 

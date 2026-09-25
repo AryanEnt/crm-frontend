@@ -158,29 +158,31 @@ export function SmartReferralFields({
         <FormFieldSlot label="Referred By" required>
           <SearchableSelect
             value={selectedReferrerValue}
+            selectedLabel={value.referrerName.trim() || null}
             onChange={(id, opt) => {
               if (typeCode === "existing_customer") {
                 onChange({
                   ...value,
                   referrerCustomerId: id ?? "none",
-                  referrerName: opt?.label ?? value.referrerName,
+                  referrerName: opt?.label ?? (id ? value.referrerName : ""),
                 });
               } else if (typeCode === "sales_executive" || typeCode === "employee") {
                 onChange({
                   ...value,
                   referrerUserId: id ?? "none",
-                  referrerName: opt?.label ?? value.referrerName,
+                  referrerName: opt?.label ?? (id ? value.referrerName : ""),
                 });
               } else {
                 onChange({
                   ...value,
                   referrerPartnerId: id ?? "none",
-                  referrerName: opt?.label ?? value.referrerName,
+                  referrerName: opt?.label ?? (id ? value.referrerName : ""),
                 });
               }
             }}
             onSearch={searchReferrer}
             placeholder="Search referrer…"
+            searchPlaceholder="Type a name or email…"
             emptyText="No matching referrers found."
             createLabel={
               typeCode === "partner" || typeCode === "agent" ? "Add new referrer" : undefined
@@ -239,7 +241,7 @@ export function SmartReferralFields({
             setPartnerOpen(false);
             setPartnerName("");
           } catch (err) {
-            toast.error(err instanceof Error ? err.message : "Failed to create referrer");
+            toast.error(err instanceof Error ? err.message : "Couldn't create the referrer. Try again.");
           } finally {
             setPartnerBusy(false);
           }

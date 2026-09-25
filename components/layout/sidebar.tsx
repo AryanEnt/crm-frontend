@@ -63,9 +63,8 @@ export function Sidebar({
 
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex flex-col border-r border-sidebar-border",
-          "bg-[linear-gradient(180deg,#ffffff_0%,#faf9fc_48%,#f7f5fb_100%)]",
-          "shadow-[1px_0_0_rgba(42,40,56,0.02)] transition-[width,transform] duration-200 ease-out",
+          "fixed inset-y-0 left-0 z-50 flex flex-col border-r border-sidebar-border bg-surface",
+          "transition-[width,transform] duration-200 ease-out",
           collapsed ? "w-[var(--sidebar-collapsed-width)]" : "w-[var(--sidebar-width)]",
           mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
         )}
@@ -76,22 +75,17 @@ export function Sidebar({
             collapsed ? "justify-center" : "justify-between gap-2",
           )}
         >
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(108,99,217,0.35),transparent)]"
-          />
           <Link
             href="/"
             className={cn(
-              "group flex min-w-0 items-center gap-2.5 rounded-lg outline-none transition-opacity hover:opacity-90",
+              "group flex min-w-0 items-center gap-2.5 rounded-[var(--radius-md)] outline-none transition-opacity hover:opacity-90",
               "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
               collapsed && "justify-center",
             )}
             onClick={() => onMobileOpenChange(false)}
           >
-            <span className="relative flex size-8 shrink-0 items-center justify-center rounded-lg bg-[linear-gradient(145deg,var(--brand),var(--brand-dark))] text-[12px] font-bold tracking-tight text-primary-foreground shadow-[0_2px_8px_rgba(108,99,217,0.35)]">
+            <span className="relative flex size-8 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-brand text-[12px] font-bold tracking-tight text-primary-foreground">
               {brandMark}
-              <span className="absolute -bottom-0.5 -right-0.5 size-2 rounded-full border-2 border-white bg-success" />
             </span>
             {!collapsed ? (
               <span className="min-w-0">
@@ -127,9 +121,7 @@ export function Sidebar({
                 className={cn(sectionIndex > 0 && "mt-4")}
               >
                 {section.title && !collapsed ? (
-                  <p className="mb-1.5 px-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-foreground-subtle">
-                    {section.title}
-                  </p>
+                  <p className="mb-1.5 px-2.5 text-label">{section.title}</p>
                 ) : null}
                 {section.title && collapsed && sectionIndex > 0 ? (
                   <Separator className="mx-auto my-2 w-6" />
@@ -142,10 +134,10 @@ export function Sidebar({
                         href={item.href}
                         onClick={() => onMobileOpenChange(false)}
                         className={cn(
-                          "group relative flex h-9 items-center gap-2.5 rounded-lg px-2.5 text-[13px] font-medium transition-all duration-150",
+                          "group relative flex h-9 items-center gap-2.5 rounded-[var(--radius-md)] px-2.5 text-[13px] font-medium transition-colors duration-150",
                           collapsed && "justify-center px-0",
                           active
-                            ? "bg-sidebar-active text-sidebar-active-text shadow-[inset_0_0_0_1px_rgba(108,99,217,0.12)]"
+                            ? "bg-sidebar-active text-sidebar-active-text"
                             : "text-foreground-muted hover:bg-sidebar-hover hover:text-foreground",
                         )}
                         aria-current={active ? "page" : undefined}
@@ -153,14 +145,14 @@ export function Sidebar({
                         {active ? (
                           <span
                             aria-hidden
-                            className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-brand"
+                            className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-sm bg-brand"
                           />
                         ) : null}
                         <item.icon
                           className={cn(
                             "size-[17px] shrink-0 transition-colors",
                             active
-                              ? "text-brand-dark"
+                              ? "text-brand-ink"
                               : "text-foreground-subtle group-hover:text-foreground",
                           )}
                           strokeWidth={active ? 2.25 : 2}
@@ -192,11 +184,11 @@ export function Sidebar({
           })}
         </nav>
 
-        <div className="mt-auto space-y-2 border-t border-sidebar-border bg-white/50 p-2.5 backdrop-blur-[2px]">
+        <div className="mt-auto space-y-2 border-t border-sidebar-border bg-surface p-2.5">
           {!collapsed && user ? (
-            <div className="flex items-center gap-2.5 rounded-lg border border-border/80 bg-surface px-2.5 py-2 shadow-sm">
+            <div className="flex items-center gap-2.5 rounded-[var(--radius-md)] border border-border bg-canvas px-2.5 py-2">
               <Avatar size="sm">
-                <AvatarFallback className="bg-brand-soft text-[10px] font-semibold text-brand-dark">
+                <AvatarFallback className="bg-brand-soft text-[10px] font-semibold text-brand-ink">
                   {initialsFromName(user.fullName)}
                 </AvatarFallback>
               </Avatar>
@@ -216,7 +208,7 @@ export function Sidebar({
               <TooltipTrigger asChild>
                 <div className="mx-auto flex justify-center">
                   <Avatar size="sm">
-                    <AvatarFallback className="bg-brand-soft text-[10px] font-semibold text-brand-dark">
+                    <AvatarFallback className="bg-brand-soft text-[10px] font-semibold text-brand-ink">
                       {initialsFromName(user.fullName)}
                     </AvatarFallback>
                   </Avatar>
@@ -233,7 +225,7 @@ export function Sidebar({
             type="button"
             onClick={() => onCollapsedChange(!collapsed)}
             className={cn(
-              "hidden h-9 w-full items-center gap-2 rounded-lg px-2.5 text-[12px] font-medium text-foreground-muted transition-colors",
+              "hidden h-9 w-full items-center gap-2 rounded-[var(--radius-md)] px-2.5 text-[12px] font-medium text-foreground-muted transition-colors",
               "hover:bg-sidebar-hover hover:text-foreground lg:flex",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               collapsed && "justify-center px-0",

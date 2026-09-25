@@ -333,7 +333,7 @@ function LeadCreateBody({
       requestAnimationFrame(() => {
         document.querySelector<HTMLElement>("[aria-invalid='true']")?.focus();
       });
-      toast.error("Please fix the highlighted fields before continuing.");
+      toast.error("Fix the highlighted fields, then continue.");
       return;
     }
     const data = form.getValues();
@@ -381,9 +381,12 @@ function LeadCreateBody({
       if (err instanceof DuplicateReviewError) {
         setDuplicates(err.duplicates);
         setDupOpen(true);
-        toast.warning("Possible duplicates found");
+        toast.warning("Possible duplicates found — review before continuing");
       } else {
-        const message = err instanceof Error ? err.message : "Save failed";
+        const message =
+          err instanceof Error && err.message
+            ? err.message
+            : "Couldn't save the lead. Check required fields and try again.";
         setError(message);
         toast.error(message);
       }
@@ -517,6 +520,35 @@ function LeadCreateBody({
           />
         ) : (
           <div className="space-y-5">
+            {isEdit && can("customers:create") && initial && !initial.convertedCustomerId ? (
+              <Button
+                type="button"
+                className="w-full"
+                disabled={loading}
+                onClick={() => {
+                  void (async () => {
+                    setLoading(true);
+                    try {
+                      const customer = await crmApi.convertLead(initial.id);
+                      onOpenChange(false);
+                      onSaved();
+                      toast.success("Lead converted to customer");
+                      router.push(`/customers/${customer.id}`);
+                    } catch (err) {
+                      toast.error(
+                        err instanceof Error
+                          ? err.message
+                          : "Couldn't convert to customer. Check required fields and try again.",
+                      );
+                    } finally {
+                      setLoading(false);
+                    }
+                  })();
+                }}
+              >
+                Convert to customer
+              </Button>
+            ) : null}
             {!isEdit ? (
               <div className="space-y-3">
                 <div className="flex items-center gap-4 border-b border-border">
@@ -593,6 +625,8 @@ function LeadCreateBody({
                 values={customFields}
                 onChange={setCustomFields}
                 enabled={open}
+                pipelineId={values.pipelineId}
+                stageId={values.stageId}
               />
             )}
 
@@ -611,35 +645,6 @@ function LeadCreateBody({
             ) : null}
 
             {error ? <p className="text-xs text-destructive">{error}</p> : null}
-
-            {isEdit && can("customers:create") && initial && !initial.convertedCustomerId ? (
-              <div className="border-t border-border pt-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={loading}
-                  onClick={() => {
-                    void (async () => {
-                      setLoading(true);
-                      try {
-                        const customer = await crmApi.convertLead(initial.id);
-                        onOpenChange(false);
-                        onSaved();
-                        toast.success("Lead converted to customer");
-                        router.push(`/customers/${customer.id}`);
-                      } catch (err) {
-                        toast.error(err instanceof Error ? err.message : "Conversion failed");
-                      } finally {
-                        setLoading(false);
-                      }
-                    })();
-                  }}
-                >
-                  Convert to customer
-                </Button>
-              </div>
-            ) : null}
           </div>
         )}
       </QuickCreateDrawer>

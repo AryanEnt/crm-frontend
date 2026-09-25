@@ -9,20 +9,26 @@ import { MetricCard } from "@/components/ui/metric-card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { Timeline } from "@/components/ui/timeline";
-import {
-  dashboardMetrics,
-  dashboardPipeline,
-  dashboardTarget,
-} from "@/features/dashboard/seed";
+import { KpiStripSkeleton } from "@/components/ui/skeleton";
+import { ErrorState } from "@/components/ui/error-state";
 import { useAuth } from "@/features/auth/auth-provider";
 import { crmApi } from "@/lib/api/crm";
 import { adminApi } from "@/lib/api/admin";
 import { ActivityQuickCreateDialog } from "@/features/activities/activity-quick-create";
 import { formatInTimezone } from "@/lib/timezone";
+import { formatMoney } from "@/features/analytics/charts";
 import {
   TeamMemberFilterChip,
   useTeamMemberFilter,
 } from "@/features/teams/team-member-filter";
+
+function quarterRange() {
+  const now = new Date();
+  const q = Math.floor(now.getMonth() / 3);
+  const from = new Date(now.getFullYear(), q * 3, 1);
+  const to = new Date(now.getFullYear(), q * 3 + 3, 0, 23, 59, 59);
+  return { from: from.toISOString(), to: to.toISOString() };
+}
 
 export function DashboardView() {
   const { user, can } = useAuth();
@@ -37,19 +43,28 @@ export function DashboardView() {
   const to = new Date(from);
   to.setDate(to.getDate() + 7);
 
-  const todayQuery = useQuery({
-    queryKey: ["dashboard-activities", salesExecutiveId],
-    queryFn: () => {
-      const p = new URLSearchParams({
-        from: from.toISOString(),
-        to: to.toISOString(),
-        limit: "20",
-      });
+  const activityScope = React.useCallback(
+    (p: URLSearchParams) => {
       if (isTeamLead) {
         if (salesExecutiveId !== "all") p.set("salesExecutiveId", salesExecutiveId);
       } else if (user?.id) {
         p.set("ownerUserId", user.id);
       }
+      return p;
+    },
+    [isTeamLead, salesExecutiveId, user?.id],
+  );
+
+  const todayQuery = useQuery({
+    queryKey: ["dashboard-activities", salesExecutiveId],
+    queryFn: () => {
+      const p = activityScope(
+        new URLSearchParams({
+          from: from.toISOString(),
+          to: to.toISOString(),
+          limit: "20",
+        }),
+      );
       return crmApi.listActivities(p);
     },
     enabled: !!user?.id,
@@ -58,12 +73,7 @@ export function DashboardView() {
   const overdueQuery = useQuery({
     queryKey: ["dashboard-overdue", salesExecutiveId],
     queryFn: () => {
-      const p = new URLSearchParams({ status: "overdue", limit: "10" });
-      if (isTeamLead) {
-        if (salesExecutiveId !== "all") p.set("salesExecutiveId", salesExecutiveId);
-      } else if (user?.id) {
-        p.set("ownerUserId", user.id);
-      }
+      const p = activityScope(new URLSearchParams({ status: "overdue", limit: "10" }));
       return crmApi.listActivities(p);
     },
     enabled: !!user?.id,
@@ -95,8 +105,57 @@ export function DashboardView() {
     },
   });
 
+  const analyticsParams = React.useMemo(() => {
+    const { from: f, to: t } = quarterRange();
+    const p = new URLSearchParams({ from: f, to: t });
+    if (isTeamLead && salesExecutiveId !== "all") {
+      p.set("salesExecutiveId", salesExecutiveId);
+    }
+    return p;
+  }, [isTeamLead, salesExecutiveId]);
+
+  const summaryQuery = useQuery({
+    queryKey: ["dashboard-summary", analyticsParams.toString()],
+    queryFn: () => crmApi.analyticsSummary(analyticsParams),
+    enabled: !!user?.id && !isTeamLead,
+  });
+
+  const pipelineQuery = useQuery({
+    queryKey: ["dashboard-pipeline", analyticsParams.toString()],
+    queryFn: () => crmApi.analyticsPipeline(analyticsParams),
+    enabled: !!user?.id,
+  });
+
+  const targetsQuery = useQuery({
+    queryKey: ["dashboard-targets"],
+    queryFn: () => crmApi.listTargetProgress(new URLSearchParams({ limit: "5", offset: "0" })),
+    enabled: !!user?.id && can("targets:view"),
+  });
+
   const activities = todayQuery.data?.data ?? [];
   const overdue = overdueQuery.data?.data ?? [];
+  const pipelineStages = pipelineQuery.data?.openValueByStage ?? [];
+  const maxStageValue = Math.max(1, ...pipelineStages.map((s) => Number(s.value) || 0));
+  const activeTarget = targetsQuery.data?.data?.[0];
+  const targetPct = activeTarget?.progressPct != null
+    ? Math.min(100, Math.round(activeTarget.progressPct))
+    : 0;
+
+  const kpiLoading =
+    (isTeamLead && teamMetaQuery.isLoading) ||
+    (!isTeamLead && summaryQuery.isLoading) ||
+    overdueQuery.isLoading;
+
+  if (todayQuery.isError && overdueQuery.isError) {
+    return (
+      <ErrorState
+        onRetry={() => {
+          void todayQuery.refetch();
+          void overdueQuery.refetch();
+        }}
+      />
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -127,89 +186,132 @@ export function DashboardView() {
         }
       />
 
-      {isTeamLead ? (
+      {kpiLoading ? (
+        <KpiStripSkeleton count={4} />
+      ) : isTeamLead ? (
         <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
           <MetricCard
-            label="Sales Executives"
+            label="Sales executives"
             value={String(teamMetaQuery.data?.seCount ?? "—")}
             hint="Active on your team"
           />
           <MetricCard
-            label="Active Leads"
+            label="Active leads"
             value={String(teamMetaQuery.data?.leadTotal ?? "—")}
             hint="In team scope"
           />
-          <MetricCard label="Overdue Activities" value={String(overdue.length)} hint="Needs attention" />
-          <MetricCard label="Upcoming (7d)" value={String(activities.length)} hint="Scheduled" />
+          <MetricCard
+            label="Overdue activities"
+            value={String(overdue.length)}
+            hint="Needs attention"
+          />
+          <MetricCard
+            label="Upcoming (7d)"
+            value={String(activities.length)}
+            hint="Scheduled"
+          />
         </section>
       ) : (
         <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-          {dashboardMetrics.map((m) => (
-            <MetricCard
-              key={m.label}
-              label={m.label}
-              value={m.value}
-              delta={m.delta}
-              hint={m.hint}
-              icon={m.icon}
-            />
-          ))}
+          <MetricCard
+            label="Open pipeline"
+            value={formatMoney(summaryQuery.data?.pipelineValue ?? 0)}
+            hint="This quarter"
+          />
+          <MetricCard
+            label="Open deals"
+            value={String(pipelineQuery.data?.openDeals ?? summaryQuery.data?.deals ?? "—")}
+            hint="In scope"
+          />
+          <MetricCard
+            label="Overdue"
+            value={String(overdue.length)}
+            hint="Activities"
+          />
+          <MetricCard
+            label="Conversion"
+            value={
+              summaryQuery.data
+                ? `${summaryQuery.data.conversionRate.toFixed(1)}%`
+                : "—"
+            }
+            hint="Lead → win rate"
+          />
         </section>
       )}
 
       <section className="grid gap-3 lg:grid-cols-5">
-        <div className="rounded-lg border border-border bg-surface p-3.5 shadow-sm lg:col-span-3">
+        <div className="rounded-lg border border-border bg-surface p-3.5 lg:col-span-3">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-foreground">Pipeline overview</h2>
+            <h2 className="text-section">Pipeline overview</h2>
             <StatusBadge tone="brand">This quarter</StatusBadge>
           </div>
-          <div className="space-y-2.5">
-            {dashboardPipeline.map((stage) => (
-              <div
-                key={stage.name}
-                className="grid grid-cols-[7rem_1fr_3.5rem] items-center gap-2"
-              >
-                <span className="truncate text-xs text-foreground-muted">{stage.name}</span>
-                <div className="h-2 overflow-hidden rounded-full bg-surface-muted">
+          {pipelineQuery.isLoading ? (
+            <KpiStripSkeleton count={1} className="grid-cols-1" />
+          ) : pipelineStages.length === 0 ? (
+            <p className="text-meta">No open pipeline value for this period.</p>
+          ) : (
+            <div className="space-y-2.5">
+              {pipelineStages.map((stage) => {
+                const value = Number(stage.value) || 0;
+                const pct = Math.round((value / maxStageValue) * 100);
+                return (
                   <div
-                    className="h-full rounded-full bg-brand/80"
-                    style={{ width: `${stage.percent}%` }}
-                  />
-                </div>
-                <span className="text-right text-xs font-medium tabular-nums text-foreground">
-                  {stage.count}
-                </span>
-              </div>
-            ))}
-          </div>
+                    key={String(stage.label)}
+                    className="grid grid-cols-[7rem_1fr_4.5rem] items-center gap-2"
+                  >
+                    <span className="truncate text-meta">{stage.label}</span>
+                    <div className="h-2 overflow-hidden rounded-full bg-surface-muted">
+                      <div
+                        className="h-full rounded-full bg-brand"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                    <span className="text-right text-data text-xs text-foreground">
+                      {formatMoney(value)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
-        <div className="rounded-lg border border-border bg-surface p-3.5 shadow-sm lg:col-span-2">
+        <div className="rounded-lg border border-border bg-surface p-3.5 lg:col-span-2">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-foreground">Target progress</h2>
-            <StatusBadge tone="success">{dashboardTarget.percent}%</StatusBadge>
+            <h2 className="text-section">Target progress</h2>
+            {activeTarget ? (
+              <StatusBadge tone="success">{targetPct}%</StatusBadge>
+            ) : null}
           </div>
-          <p className="text-2xl font-semibold tracking-tight text-foreground">
-            {dashboardTarget.current}
-          </p>
-          <p className="mt-0.5 text-xs text-foreground-muted">
-            of {dashboardTarget.goal} quarterly revenue target
-          </p>
-          <ProgressBar value={dashboardTarget.percent} className="mt-3" />
+          {activeTarget ? (
+            <>
+              <p className="text-kpi">
+                {formatMoney(activeTarget.actual, "AUD")}
+              </p>
+              <p className="mt-0.5 text-meta">
+                of {formatMoney(activeTarget.target.targetValue, "AUD")} ·{" "}
+                {activeTarget.target.name}
+              </p>
+              <ProgressBar value={targetPct} className="mt-3" />
+            </>
+          ) : (
+            <p className="text-meta">No active target in scope.</p>
+          )}
         </div>
       </section>
 
       <section className="grid gap-3 lg:grid-cols-2">
-        <div className="rounded-lg border border-border bg-surface p-3.5 shadow-sm">
-          <h2 className="mb-2 text-sm font-semibold text-foreground">Your week</h2>
+        <div className="rounded-lg border border-border bg-surface p-3.5">
+          <h2 className="mb-2 text-section">Your week</h2>
           <ul className="space-y-2">
             {activities.length === 0 ? (
-              <li className="text-xs text-foreground-muted">No upcoming activities.</li>
+              <li className="text-meta">No upcoming activities.</li>
             ) : (
               activities.slice(0, 6).map((a) => (
                 <li key={a.id} className="flex justify-between gap-2 text-sm">
                   <span className="truncate font-medium">{a.title}</span>
-                  <span className="shrink-0 text-xs text-foreground-muted">
+                  <span className="shrink-0 text-meta">
                     {formatInTimezone(a.startAt || a.dueAt || a.createdAt, timezone, {
                       weekday: "short",
                       hour: "2-digit",
@@ -222,17 +324,17 @@ export function DashboardView() {
           </ul>
         </div>
 
-        <div className="rounded-lg border border-border bg-surface p-3.5 shadow-sm">
-          <h2 className="mb-2 text-sm font-semibold text-foreground">Needs attention</h2>
+        <div className="rounded-lg border border-border bg-surface p-3.5">
+          <h2 className="mb-2 text-section">Needs attention</h2>
           <ul className="space-y-2">
             {overdue.length === 0 ? (
-              <li className="text-xs text-foreground-muted">Nothing overdue.</li>
+              <li className="text-meta">Nothing overdue.</li>
             ) : (
               overdue.map((a) => (
                 <li key={a.id} className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">{a.title}</p>
-                    <p className="text-xs text-foreground-muted">
+                    <p className="text-meta">
                       {a.customerName || a.dealTitle || a.typeName}
                     </p>
                   </div>
@@ -244,8 +346,8 @@ export function DashboardView() {
         </div>
       </section>
 
-      <section className="rounded-lg border border-border bg-surface p-3.5 shadow-sm">
-        <h2 className="mb-3 text-sm font-semibold text-foreground">Recent</h2>
+      <section className="rounded-lg border border-border bg-surface p-3.5">
+        <h2 className="mb-3 text-section">Recent</h2>
         <Timeline
           items={activities.slice(0, 5).map((a) => ({
             id: a.id,

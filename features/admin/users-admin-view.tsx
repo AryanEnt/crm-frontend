@@ -80,7 +80,7 @@ export function UsersAdminView() {
       setSelected([]);
       toast.success(vars.active ? "Users activated" : "Users deactivated");
     },
-    onError: (err: Error) => toast.error(err.message || "Could not update users"),
+    onError: (err: Error) => toast.error(err.message || "Couldn't update users. Try again."),
   });
 
   const columns = React.useMemo<ColumnDef<AdminUser>[]>(
@@ -368,6 +368,8 @@ function UserFormDialog({
     if (requiresTeam) {
       payload.teamId = teamId;
       payload.teamIds = teamId ? [teamId] : [];
+    } else if (selectedRole?.code === "super_admin") {
+      payload.teamIds = [];
     } else if (teamId) {
       payload.teamId = teamId;
       payload.teamIds = [teamId];
@@ -394,7 +396,7 @@ function UserFormDialog({
             : "Team is required for Sales Executives",
         );
       }
-      if (requiresTeam && selectedRole?.code === "sales_executive" && selectedTeam && !selectedTeam.ownerUserId) {
+      if (requiresTeam && selectedRole?.code === "sales_executive" && selectedTeam && !selectedTeam.teamLeadUserId) {
         throw new Error("Selected team does not have a Team Lead configured");
       }
       if (!initial && password.length < 8) throw new Error("Password must be at least 8 characters");
@@ -418,7 +420,7 @@ function UserFormDialog({
       await onSubmit(buildPayload(confirmTeamChange));
       setTeamConfirm(null);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Save failed";
+      const message = err instanceof Error ? err.message : "Couldn't save. Check required fields and try again.";
       setError(message);
       toast.error(message);
     } finally {
@@ -477,8 +479,14 @@ function UserFormDialog({
                 </SelectContent>
               </Select>
             </div>
+            {selectedRole?.code === "super_admin" ? (
+              <p className="text-xs text-foreground-muted sm:col-span-2">
+                Super Admin has access to every team and is not assigned to one.
+              </p>
+            ) : (
+              <>
             <div className="space-y-1.5">
-              <Label required={requiresTeam}>Team{requiresTeam ? "" : ""}</Label>
+              <Label required={requiresTeam}>Team</Label>
               <Select value={teamId || "none"} onValueChange={(v) => setTeamId(v === "none" ? "" : v)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select team" />
@@ -492,18 +500,30 @@ function UserFormDialog({
                   ))}
                 </SelectContent>
               </Select>
+              {selectedRole?.code === "sales_executive" ? (
+                <p className="text-xs text-foreground-muted">
+                  A Sales Executive belongs to exactly one team. Changing the team is a transfer.
+                </p>
+              ) : null}
+              {selectedRole?.code === "sales_manager" ? (
+                <p className="text-xs text-foreground-muted">
+                  A Team Lead leads one team. Changing the team is a transfer.
+                </p>
+              ) : null}
             </div>
             {requiresTeam && selectedRole?.code === "sales_executive" ? (
               <div className="space-y-1 sm:col-span-2 rounded-md border border-border bg-[#EEECFF]/60 px-3 py-2">
                 <p className="text-[11px] uppercase tracking-wide text-foreground-muted">Team Lead</p>
                 <p className="text-sm font-medium text-foreground">
-                  {selectedTeam?.ownerName ||
+                  {selectedTeam?.teamLeadName ||
                     (selectedTeam
                       ? "No Team Lead configured — fix team setup before creating this SE"
                       : "Select a team to see Team Lead")}
                 </p>
               </div>
             ) : null}
+              </>
+            )}
             <div className="space-y-1.5 sm:col-span-2">
               <Label>Status</Label>
               <Select value={isActive ? "active" : "inactive"} onValueChange={(v) => setIsActive(v === "active")}>

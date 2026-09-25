@@ -96,7 +96,7 @@ export function DealsTableView({
         cell: ({ row }) => (
           <Link
             href={`/deals/${row.original.id}`}
-            className="font-medium text-foreground hover:text-brand-dark"
+            className="font-medium text-foreground hover:text-brand"
           >
             {row.original.title}
           </Link>

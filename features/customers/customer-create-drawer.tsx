@@ -132,12 +132,12 @@ export function CustomerCreateDrawer({
       (referral.referrerPartnerId && referral.referrerPartnerId !== "none") ||
       Boolean(referral.referrerName.trim());
     if (isReferral && !hasReferrer) {
-      toast.error("Referred by is required");
+      toast.error("Enter who referred this customer");
       valid = false;
     }
     if (!valid) {
       if (!isReferral || hasReferrer) {
-        toast.error("Please fix the highlighted fields");
+        toast.error("Fix the highlighted fields, then continue.");
       }
       return;
     }

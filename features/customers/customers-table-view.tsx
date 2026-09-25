@@ -18,13 +18,18 @@ import {
   TeamMemberFilterChip,
   useTeamMemberFilter,
 } from "@/features/teams/team-member-filter";
-
-const priorityTone = (p: string) =>
-  p === "urgent" ? "danger" : p === "high" ? "warning" : p === "low" ? "neutral" : "brand";
+import { priorityBadgeClass, priorityFromString } from "@/lib/design-tokens";
+import { cn } from "@/lib/utils";
 
 function formatWhen(v?: string | null) {
   if (!v) return "—";
   return new Date(v).toLocaleDateString();
+}
+
+function followUpClass(next?: string | null) {
+  if (!next) return "text-health-warn font-medium";
+  if (new Date(next).getTime() < Date.now()) return "text-health-bad font-medium";
+  return "text-foreground-subtle";
 }
 
 export function CustomersTableView() {
@@ -55,7 +60,7 @@ export function CustomersTableView() {
         cell: ({ row }) => (
           <button
             type="button"
-            className="text-left font-medium text-foreground hover:text-brand-dark"
+            className="text-left font-medium text-foreground hover:text-brand"
             onClick={() => router.push(`/customers/${row.original.id}`)}
           >
             {row.original.fullName}
@@ -66,7 +71,7 @@ export function CustomersTableView() {
         id: "contact",
         header: "Contact",
         cell: ({ row }) => (
-          <div className="text-xs text-foreground-muted">
+          <div className="text-meta">
             <div>{row.original.email ?? "—"}</div>
             <div>{row.original.phone ?? ""}</div>
           </div>
@@ -75,12 +80,16 @@ export function CustomersTableView() {
       {
         accessorKey: "ownerName",
         header: "Owner",
-        cell: ({ row }) => row.original.ownerName ?? "—",
+        cell: ({ row }) => (
+          <span className="text-sm text-foreground-muted">{row.original.ownerName ?? "—"}</span>
+        ),
       },
       {
         accessorKey: "pipelineName",
         header: "Pipeline",
-        cell: ({ row }) => row.original.pipelineName ?? "—",
+        cell: ({ row }) => (
+          <span className="text-sm text-foreground-muted">{row.original.pipelineName ?? "—"}</span>
+        ),
       },
       {
         accessorKey: "stageName",
@@ -97,7 +106,7 @@ export function CustomersTableView() {
         header: "ANZSCO",
         cell: ({ row }) =>
           row.original.anzscoCode ? (
-            <span className="text-xs">
+            <span className="text-meta">
               <span className="font-mono text-foreground-muted">{row.original.anzscoCode}</span>{" "}
               {row.original.anzscoTitle}
             </span>
@@ -105,41 +114,54 @@ export function CustomersTableView() {
             "—"
           ),
       },
-      { accessorKey: "source", header: "Source", cell: ({ row }) => row.original.source || "—" },
+      {
+        accessorKey: "source",
+        header: "Source",
+        cell: ({ row }) => (
+          <span className="text-sm text-foreground-muted">{row.original.source || "—"}</span>
+        ),
+      },
       {
         accessorKey: "priority",
         header: "Priority",
-        cell: ({ row }) => (
-          <StatusBadge tone={priorityTone(row.original.priority)}>
-            {row.original.priority}
-          </StatusBadge>
-        ),
+        cell: ({ row }) => {
+          const level = priorityFromString(row.original.priority);
+          return (
+            <span
+              className={cn(
+                "inline-flex items-center rounded-[var(--radius-sm)] px-1.5 py-0.5 text-[11px] font-medium capitalize",
+                priorityBadgeClass[level],
+              )}
+            >
+              {level}
+            </span>
+          );
+        },
       },
       {
         accessorKey: "lastContactedAt",
         header: "Last contacted",
         cell: ({ row }) => (
-          <span className="text-xs text-foreground-subtle">
-            {formatWhen(row.original.lastContactedAt)}
-          </span>
+          <span className="text-meta text-data">{formatWhen(row.original.lastContactedAt)}</span>
         ),
       },
       {
         accessorKey: "nextFollowUpAt",
         header: "Next follow-up",
-        cell: ({ row }) => (
-          <span className="text-xs text-foreground-subtle">
-            {formatWhen(row.original.nextFollowUpAt)}
-          </span>
-        ),
+        cell: ({ row }) => {
+          const missing = !row.original.nextFollowUpAt;
+          return (
+            <span className={cn("text-xs text-data", followUpClass(row.original.nextFollowUpAt))}>
+              {missing ? "None" : formatWhen(row.original.nextFollowUpAt)}
+            </span>
+          );
+        },
       },
       {
         accessorKey: "createdAt",
         header: "Created",
         cell: ({ row }) => (
-          <span className="text-xs text-foreground-subtle">
-            {formatWhen(row.original.createdAt)}
-          </span>
+          <span className="text-meta text-data">{formatWhen(row.original.createdAt)}</span>
         ),
       },
     ],
@@ -149,6 +171,8 @@ export function CustomersTableView() {
   if (customersQuery.isError) {
     return <ErrorState onRetry={() => void customersQuery.refetch()} />;
   }
+
+  const hasFilters = !!search || salesExecutiveId !== "all";
 
   return (
     <div className="space-y-3">
@@ -186,6 +210,16 @@ export function CustomersTableView() {
         loading={customersQuery.isLoading}
         searchValue={search}
         pageSize={10}
+        emptyTitle={hasFilters ? "No customers match these filters" : "No customers yet"}
+        emptyDescription={
+          hasFilters
+            ? "Clear filters or broaden search to find accounts."
+            : "Add a customer or convert a qualified lead to open their 360."
+        }
+        emptyActionLabel={can("customers:create") && !hasFilters ? "New customer" : undefined}
+        onEmptyAction={
+          can("customers:create") && !hasFilters ? () => setCreateOpen(true) : undefined
+        }
       />
 
       <CustomerFormDialog

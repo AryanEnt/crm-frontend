@@ -58,8 +58,10 @@ export function EmailSettingsView() {
   React.useEffect(() => {
     const g = params.get("gmail");
     if (g === "connected") toast.success("Gmail connected");
-    if (g === "denied") toast.error("Gmail authorization was cancelled");
-    if (g === "error" || g === "invalid") toast.error("Could not complete Gmail authorization");
+    if (g === "denied") toast.error("Gmail authorization was cancelled. Connect again when ready.");
+    if (g === "error" || g === "invalid") {
+      toast.error("Couldn't finish Gmail authorization. Try connecting again.");
+    }
   }, [params]);
 
   const connect = useMutation({
@@ -71,7 +73,11 @@ export function EmailSettingsView() {
       window.location.href = data.url;
     },
     onError: (err: Error) => {
-      toast.error(err instanceof ApiError ? err.message : "Could not start Gmail connect");
+      toast.error(
+        err instanceof ApiError
+          ? err.message
+          : "Couldn't start Gmail connect. Check Email sync setup with your admin.",
+      );
     },
   });
 
@@ -86,7 +92,7 @@ export function EmailSettingsView() {
   const sync = useMutation({
     mutationFn: (id: string) => emailApi.sync(id),
     onSuccess: () => {
-      toast.success("Sync started");
+      toast.success("Inbox sync started");
       void qc.invalidateQueries({ queryKey: ["email-accounts"] });
     },
   });
@@ -106,9 +112,9 @@ export function EmailSettingsView() {
 
       {!integration?.configured ? (
         <div className="rounded-xl border border-border bg-surface p-6">
-          <h2 className="text-sm font-semibold">Gmail integration is not configured</h2>
+          <h2 className="text-sm font-semibold">Email is not available yet</h2>
           <p className="mt-1 max-w-lg text-sm text-foreground-muted">
-            A Super Admin needs to add Google OAuth credentials before accounts can be connected.
+            Ask a Super Admin to finish Email sync setup before you connect a mailbox.
           </p>
         </div>
       ) : (

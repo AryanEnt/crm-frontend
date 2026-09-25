@@ -8,7 +8,6 @@ import {
   FormFieldGroup,
   FormFieldSlot,
   SearchableSelect,
-  UserPicker,
 } from "@/components/forms";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,12 +43,11 @@ export function ActivityQuickCreateDialog({
   defaultDueAt?: string;
   onCreated?: () => void;
 }) {
-  const { user, can } = useAuth();
+  const { can } = useAuth();
   const [title, setTitle] = React.useState("");
   const [typeCode, setTypeCode] = React.useState(defaultType);
   const [priority, setPriority] = React.useState("medium");
   const [status, setStatus] = React.useState("upcoming");
-  const [ownerUserId, setOwnerUserId] = React.useState(user?.id ?? "");
   const [startAt, setStartAt] = React.useState("");
   const [endAt, setEndAt] = React.useState("");
   const [dueAt, setDueAt] = React.useState("");
@@ -81,7 +79,6 @@ export function ActivityQuickCreateDialog({
     setTypeCode(defaultFromSettings || defaultType);
     setPriority("medium");
     setStatus("upcoming");
-    setOwnerUserId(user?.id ?? "");
     setStartAt("");
     setEndAt("");
     setDueAt(defaultDueAt ?? "");
@@ -89,7 +86,7 @@ export function ActivityQuickCreateDialog({
     setOutcome("");
     setCustomerId(context?.customerId ?? "");
     setError(null);
-  }, [open, defaultType, defaultFromSettings, user?.id, context?.customerId, defaultDueAt]);
+  }, [open, defaultType, defaultFromSettings, context?.customerId, defaultDueAt]);
 
   const primaryTypes = (typesQuery.data ?? []).filter(
     (t) => !["system", "stage_change", "assignment", "task", "sms"].includes(t.code),
@@ -142,23 +139,23 @@ export function ActivityQuickCreateDialog({
                     return;
                   }
                   if (requiresOutcome && !outcome.trim()) {
-                    setError("Outcome is required for this activity type");
-                    toast.error("Outcome is required");
+                    setError("Enter an outcome for this activity type");
+                    toast.error("Enter an outcome");
                     return;
                   }
                   if (requiresNotes && !notes.trim()) {
-                    setError("Notes are required for this activity type");
-                    toast.error("Notes are required");
+                    setError("Enter notes for this activity type");
+                    toast.error("Enter notes");
                     return;
                   }
                   if (showSchedule && requiresDuration && (!startAt || !endAt)) {
-                    setError("Start and end are required");
-                    toast.error("Start and end are required");
+                    setError("Enter a start and end time");
+                    toast.error("Enter a start and end time");
                     return;
                   }
                   if (showSchedule && requiresDatetime && !requiresDuration && !dueAt && !startAt) {
-                    setError("Date/time is required");
-                    toast.error("Date/time is required");
+                    setError("Enter a date and time");
+                    toast.error("Enter a date and time");
                     return;
                   }
                   await crmApi.createActivity({
@@ -169,7 +166,6 @@ export function ActivityQuickCreateDialog({
                     status,
                     notes,
                     outcome: outcome || undefined,
-                    ownerUserId: ownerUserId === "none" || !ownerUserId ? null : ownerUserId,
                     customerId: cid,
                     dealId: did,
                     leadId: lid,
@@ -235,8 +231,6 @@ export function ActivityQuickCreateDialog({
             </Select>
           </FormFieldSlot>
         </FormFieldGroup>
-
-        <UserPicker value={ownerUserId} onChange={setOwnerUserId} label="Owner" />
 
         {showSchedule ? (
           requiresDuration ? (

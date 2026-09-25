@@ -11,7 +11,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Timeline } from "@/components/ui/timeline";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
-import { LoadingState } from "@/components/ui/loading-state";
+import { DetailSkeleton } from "@/components/ui/skeleton";
+import { StageRail, stageSlotFromPipeline } from "@/components/ui/stage-rail";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import {
   Select,
@@ -44,6 +45,7 @@ import {
   stageById,
   type LostReasonState,
 } from "@/features/deals/deal-outcome";
+import { cn } from "@/lib/utils";
 
 const attentionLabel: Record<string, string> = {
   no_next_activity: "No next activity",
@@ -68,6 +70,7 @@ export function DealDetailView({ dealId }: { dealId: string }) {
   const [docOpen, setDocOpen] = React.useState(false);
   const [activityOpen, setActivityOpen] = React.useState(false);
   const [lostPending, setLostPending] = React.useState<LostReasonState>(null);
+  const [wonPulse, setWonPulse] = React.useState(false);
   const [blockers, setBlockers] = React.useState<{
     stageId: string;
     details: StageMoveError;
@@ -103,7 +106,14 @@ export function DealDetailView({ dealId }: { dealId: string }) {
       setBlockers(null);
       setLostPending(null);
       invalidate();
-      toast.success(vars.lostReason ? "Deal marked lost" : "Deal stage updated");
+      const target = stageById(detailQuery.data?.pipeline, vars.stageId);
+      if (target?.isWon) {
+        setWonPulse(true);
+        window.setTimeout(() => setWonPulse(false), 500);
+        toast.success("Deal marked won");
+      } else {
+        toast.success(vars.lostReason ? "Deal marked lost" : "Deal stage updated");
+      }
     },
     onError: (err, vars) => {
       if (err instanceof ApiError && err.status === 400 && err.details) {
@@ -111,11 +121,11 @@ export function DealDetailView({ dealId }: { dealId: string }) {
         toast.warning("Stage move blocked — review requirements");
         return;
       }
-      toast.error(err instanceof Error ? err.message : "Could not move deal");
+      toast.error(err instanceof Error ? err.message : "Couldn't move the deal. Try again.");
     },
   });
 
-  if (detailQuery.isLoading) return <LoadingState />;
+  if (detailQuery.isLoading) return <DetailSkeleton />;
   if (detailQuery.isError || !detailQuery.data) {
     return <ErrorState onRetry={() => void detailQuery.refetch()} />;
   }
@@ -124,6 +134,21 @@ export function DealDetailView({ dealId }: { dealId: string }) {
   const probability = deal.probability ?? 0;
   const wonStage = findOutcomeStage(pipeline, "won");
   const lostStage = findOutcomeStage(pipeline, "lost");
+  const openStages = (pipeline?.stages ?? []).filter((s) => s.isActive && !s.isWon && !s.isLost);
+  const currentStage = stageById(pipeline, deal.stageId);
+  const railSlot = stageSlotFromPipeline({
+    position: Math.max(
+      0,
+      openStages.findIndex((s) => s.id === deal.stageId),
+    ),
+    openStageCount: Math.max(openStages.length, 1),
+    isWon: currentStage?.isWon ?? deal.status === "won",
+    isLost: currentStage?.isLost ?? deal.status === "lost",
+  });
+  const railFill =
+    currentStage?.slaHours && currentStage.slaHours > 0
+      ? Math.min(100, Math.round(((deal.daysInStage ?? 0) * 24 * 100) / currentStage.slaHours))
+      : Math.min(100, (deal.daysInStage ?? 0) * 8);
   const weighted =
     deal.status === "open" ? (deal.value ?? 0) * (probability / 100) : deal.status === "won" ? (deal.value ?? 0) : 0;
 
@@ -189,17 +214,29 @@ export function DealDetailView({ dealId }: { dealId: string }) {
         }
       />
 
-      <header className="grid gap-3 rounded-lg border border-border bg-surface p-4 md:grid-cols-3 lg:grid-cols-6">
-        <Metric label="Current stage" value={deal.stageName ?? "—"} />
-        <Metric label="Time in stage" value={`${deal.daysInStage}d`} />
-        <Metric label="Deal age" value={`${deal.ageDays}d`} />
-        <Metric label="Expected close" value={deal.expectedCloseAt ?? "—"} />
-        <Metric label="Probability" value={`${probability}%`} />
-        <Metric label="Weighted forecast" value={formatMoney(weighted, deal.currency)} />
+      <header
+        className={cn(
+          "relative overflow-hidden rounded-[var(--radius-lg)] border border-border bg-surface",
+          wonPulse && "deal-card--stage-changed",
+        )}
+      >
+        <StageRail slot={railSlot} fillPercent={railFill} wonPulse={wonPulse} />
+        <div className="grid gap-3 p-4 pl-4 md:grid-cols-3 lg:grid-cols-6">
+          <Metric label="Current stage" value={deal.stageName ?? "—"} />
+          <Metric label="Time in stage" value={`${deal.daysInStage}d`} tabular />
+          <Metric label="Deal age" value={`${deal.ageDays}d`} tabular />
+          <Metric label="Expected close" value={deal.expectedCloseAt ?? "—"} />
+          <Metric label="Probability" value={`${probability}%`} tabular />
+          <Metric
+            label="Weighted forecast"
+            value={formatMoney(weighted, deal.currency)}
+            tabular
+          />
+        </div>
       </header>
 
       {deal.attention ? (
-        <p className="text-sm text-warning">
+        <p className="text-sm text-health-warn">
           {attentionLabel[deal.attention] ?? deal.attention}
           {deal.attention === "no_next_activity" && can("activities:create") ? (
             <>
@@ -322,7 +359,7 @@ export function DealDetailView({ dealId }: { dealId: string }) {
                 })}
             </ol>
           ) : (
-            <EmptyState title="No pipeline" description="Assign a pipeline to track progress." />
+            <EmptyState title="Assign a pipeline" description="Choose a pipeline so this deal can move through stages." />
           )}
           <section className="rounded-lg border border-border bg-surface p-4">
             <h3 className="mb-2 text-sm font-semibold">Stage history</h3>
@@ -355,7 +392,10 @@ export function DealDetailView({ dealId }: { dealId: string }) {
             </Button>
           ) : null}
           {activities.length === 0 ? (
-            <EmptyState title="No activities" />
+            <EmptyState
+              title="No activities yet"
+              description="Log a call, meeting, or task to keep this deal moving."
+            />
           ) : (
             <ul className="space-y-2">
               {activities.map((a) => (
@@ -375,7 +415,10 @@ export function DealDetailView({ dealId }: { dealId: string }) {
 
         <TabsContent value="documents" className="mt-3">
           {documents.length === 0 ? (
-            <EmptyState title="No documents" description="Attach required document categories before advanced stages." />
+            <EmptyState
+              title="No documents yet"
+              description="Attach required files before moving into later stages."
+            />
           ) : (
             <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
               {documents.map((d) => (
@@ -395,7 +438,10 @@ export function DealDetailView({ dealId }: { dealId: string }) {
 
         <TabsContent value="timeline" className="mt-3 rounded-lg border border-border bg-surface p-4">
           {timelineItems.length === 0 ? (
-            <EmptyState title="Timeline empty" />
+            <EmptyState
+              title="No timeline events yet"
+              description="Stage changes and logged activities will show up here."
+            />
           ) : (
             <Timeline items={timelineItems} />
           )}
@@ -476,11 +522,19 @@ export function DealDetailView({ dealId }: { dealId: string }) {
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({
+  label,
+  value,
+  tabular,
+}: {
+  label: string;
+  value: string;
+  tabular?: boolean;
+}) {
   return (
     <div>
-      <p className="text-[11px] text-foreground-subtle">{label}</p>
-      <p className="text-sm font-semibold">{value}</p>
+      <p className="text-label">{label}</p>
+      <p className={tabular ? "text-board-total tabular-nums" : "text-section"}>{value}</p>
     </div>
   );
 }

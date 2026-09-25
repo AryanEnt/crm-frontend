@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { SearchableSelect } from "@/components/forms/searchable-select";
 import { FormFieldSlot } from "@/components/forms/form-field";
+import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { adminApi } from "@/lib/api/admin";
 import { crmApi, type Pipeline } from "@/lib/api/crm";
 import type { EntityPickerOption } from "@/components/forms/types";
@@ -92,25 +93,37 @@ export function UserPicker({
     queryFn: () => adminApi.listUsers(new URLSearchParams({ limit: "100", isActive: "true" })),
   });
 
-  const options: EntityPickerOption[] = (usersQuery.data?.data ?? []).map((u) => ({
+  const options: ComboboxOption[] = (usersQuery.data?.data ?? []).map((u) => ({
     value: u.id,
     label: u.fullName,
     description: u.email,
+    visual: <UserAvatar name={u.fullName} />,
   }));
 
   return (
     <FormFieldSlot label={label} required={required} error={error ? "Required" : undefined}>
-      <SearchableSelect
-        value={value && value !== "none" ? value : null}
-        onChange={(v) => onChange(v ?? "none")}
+      <Combobox
+        aria-label={label}
         options={options}
+        value={value && value !== "none" ? value : null}
+        onChange={(v) => onChange(v ?? "")}
         loading={usersQuery.isLoading}
-        placeholder={placeholder}
-        emptyText="No users found"
-        error={error}
-        className={triggerClassName}
+        placeholder={usersQuery.isError ? "Couldn't load owners" : placeholder}
+        searchPlaceholder="Search owners…"
+        emptyText={usersQuery.isError ? "Couldn't load owners. Try again." : "No users found"}
+        clearable={!required}
+        triggerClassName={cn(triggerClassName, error && "border-destructive")}
       />
     </FormFieldSlot>
+  );
+}
+
+function UserAvatar({ name }: { name: string }) {
+  const initial = name.trim().slice(0, 1).toUpperCase() || "?";
+  return (
+    <span className="flex size-5 shrink-0 items-center justify-center overflow-hidden rounded-full bg-surface-muted text-[10px] font-medium text-ink-secondary">
+      {initial}
+    </span>
   );
 }
 
@@ -135,7 +148,7 @@ export function TeamPicker({
   const options: EntityPickerOption[] = (teamsQuery.data?.data ?? []).map((t) => ({
     value: t.id,
     label: t.name,
-    description: t.ownerName ? `Lead: ${t.ownerName}` : "No Team Lead",
+    description: t.teamLeadName ? `Team Lead: ${t.teamLeadName}` : "No Team Lead",
   }));
 
   return (

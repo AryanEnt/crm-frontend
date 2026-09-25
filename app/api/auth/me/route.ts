@@ -10,57 +10,78 @@ import type { SessionUser } from "@/features/auth/types";
 
 export async function GET() {
   let access = await readAccessToken();
-  let rotated: Awaited<ReturnType<typeof refreshAccessTokens>> = null;
-
-  if (!access) {
-    rotated = await refreshAccessTokens();
-    if (!rotated) {
-      const res = NextResponse.json(
-        {
-          success: false,
-          error: { code: "unauthorized", message: "Not authenticated" },
-        },
-        { status: 401 },
-      );
-      return applyAuthCookies(res, { clear: true });
-    }
-    access = rotated.accessToken;
-  }
-
   let upstream = await backendFetch("/api/v1/auth/me", {
-    headers: { Authorization: `Bearer ${access}` },
+    method: "GET",
+    headers: access ? { Authorization: `Bearer ${access}` } : {},
   });
 
   if (upstream.status === 401) {
-    rotated = await refreshAccessTokens();
-    if (!rotated) {
-      const res = NextResponse.json(
-        {
-          success: false,
-          error: { code: "unauthorized", message: "Session expired" },
-        },
-        { status: 401 },
-      );
-      return applyAuthCookies(res, { clear: true });
+    const rotated = await refreshAccessTokens();
+    if (rotated?.accessToken) {
+      access = rotated.accessToken;
+      upstream = await backendFetch("/api/v1/auth/me", {
+        method: "GET",
+        headers: { Authorization: `Bearer ${access}` },
+      });
+      const envelope = (await upstream.json()) as BackendEnvelope<SessionUser>;
+      const res = NextResponse.json(envelope, { status: upstream.status });
+      return applyAuthCookies(res, {
+        accessToken: rotated.accessToken,
+        refreshToken: rotated.refreshToken,
+      });
     }
-    access = rotated.accessToken;
-    upstream = await backendFetch("/api/v1/auth/me", {
-      headers: { Authorization: `Bearer ${access}` },
-    });
   }
 
   const envelope = (await upstream.json()) as BackendEnvelope<SessionUser>;
-  const res = NextResponse.json(envelope, { status: upstream.status });
+  return NextResponse.json(envelope, { status: upstream.status });
+}
 
-  // Only clear session on auth failure — not on 5xx / validation errors.
+export async function PATCH(req: Request) {
+  let access = await readAccessToken();
+  if (!access) {
+    const rotated = await refreshAccessTokens();
+    access = rotated?.accessToken ?? "";
+  }
+  if (!access) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: { code: "unauthorized", message: "authentication required" },
+      },
+      { status: 401 },
+    );
+  }
+
+  const body = await req.json();
+  let upstream = await backendFetch("/api/v1/auth/me", {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${access}`,
+    },
+    body: JSON.stringify(body),
+  });
+
   if (upstream.status === 401) {
-    return applyAuthCookies(res, { clear: true });
+    const rotated = await refreshAccessTokens();
+    if (rotated?.accessToken) {
+      upstream = await backendFetch("/api/v1/auth/me", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${rotated.accessToken}`,
+        },
+        body: JSON.stringify(body),
+      });
+      const envelope = (await upstream.json()) as BackendEnvelope<SessionUser>;
+      const res = NextResponse.json(envelope, { status: upstream.status });
+      return applyAuthCookies(res, {
+        accessToken: rotated.accessToken,
+        refreshToken: rotated.refreshToken,
+      });
+    }
   }
-  if (rotated) {
-    return applyAuthCookies(res, {
-      accessToken: rotated.accessToken,
-      refreshToken: rotated.refreshToken,
-    });
-  }
-  return res;
+
+  const envelope = (await upstream.json()) as BackendEnvelope<SessionUser>;
+  return NextResponse.json(envelope, { status: upstream.status });
 }

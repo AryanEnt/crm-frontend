@@ -11,14 +11,14 @@ export const PopoverAnchor = PopoverPrimitive.Anchor;
 export const PopoverContent = React.forwardRef<
   React.ElementRef<typeof PopoverPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content>
->(({ className, align = "center", sideOffset = 6, ...props }, ref) => (
+>(({ className, align = "center", sideOffset = 4, ...props }, ref) => (
   <PopoverPrimitive.Portal>
     <PopoverPrimitive.Content
       ref={ref}
       align={align}
       sideOffset={sideOffset}
       className={cn(
-        "z-50 w-72 rounded-md border border-border bg-surface p-3 text-foreground shadow-md outline-none",
+        "z-[80] w-72 rounded-md border border-line bg-surface p-3 text-foreground shadow-sm outline-none",
         "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
         className,
       )}

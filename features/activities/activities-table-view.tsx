@@ -248,6 +248,16 @@ export function ActivitiesTableView() {
         loading={activitiesQuery.isLoading}
         searchValue={search}
         pageSize={10}
+        emptyTitle={search || status !== "all" || typeCode !== "all" ? "No activities match" : "No activities yet"}
+        emptyDescription={
+          search || status !== "all" || typeCode !== "all"
+            ? "Clear filters to see more of your schedule."
+            : "Log a call, meeting, or task to keep follow-ups on track."
+        }
+        emptyActionLabel={can("activities:create") && !search ? "New activity" : undefined}
+        onEmptyAction={
+          can("activities:create") && !search ? () => setCreateOpen(true) : undefined
+        }
       />
 
       <ActivityQuickCreateDialog

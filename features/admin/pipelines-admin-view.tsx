@@ -210,7 +210,7 @@ function PipelineEditor({
                   onSaved();
                   toast.success("Pipeline saved");
                 } catch (err) {
-                  toast.error(err instanceof Error ? err.message : "Could not save pipeline");
+                  toast.error(err instanceof Error ? err.message : "Couldn't save the pipeline. Try again.");
                 } finally {
                   setSaving(false);
                 }
@@ -314,7 +314,7 @@ function CreatePipelineDialog({
                   onCreated(p);
                   toast.success("Pipeline created");
                 } catch (err) {
-                  toast.error(err instanceof Error ? err.message : "Could not create pipeline");
+                  toast.error(err instanceof Error ? err.message : "Couldn't create the pipeline. Try again.");
                 } finally {
                   setLoading(false);
                 }
@@ -405,7 +405,7 @@ function CreateStageDialog({
                   onCreated();
                   toast.success("Stage added");
                 } catch (err) {
-                  toast.error(err instanceof Error ? err.message : "Could not add stage");
+                  toast.error(err instanceof Error ? err.message : "Couldn't add the stage. Try again.");
                 } finally {
                   setLoading(false);
                 }
@@ -526,7 +526,7 @@ function EditStageDialog({
                   onSaved();
                   toast.success("Stage saved");
                 } catch (err) {
-                  toast.error(err instanceof Error ? err.message : "Could not save stage");
+                  toast.error(err instanceof Error ? err.message : "Couldn't save the stage. Try again.");
                 } finally {
                   setLoading(false);
                 }

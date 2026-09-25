@@ -11,7 +11,7 @@ import { FilterBar } from "@/components/ui/filter-bar";
 import { DataTable, SortableHeader } from "@/components/ui/data-table";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { ErrorState } from "@/components/ui/error-state";
-import { LoadingState } from "@/components/ui/loading-state";
+import { TableSkeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -45,7 +45,7 @@ const emptyForm = (): FormState => ({
   name: "",
   description: "",
   icon: "calendar",
-  color: "#6c63d9",
+  color: "#0E7490",
   isActive: true,
   position: "0",
   requiresDatetime: false,
@@ -108,7 +108,7 @@ export function ActivityTypesAdminView() {
       setEdit(null);
       toast.success(edit ? "Activity type updated" : "Activity type created");
     },
-    onError: (err: Error) => toast.error(err.message || "Save failed"),
+    onError: (err: Error) => toast.error(err.message || "Couldn't save. Check required fields and try again."),
   });
 
   const deleteMutation = useMutation({
@@ -119,7 +119,7 @@ export function ActivityTypesAdminView() {
       setDeleteTarget(null);
       toast.success("Activity type deleted");
     },
-    onError: (err: Error) => toast.error(err.message || "Delete failed"),
+    onError: (err: Error) => toast.error(err.message || "Couldn't delete. Try again."),
   });
 
   const openCreate = () => {
@@ -154,7 +154,7 @@ export function ActivityTypesAdminView() {
           <div className="flex items-center gap-2">
             <span
               className="size-2.5 rounded-full"
-              style={{ backgroundColor: row.original.color || "#6c63d9" }}
+              style={{ backgroundColor: row.original.color || "#0E7490" }}
             />
             <div>
               <p className="font-medium">{row.original.name}</p>
@@ -225,7 +225,7 @@ export function ActivityTypesAdminView() {
     );
   }
 
-  if (query.isLoading) return <LoadingState />;
+  if (query.isLoading) return <TableSkeleton />;
   if (query.isError) return <ErrorState onRetry={() => void query.refetch()} />;
 
   return (
@@ -233,11 +233,11 @@ export function ActivityTypesAdminView() {
       <PageHeader
         breadcrumbs={[
           { label: "Control Center", href: "/" },
-          { label: "CRM Configuration" },
-          { label: "Activity Types" },
+          { label: "Setup" },
+          { label: "Activity types" },
         ]}
-        title="Activity Types"
-        description="Control how activities appear and which fields are required when logging them."
+        title="Activity types"
+        description="Define call, meeting, and follow-up types used when logging work."
         actions={
           canManage ? (
             <Button size="sm" onClick={openCreate}>
@@ -293,7 +293,7 @@ export function ActivityTypesAdminView() {
                 <Label>Color</Label>
                 <Input
                   type="color"
-                  value={form.color.startsWith("#") ? form.color : "#6c63d9"}
+                  value={form.color.startsWith("#") ? form.color : "#0E7490"}
                   onChange={(e) => setForm({ ...form, color: e.target.value })}
                 />
               </div>

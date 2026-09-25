@@ -33,7 +33,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useAuth } from "@/features/auth/auth-provider";
-import { adminApi, type AdminTeam, type AdminUser } from "@/lib/api/admin";
+import { adminApi, type AdminTeam, type AdminTeamMember, type AdminUser } from "@/lib/api/admin";
 import { ErrorState } from "@/components/ui/error-state";
 
 export function TeamsAdminView() {
@@ -43,6 +43,7 @@ export function TeamsAdminView() {
   const [status, setStatus] = React.useState("all");
   const [createOpen, setCreateOpen] = React.useState(false);
   const [editTeam, setEditTeam] = React.useState<AdminTeam | null>(null);
+  const [viewTeam, setViewTeam] = React.useState<AdminTeam | null>(null);
   const [confirm, setConfirm] = React.useState<{ id: string; active: boolean } | null>(
     null,
   );
@@ -59,8 +60,21 @@ export function TeamsAdminView() {
     queryFn: () => adminApi.listTeams(params),
   });
   const usersQuery = useQuery({
-    queryKey: ["users", "for-teams"],
-    queryFn: () => adminApi.listUsers(new URLSearchParams({ limit: "100", isActive: "true" })),
+    queryKey: ["users", "for-teams", createOpen ? "new" : editTeam?.id ?? "idle"],
+    queryFn: () => {
+      const p = new URLSearchParams({ limit: "100", isActive: "true" });
+      if (editTeam?.id) {
+        p.set("availableForTeamId", editTeam.id);
+      } else if (createOpen) {
+        p.set("availableForTeamId", "new");
+      }
+      return adminApi.listUsers(p);
+    },
+    enabled: createOpen || !!editTeam,
+  });
+  const rosterQuery = useQuery({
+    queryKey: ["teams", "roster"],
+    queryFn: () => adminApi.listTeams(new URLSearchParams({ limit: "200" })),
   });
 
   const statusMutation = useMutation({
@@ -71,7 +85,7 @@ export function TeamsAdminView() {
       setConfirm(null);
       toast.success(vars.active ? "Team activated" : "Team deactivated");
     },
-    onError: (err: Error) => toast.error(err.message || "Could not update team"),
+    onError: (err: Error) => toast.error(err.message || "Couldn't update the team. Try again."),
   });
 
   const columns = React.useMemo<ColumnDef<AdminTeam>[]>(
@@ -81,24 +95,37 @@ export function TeamsAdminView() {
         accessorKey: "name",
         header: ({ column }) => <SortableHeader column={column} title="Team" />,
         cell: ({ row }) => (
-          <div>
-            <p className="font-medium">{row.original.name}</p>
+          <button
+            type="button"
+            className="text-left"
+            onClick={() => setViewTeam(row.original)}
+          >
+            <p className="font-medium text-foreground hover:underline">{row.original.name}</p>
             <p className="text-xs text-foreground-muted line-clamp-1">
               {row.original.description || "—"}
             </p>
-          </div>
+          </button>
         ),
       },
       {
-        accessorKey: "ownerName",
-        header: "Owner",
+        accessorKey: "teamLeadName",
+        header: "Team Lead",
         cell: ({ row }) => (
-          <span className="text-foreground-muted">{row.original.ownerName ?? "Unassigned"}</span>
+          <span className="text-foreground-muted">{row.original.teamLeadName ?? "Unassigned"}</span>
         ),
       },
       {
         accessorKey: "memberCount",
         header: "Members",
+        cell: ({ row }) => (
+          <button
+            type="button"
+            className="text-foreground-muted hover:text-foreground hover:underline"
+            onClick={() => setViewTeam(row.original)}
+          >
+            {row.original.memberCount}
+          </button>
+        ),
       },
       {
         accessorKey: "isActive",
@@ -191,9 +218,11 @@ export function TeamsAdminView() {
         open={createOpen}
         onOpenChange={setCreateOpen}
         users={usersQuery.data?.data ?? []}
+        teams={rosterQuery.data?.data ?? []}
         onSubmit={async (values) => {
           await adminApi.createTeam(values);
           await qc.invalidateQueries({ queryKey: ["teams"] });
+          await qc.invalidateQueries({ queryKey: ["users"] });
           setCreateOpen(false);
           toast.success("Team created");
         }}
@@ -204,14 +233,21 @@ export function TeamsAdminView() {
         open={!!editTeam}
         onOpenChange={(open) => !open && setEditTeam(null)}
         users={usersQuery.data?.data ?? []}
+        teams={rosterQuery.data?.data ?? []}
         initial={editTeam}
         onSubmit={async (values) => {
           if (!editTeam) return;
           await adminApi.updateTeam(editTeam.id, values);
           await qc.invalidateQueries({ queryKey: ["teams"] });
+          await qc.invalidateQueries({ queryKey: ["users"] });
           setEditTeam(null);
           toast.success("Team updated");
         }}
+      />
+
+      <TeamMembersDialog
+        team={viewTeam}
+        onOpenChange={(open) => !open && setViewTeam(null)}
       />
 
       <ConfirmDialog
@@ -230,32 +266,143 @@ export function TeamsAdminView() {
   );
 }
 
+function TeamMembersDialog({
+  team,
+  onOpenChange,
+}: {
+  team: AdminTeam | null;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const people = (team?.members ?? [])
+    .filter((user) => user.roleCode !== "super_admin")
+    .slice()
+    .sort((a, b) => {
+      const aLead = a.id === team?.teamLeadUserId ? 0 : 1;
+      const bLead = b.id === team?.teamLeadUserId ? 0 : 1;
+      if (aLead !== bLead) return aLead - bLead;
+      return a.fullName.localeCompare(b.fullName);
+    });
+
+  return (
+    <Modal open={!!team} onOpenChange={onOpenChange}>
+      <ModalContent className="max-w-lg">
+        <ModalHeader>
+          <ModalTitle>{team?.name ?? "Team"}</ModalTitle>
+          <ModalDescription>
+            {team?.teamLeadName ? `Team Lead: ${team.teamLeadName}` : "No Team Lead assigned"}
+          </ModalDescription>
+        </ModalHeader>
+        <div className="max-h-80 space-y-1 overflow-y-auto">
+          {people.length === 0 ? (
+            <p className="text-sm text-foreground-muted">No members on this team yet.</p>
+          ) : (
+            people.map((user) => (
+              <MemberRow key={user.id} user={user} leadId={team?.teamLeadUserId} />
+            ))
+          )}
+        </div>
+        <ModalFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Close
+          </Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
+  );
+}
+
+function MemberRow({ user, leadId }: { user: AdminTeamMember; leadId?: string | null }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-md px-2 py-1.5">
+      <div className="min-w-0">
+        <p className="truncate text-sm font-medium">{user.fullName}</p>
+        <p className="truncate text-xs text-foreground-muted">{user.email}</p>
+      </div>
+      <span className="shrink-0 text-xs text-foreground-subtle">
+        {user.id === leadId ? "Team Lead" : user.roleName}
+      </span>
+    </div>
+  );
+}
+
+function assignedTeamId(user: AdminUser, teams: AdminTeam[], preferTeamId?: string): string | undefined {
+  if (preferTeamId) {
+    const preferred = teams.find((t) => t.id === preferTeamId);
+    if (
+      preferred &&
+      (preferred.teamLeadUserId === user.id || (preferred.memberIds ?? []).includes(user.id))
+    ) {
+      return preferTeamId;
+    }
+  }
+  const fromUser = (user.teamIds ?? []).find(Boolean);
+  if (fromUser) return fromUser;
+  for (const team of teams) {
+    if (team.teamLeadUserId === user.id) return team.id;
+    if ((team.memberIds ?? []).includes(user.id)) return team.id;
+  }
+  return undefined;
+}
+
+/** Eligible for this team: unassigned, or already on this same team. Never Super Admin. */
+function isEligibleForTeam(
+  user: AdminUser,
+  teams: AdminTeam[],
+  currentTeamId?: string,
+): boolean {
+  if (user.roleCode === "super_admin") return false;
+  const assigned = assignedTeamId(user, teams, currentTeamId);
+  if (!assigned) return true;
+  return !!currentTeamId && assigned === currentTeamId;
+}
+
 function TeamFormDialog({
   open,
   onOpenChange,
   users,
+  teams,
   initial,
   onSubmit,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   users: AdminUser[];
+  teams: AdminTeam[];
   initial?: AdminTeam | null;
   onSubmit: (values: Record<string, unknown>) => Promise<void>;
 }) {
   const [name, setName] = React.useState(initial?.name ?? "");
   const [description, setDescription] = React.useState(initial?.description ?? "");
-  const [ownerUserId, setOwnerUserId] = React.useState(initial?.ownerUserId ?? "none");
-  const [memberIds, setMemberIds] = React.useState<string[]>(initial?.memberIds ?? []);
+  const [teamLeadUserId, setTeamLeadUserId] = React.useState(initial?.teamLeadUserId ?? "none");
+  const [memberIds, setMemberIds] = React.useState<string[]>(
+    (initial?.memberIds ?? []).filter((id) => id !== initial?.teamLeadUserId),
+  );
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+
+  const teamLeads = users.filter(
+    (u) =>
+      u.roleCode === "sales_manager" &&
+      (u.isActive || u.id === initial?.teamLeadUserId) &&
+      isEligibleForTeam(u, teams, initial?.id),
+  );
+  const memberChoices = users.filter(
+    (u) =>
+      u.roleCode !== "super_admin" &&
+      u.roleCode !== "sales_manager" &&
+      (u.isActive || memberIds.includes(u.id)) &&
+      isEligibleForTeam(u, teams, initial?.id),
+  );
 
   return (
     <Modal open={open} onOpenChange={onOpenChange}>
       <ModalContent className="max-w-lg">
         <ModalHeader>
           <ModalTitle>{initial ? "Edit team" : "Create team"}</ModalTitle>
-          <ModalDescription>Set ownership and membership for this team.</ModalDescription>
+          <ModalDescription>
+            Assign a Team Lead and the people who work on this team. Super Admin is not a member of any team.
+            Sales Executives already on another team are not listed — transfer them from Users instead.
+          </ModalDescription>
         </ModalHeader>
         <div className="space-y-3">
           <div className="space-y-1.5">
@@ -267,14 +414,14 @@ function TeamFormDialog({
             <Input value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
           <div className="space-y-1.5">
-            <Label>Owner</Label>
-            <Select value={ownerUserId} onValueChange={setOwnerUserId}>
+            <Label>Team Lead</Label>
+            <Select value={teamLeadUserId} onValueChange={setTeamLeadUserId}>
               <SelectTrigger>
-                <SelectValue placeholder="Select owner" />
+                <SelectValue placeholder="Select Team Lead" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">Unassigned</SelectItem>
-                {users.map((u) => (
+                {teamLeads.map((u) => (
                   <SelectItem key={u.id} value={u.id}>
                     {u.fullName}
                   </SelectItem>
@@ -283,9 +430,14 @@ function TeamFormDialog({
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label>Members</Label>
+            <Label>Team Members</Label>
             <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border border-border p-2">
-              {users.map((u) => {
+              {memberChoices.length === 0 ? (
+                <p className="text-xs text-foreground-muted">
+                  No available users. Unassigned Sales Executives appear here.
+                </p>
+              ) : null}
+              {memberChoices.map((u) => {
                 const checked = memberIds.includes(u.id);
                 return (
                   <label key={u.id} className="flex items-center gap-2 text-sm">
@@ -301,6 +453,7 @@ function TeamFormDialog({
                       }}
                     />
                     <span>{u.fullName}</span>
+                    <span className="text-xs text-foreground-subtle">{u.roleName}</span>
                     <span className="text-xs text-foreground-subtle">{u.email}</span>
                   </label>
                 );
@@ -323,11 +476,11 @@ function TeamFormDialog({
                   await onSubmit({
                     name,
                     description,
-                    ownerUserId: ownerUserId === "none" ? null : ownerUserId,
+                    teamLeadUserId: teamLeadUserId === "none" ? "" : teamLeadUserId,
                     memberIds,
                   });
                 } catch (err) {
-                  const message = err instanceof Error ? err.message : "Save failed";
+                  const message = err instanceof Error ? err.message : "Couldn't save. Check required fields and try again.";
                   setError(message);
                   toast.error(message);
                 } finally {

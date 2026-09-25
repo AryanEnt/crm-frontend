@@ -95,7 +95,9 @@ export function UnifiedTimeline({
     });
   }, [query.data, offset]);
 
-  if (query.isLoading && offset === 0) return <LoadingState />;
+  if (query.isLoading && offset === 0) {
+    return <LoadingState compact label="Loading timeline…" />;
+  }
   if (query.isError) return <ErrorState onRetry={() => void query.refetch()} />;
 
   const items = accumulated.map((e) => {
@@ -133,15 +135,15 @@ export function UnifiedTimeline({
             ))}
           </SelectContent>
         </Select>
-        <span className="text-xs text-foreground-muted">
-          {query.data?.total ?? 0} events
+        <span className="text-meta">
+          <span className="text-data">{query.data?.total ?? 0}</span> events
         </span>
       </div>
 
       {items.length === 0 ? (
         <EmptyState
-          title="No timeline events"
-          description="CRM actions plus WhatsApp and Twilio call events appear here."
+          title="No timeline events yet"
+          description="Calls, emails, and CRM updates linked to this record show up here."
         />
       ) : (
         <Timeline items={items} />

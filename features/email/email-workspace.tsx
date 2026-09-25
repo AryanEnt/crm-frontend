@@ -119,8 +119,8 @@ export function EmailWorkspace() {
         <PageHeader title="Email" description="CRM email workspace" />
         <EmptyState
           icon={Mail}
-          title="Gmail integration is not configured"
-          description="Ask a Super Admin to add Google OAuth credentials."
+          title="Email is not available yet"
+          description="Ask a Super Admin to finish Email sync setup, then connect your mailbox."
         />
       </div>
     );

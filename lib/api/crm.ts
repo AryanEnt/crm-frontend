@@ -65,7 +65,9 @@ export type Deal = {
   stageEnteredAt: string;
   ageDays: number;
   daysInStage: number;
-  attention: "" | "no_recent_activity" | "attention_needed" | "over_sla" | "no_next_activity" | string;
+  attention: "" | "no_recent_activity" | "attention_needed" | "over_sla" | "no_next_activity" | "overdue_next" | string;
+  needsNextActivity?: boolean;
+  nextActivityId?: string | null;
   lostReason?: string;
   createdAt: string;
   updatedAt: string;
@@ -155,6 +157,7 @@ export type Lead = {
   lastActivityAt?: string | null;
   nextActivityAt?: string | null;
   status: string;
+  attention?: string;
   convertedCustomerId?: string | null;
   ageDays: number;
   isArchived: boolean;
@@ -203,6 +206,7 @@ export type Customer = {
   expectedOutcome: string;
   lastContactedAt?: string | null;
   nextFollowUpAt?: string | null;
+  attention?: string;
   notes: string;
   convertedFromLeadId?: string | null;
   createdAt: string;
@@ -345,6 +349,7 @@ export const crmApi = {
   createLead: (body: unknown) => mutateWithDuplicateCheck<Lead>("POST", "/leads", body),
   updateLead: (id: string, body: unknown) =>
     mutateWithDuplicateCheck<Lead>("PATCH", `/leads/${id}`, body),
+  qualifyLead: (id: string) => api.post<Lead>(`/leads/${id}/qualify`, {}),
   bulkArchiveLeads: (ids: string[], archive: boolean) =>
     api.post<{ updated: number }>("/leads/bulk-archive", { ids, archive }),
   bulkAssignLeads: (ids: string[], ownerUserId?: string | null, teamId?: string | null) =>
@@ -361,14 +366,23 @@ export const crmApi = {
     mutateWithDuplicateCheck<Customer>("PATCH", `/customers/${id}`, body),
 
   listDeals: (params: URLSearchParams) => listWithMeta<Deal>(`/deals?${params}`),
-  getDealBoard: (pipelineId: string) =>
-    api.get<DealBoard>(`/deals/board?pipelineId=${encodeURIComponent(pipelineId)}`),
+  getDealBoard: (pipelineId: string, salesExecutiveId?: string) => {
+    const p = new URLSearchParams({ pipelineId });
+    if (salesExecutiveId) p.set("salesExecutiveId", salesExecutiveId);
+    return api.get<DealBoard>(`/deals/board?${p}`);
+  },
   getDeal: (id: string) => api.get<DealDetail>(`/deals/${id}`),
   createDeal: (body: unknown) => api.post<Deal>("/deals", body),
   updateDeal: (id: string, body: unknown) => api.patch<Deal>(`/deals/${id}`, body),
   moveDeal: (
     id: string,
-    body: { stageId: string; pipelineId?: string; force?: boolean; lostReason?: string },
+    body: {
+      stageId: string;
+      pipelineId?: string;
+      force?: boolean;
+      lostReason?: string;
+      nextActivity?: { title?: string; dueAt: string; typeCode?: string };
+    },
   ) => api.post<Deal>(`/deals/${id}/move`, body),
   addDealDocument: (id: string, body: { name: string; category: string }) =>
     api.post<DealDetail>(`/deals/${id}/documents`, body),
@@ -388,12 +402,20 @@ export const crmApi = {
     fieldType?: string;
     activeOnly?: boolean;
     q?: string;
+    pipelineId?: string;
+    stageId?: string;
+    applyScope?: boolean;
   }) => {
     const p = new URLSearchParams();
     if (params?.entity) p.set("entity", params.entity);
     if (params?.fieldType) p.set("fieldType", params.fieldType);
     if (params?.activeOnly) p.set("activeOnly", "true");
     if (params?.q) p.set("q", params.q);
+    if (params?.applyScope) {
+      p.set("applyScope", "true");
+      if (params.pipelineId) p.set("pipelineId", params.pipelineId);
+      if (params.stageId) p.set("stageId", params.stageId);
+    }
     const qs = p.toString();
     return api.get<CustomFieldDefinition[]>(`/custom-fields${qs ? `?${qs}` : ""}`);
   },
@@ -594,6 +616,10 @@ export type CustomFieldDefinition = {
   isRequired: boolean;
   isActive: boolean;
   displayOrder: number;
+  pipelineId?: string | null;
+  pipelineName?: string | null;
+  stageId?: string | null;
+  stageName?: string | null;
   options: CustomFieldOption[];
   createdAt?: string;
   updatedAt?: string;
@@ -625,6 +651,8 @@ export type Activity = {
   typeColor?: string | null;
   status: string;
   displayStatus: string;
+  needsNextActivity?: boolean;
+  nextActivityId?: string | null;
   priority: string;
   notes: string;
   outcome: string;

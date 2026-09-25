@@ -6,6 +6,57 @@ import {
   refreshAccessTokens,
 } from "@/lib/auth/server";
 
+/** Reject cross-site state-changing calls (defense-in-depth with SameSite=Lax cookies). */
+function assertSameOrigin(req: NextRequest): NextResponse | null {
+  if (req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS") {
+    return null;
+  }
+  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
+  if (!host) return null;
+
+  const origin = req.headers.get("origin");
+  if (origin) {
+    try {
+      if (new URL(origin).host !== host) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: { code: "forbidden", message: "Cross-origin request blocked" },
+          },
+          { status: 403 },
+        );
+      }
+      return null;
+    } catch {
+      return NextResponse.json(
+        {
+          success: false,
+          error: { code: "forbidden", message: "Invalid origin" },
+        },
+        { status: 403 },
+      );
+    }
+  }
+
+  const referer = req.headers.get("referer");
+  if (referer) {
+    try {
+      if (new URL(referer).host !== host) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: { code: "forbidden", message: "Cross-origin request blocked" },
+          },
+          { status: 403 },
+        );
+      }
+    } catch {
+      /* ignore bad referer */
+    }
+  }
+  return null;
+}
+
 async function forward(
   req: NextRequest,
   path: string[],
@@ -46,6 +97,9 @@ async function unauthorized(message: string) {
 }
 
 async function handle(req: NextRequest, path: string[]) {
+  const originBlock = assertSameOrigin(req);
+  if (originBlock) return originBlock;
+
   const isPublicHealth = path.length === 1 && path[0] === "health";
 
   if (isPublicHealth) {

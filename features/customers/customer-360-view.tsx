@@ -16,7 +16,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
-import { LoadingState } from "@/components/ui/loading-state";
+import { DetailSkeleton } from "@/components/ui/skeleton";
 import {
   Modal,
   ModalContent,
@@ -45,9 +45,8 @@ import { UnifiedTimeline } from "@/features/timeline/unified-timeline";
 import { RecordEmailSection } from "@/features/email/record-email-section";
 import { CommunicationActions } from "@/features/communications/communication-actions";
 import type { Referral } from "@/lib/api/referrals";
-
-const priorityTone = (p: string) =>
-  p === "urgent" ? "danger" : p === "high" ? "warning" : p === "low" ? "neutral" : "brand";
+import { priorityBadgeClass, priorityFromString } from "@/lib/design-tokens";
+import { cn } from "@/lib/utils";
 
 function formatWhen(v?: string | null) {
   if (!v) return "—";
@@ -57,6 +56,12 @@ function formatWhen(v?: string | null) {
 function formatMoney(v?: number | null, currency = "AUD") {
   if (v == null) return "—";
   return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(v);
+}
+
+function followUpClass(next?: string | null) {
+  if (!next) return "text-health-warn";
+  if (new Date(next).getTime() < Date.now()) return "text-health-bad";
+  return "text-foreground";
 }
 
 export function Customer360View({ customerId }: { customerId: string }) {
@@ -89,13 +94,15 @@ export function Customer360View({ customerId }: { customerId: string }) {
     void qc.invalidateQueries({ queryKey: ["documents"] });
   };
 
-  if (profileQuery.isLoading) return <LoadingState />;
+  if (profileQuery.isLoading) return <DetailSkeleton />;
   if (profileQuery.isError || !profileQuery.data) {
     return <ErrorState onRetry={() => void profileQuery.refetch()} />;
   }
 
-  const { customer, deals, activities, referral } = profileQuery.data;
+  const { customer, deals, referral } = profileQuery.data;
   const pipeline = pipelinesQuery.data?.find((p) => p.id === customer.pipelineId);
+  const priority = priorityFromString(customer.priority);
+  const openDeals = deals.filter((d) => d.status === "open");
 
   return (
     <div className="space-y-4">
@@ -118,31 +125,37 @@ export function Customer360View({ customerId }: { customerId: string }) {
 
       <header className="rounded-lg border border-border bg-surface p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div className="space-y-2">
+          <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-base font-semibold">{customer.fullName}</h2>
-              <StatusBadge tone={priorityTone(customer.priority)}>{customer.priority}</StatusBadge>
+              <span
+                className={cn(
+                  "inline-flex items-center rounded-[var(--radius-sm)] px-1.5 py-0.5 text-[11px] font-medium capitalize",
+                  priorityBadgeClass[priority],
+                )}
+              >
+                {priority}
+              </span>
               {customer.stageName ? (
                 <StatusBadge tone="brand">{customer.stageName}</StatusBadge>
               ) : null}
+              {customer.ownerName ? (
+                <span className="text-meta">Owner · {customer.ownerName}</span>
+              ) : (
+                <span className="text-meta text-health-warn">Unassigned</span>
+              )}
             </div>
-            <dl className="grid gap-1 text-xs text-foreground-muted sm:grid-cols-2">
-              <div>
-                <dt className="inline text-foreground-subtle">Owner: </dt>
-                <dd className="inline">{customer.ownerName ?? "Unassigned"}</dd>
-              </div>
-              <div>
-                <dt className="inline text-foreground-subtle">Pipeline: </dt>
-                <dd className="inline">{customer.pipelineName ?? "—"}</dd>
-              </div>
-              <div>
-                <dt className="inline text-foreground-subtle">Email: </dt>
-                <dd className="inline">{customer.email ?? "—"}</dd>
-              </div>
-              <div>
-                <dt className="inline text-foreground-subtle">Phone: </dt>
-                <dd className="inline">{customer.phone ?? "—"}</dd>
-              </div>
+            <dl className="grid gap-x-6 gap-y-1 text-meta sm:grid-cols-3">
+              <Metric
+                label="Next follow-up"
+                value={formatWhen(customer.nextFollowUpAt)}
+                valueClass={followUpClass(customer.nextFollowUpAt)}
+              />
+              <Metric label="Last contacted" value={formatWhen(customer.lastContactedAt)} />
+              <Metric
+                label="Potential"
+                value={formatMoney(customer.potentialValue)}
+                tabular
+              />
             </dl>
           </div>
 
@@ -182,15 +195,115 @@ export function Customer360View({ customerId }: { customerId: string }) {
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="deals">Deals</TabsTrigger>
-          <TabsTrigger value="activities">Activities</TabsTrigger>
-          <TabsTrigger value="timeline">Timeline</TabsTrigger>
           <TabsTrigger value="email">Email</TabsTrigger>
           <TabsTrigger value="documents">Documents</TabsTrigger>
+          <TabsTrigger value="profile">Profile</TabsTrigger>
           <TabsTrigger value="notes">Notes</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview" className="mt-3 space-y-3">
-          <FollowUpIntelPanel customerId={customerId} />
+        <TabsContent value="overview" className="mt-3">
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_300px]">
+            <section className="rounded-lg border border-border bg-surface p-4">
+              <h3 className="mb-3 text-section">Timeline</h3>
+              <UnifiedTimeline customerId={customerId} />
+            </section>
+
+            <aside className="space-y-3">
+              <FollowUpIntelPanel customerId={customerId} />
+
+              <section className="rounded-lg border border-border bg-surface p-4">
+                <h3 className="mb-3 text-section">Open deals</h3>
+                {openDeals.length === 0 ? (
+                  <p className="text-meta">No open deals for this customer.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {openDeals.slice(0, 5).map((d) => (
+                      <li key={d.id}>
+                        <Link
+                          href={`/deals/${d.id}`}
+                          className="block rounded-[var(--radius-sm)] px-1 py-1 hover:bg-surface-muted"
+                        >
+                          <p className="truncate text-sm font-medium text-foreground hover:text-brand">
+                            {d.title}
+                          </p>
+                          <p className="text-meta">
+                            <span className="text-data">
+                              {formatMoney(d.value, d.currency)}
+                            </span>
+                            {d.stageName ? ` · ${d.stageName}` : ""}
+                          </p>
+                        </Link>
+                      </li>
+                    ))}
+                    {openDeals.length > 5 ? (
+                      <li className="text-meta">+{openDeals.length - 5} more</li>
+                    ) : null}
+                  </ul>
+                )}
+              </section>
+
+              <ReferralCard referral={referral ?? null} />
+            </aside>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="deals" className="mt-3">
+          {deals.length === 0 ? (
+            <EmptyState
+              title="No deals yet"
+              description="Create a deal from quick actions to track this opportunity."
+              actionLabel={can("deals:create") ? "Create deal" : undefined}
+              onAction={can("deals:create") ? () => setDealOpen(true) : undefined}
+            />
+          ) : (
+            <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
+              {deals.map((d) => (
+                <li key={d.id} className="flex items-center justify-between gap-3 px-3 density-row">
+                  <div className="min-w-0">
+                    <Link
+                      href={`/deals/${d.id}`}
+                      className="text-sm font-medium text-foreground hover:text-brand"
+                    >
+                      {d.title}
+                    </Link>
+                    <p className="text-meta">
+                      {[d.pipelineName, d.stageName, d.ownerName].filter(Boolean).join(" · ")}
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="text-data text-sm font-medium">
+                      {formatMoney(d.value, d.currency)}
+                    </p>
+                    <StatusBadge
+                      tone={
+                        d.status === "won"
+                          ? "success"
+                          : d.status === "lost"
+                            ? "danger"
+                            : "brand"
+                      }
+                    >
+                      {d.status}
+                    </StatusBadge>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </TabsContent>
+
+        <TabsContent value="email" className="mt-3">
+          <RecordEmailSection
+            customerId={customerId}
+            defaultTo={customer.email}
+          />
+        </TabsContent>
+
+        <TabsContent value="documents" className="mt-3">
+          <DocumentsTableView customerId={customerId} compact />
+        </TabsContent>
+
+        <TabsContent value="profile" className="mt-3">
           <div className="grid gap-3 lg:grid-cols-2">
             <ProfileCard title="Professional profile">
               <InfoRow label="Occupation" value={customer.occupation} />
@@ -230,76 +343,6 @@ export function Customer360View({ customerId }: { customerId: string }) {
             </ProfileCard>
             <ReferralCard referral={referral ?? null} />
           </div>
-        </TabsContent>
-
-        <TabsContent value="deals" className="mt-3">
-          {deals.length === 0 ? (
-            <EmptyState title="No deals yet" description="Create a deal from quick actions." />
-          ) : (
-            <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
-              {deals.map((d) => (
-                <li key={d.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
-                  <div>
-                    <p className="text-sm font-medium">{d.title}</p>
-                    <p className="text-xs text-foreground-muted">
-                      {[d.pipelineName, d.stageName, d.ownerName].filter(Boolean).join(" · ")}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-medium">{formatMoney(d.value, d.currency)}</p>
-                    <StatusBadge tone="brand">{d.status}</StatusBadge>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </TabsContent>
-
-        <TabsContent value="activities" className="mt-3">
-          {activities.length === 0 ? (
-            <EmptyState title="No activities" description="Log a call, note, or task." />
-          ) : (
-            <ul className="space-y-2">
-              {activities.map((a) => (
-                <li
-                  key={a.id}
-                  className="rounded-lg border border-border bg-surface px-3 py-2.5"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-medium">
-                        <span className="text-foreground-muted uppercase tracking-wide text-[10px] mr-2">
-                          {a.kind}
-                        </span>
-                        {a.subject}
-                      </p>
-                      {a.body ? (
-                        <p className="mt-0.5 text-xs text-foreground-muted">{a.body}</p>
-                      ) : null}
-                    </div>
-                    <time className="text-[11px] text-foreground-subtle">
-                      {formatWhen(a.createdAt)}
-                    </time>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </TabsContent>
-
-        <TabsContent value="timeline" className="mt-3 rounded-lg border border-border bg-surface p-4">
-          <UnifiedTimeline customerId={customerId} />
-        </TabsContent>
-
-        <TabsContent value="email" className="mt-3">
-          <RecordEmailSection
-            customerId={customerId}
-            defaultTo={customer.email}
-          />
-        </TabsContent>
-
-        <TabsContent value="documents" className="mt-3">
-          <DocumentsTableView customerId={customerId} compact />
         </TabsContent>
 
         <TabsContent value="notes" className="mt-3">
@@ -357,12 +400,32 @@ export function Customer360View({ customerId }: { customerId: string }) {
   );
 }
 
+function Metric({
+  label,
+  value,
+  valueClass,
+  tabular,
+}: {
+  label: string;
+  value: string;
+  valueClass?: string;
+  tabular?: boolean;
+}) {
+  return (
+    <div>
+      <dt className="text-label text-foreground-subtle">{label}</dt>
+      <dd className={cn("mt-0.5 text-sm", tabular && "text-data", valueClass)}>{value}</dd>
+    </div>
+  );
+}
+
 function ReferralCard({ referral }: { referral: Referral | null }) {
   if (!referral) {
     return (
-      <ProfileCard title="Referral">
-        <p className="text-xs text-foreground-muted">No structured referral on this customer.</p>
-      </ProfileCard>
+      <section className="rounded-lg border border-border bg-surface p-4">
+        <h3 className="mb-3 text-section">Referral</h3>
+        <p className="text-meta">No referral linked to this customer.</p>
+      </section>
     );
   }
 
@@ -402,7 +465,7 @@ function ReferralCard({ referral }: { referral: Referral | null }) {
 function ProfileCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="rounded-lg border border-border bg-surface p-4">
-      <h3 className="mb-3 text-sm font-semibold">{title}</h3>
+      <h3 className="mb-3 text-section">{title}</h3>
       <dl className="space-y-2">{children}</dl>
     </section>
   );

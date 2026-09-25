@@ -79,7 +79,7 @@ export function LeadSourcesAdminView() {
       setEdit(null);
       toast.success(edit ? "Lead source updated" : "Lead source created");
     },
-    onError: (err: Error) => toast.error(err.message || "Save failed"),
+    onError: (err: Error) => toast.error(err.message || "Couldn't save. Check required fields and try again."),
   });
 
   const deleteMutation = useMutation({
@@ -89,7 +89,7 @@ export function LeadSourcesAdminView() {
       setDeleteTarget(null);
       toast.success("Lead source removed");
     },
-    onError: (err: Error) => toast.error(err.message || "Delete failed"),
+    onError: (err: Error) => toast.error(err.message || "Couldn't delete. Try again."),
   });
 
   const deactivateMutation = useMutation({
@@ -215,7 +215,7 @@ export function LeadSourcesAdminView() {
       <PageHeader
         breadcrumbs={[
           { label: "Control Center", href: "/" },
-          { label: "CRM Configuration" },
+          { label: "Setup" },
           { label: "Lead Sources" },
         ]}
         title="Lead Sources"

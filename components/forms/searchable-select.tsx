@@ -21,6 +21,8 @@ export type SearchableSelectProps = {
   options?: EntityPickerOption[];
   /** Async search — when provided, options are ignored for list content */
   onSearch?: (query: string) => Promise<EntityPickerOption[]> | EntityPickerOption[];
+  /** Fallback label when value is set but option is not in the current list */
+  selectedLabel?: string | null;
   placeholder?: string;
   searchPlaceholder?: string;
   emptyText?: string;
@@ -39,6 +41,7 @@ export function SearchableSelect({
   onChange,
   options = [],
   onSearch,
+  selectedLabel,
   placeholder = "Search…",
   searchPlaceholder = "Type to search…",
   emptyText = "No results found",
@@ -56,8 +59,22 @@ export function SearchableSelect({
   const [asyncOptions, setAsyncOptions] = React.useState<EntityPickerOption[]>([]);
   const [searching, setSearching] = React.useState(false);
   const [searchError, setSearchError] = React.useState<string | null>(null);
+  const [cached, setCached] = React.useState<EntityPickerOption | null>(null);
 
   const isAsync = Boolean(onSearch);
+
+  React.useEffect(() => {
+    if (!value) {
+      setCached(null);
+      return;
+    }
+    if (!selectedLabel) return;
+    setCached((prev) =>
+      prev?.value === value && prev.label === selectedLabel
+        ? prev
+        : { value, label: selectedLabel },
+    );
+  }, [value, selectedLabel]);
 
   React.useEffect(() => {
     if (!open || !onSearch) return;
@@ -86,12 +103,20 @@ export function SearchableSelect({
   const selected =
     list.find((o) => o.value === value) ??
     options.find((o) => o.value === value) ??
-    recent?.find((o) => o.value === value);
+    recent?.find((o) => o.value === value) ??
+    (cached?.value === value ? cached : null) ??
+    (value && selectedLabel ? { value, label: selectedLabel } : null);
 
   const loading = externalLoading || searching;
 
+  const pick = (opt: EntityPickerOption | null) => {
+    setCached(opt);
+    onChange(opt?.value ?? null, opt);
+    setOpen(false);
+  };
+
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover modal open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
           type="button"
@@ -100,13 +125,16 @@ export function SearchableSelect({
           aria-expanded={open}
           disabled={disabled}
           className={cn(
-            "h-8 w-full justify-between px-2.5 font-normal shadow-none",
+            "h-8 w-full justify-between gap-2 border border-line bg-surface px-2.5 font-normal shadow-none",
+            "hover:border-line hover:bg-surface",
+            "focus-visible:border-line focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30 focus-visible:ring-offset-0",
+            "data-[state=open]:border-line data-[state=open]:shadow-none data-[state=open]:ring-0",
             !selected && "text-foreground-subtle",
-            error && "border-destructive",
+            error && "border-destructive focus-visible:ring-destructive",
             className,
           )}
         >
-          <span className="truncate text-left">
+          <span className="min-w-0 flex-1 truncate text-left text-sm">
             {selected ? (
               <>
                 <span className="text-foreground">{selected.label}</span>
@@ -118,38 +146,52 @@ export function SearchableSelect({
               placeholder
             )}
           </span>
-          <span className="flex items-center gap-1">
+          <span className="flex shrink-0 items-center gap-0.5">
             {clearable && value ? (
               <span
                 role="button"
                 tabIndex={-1}
-                className="rounded p-0.5 hover:bg-surface-muted"
+                aria-label="Clear selection"
+                className="rounded p-0.5 text-foreground-muted hover:bg-surface-muted hover:text-foreground"
                 onClick={(e) => {
+                  e.preventDefault();
                   e.stopPropagation();
-                  onChange(null, null);
+                  pick(null);
                 }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
                     e.stopPropagation();
-                    onChange(null, null);
+                    pick(null);
                   }
                 }}
               >
                 <X className="size-3.5 opacity-60" />
               </span>
             ) : null}
-            <ChevronsUpDown className="size-3.5 opacity-50" />
+            <ChevronsUpDown className="size-3.5 shrink-0 opacity-50" />
           </span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
-        <Command shouldFilter={!isAsync}>
+      <PopoverContent
+        className="z-[80] w-[var(--radix-popover-trigger-width)] min-w-[16rem] overflow-visible border border-line bg-surface p-0 shadow-sm"
+        align="start"
+        sideOffset={4}
+        collisionPadding={12}
+        onOpenAutoFocus={(e) => {
+          // Keep focus in the search input without fighting the drawer focus trap.
+          e.preventDefault();
+          const input = (e.currentTarget as HTMLElement).querySelector("input");
+          input?.focus();
+        }}
+      >
+        <Command shouldFilter={!isAsync} className="rounded-md border-0 shadow-none">
           <CommandInput
             placeholder={searchPlaceholder}
             value={q}
             onValueChange={setQ}
           />
-          <CommandList>
+          <CommandList className="max-h-56">
             {loading ? (
               <div className="flex items-center gap-2 px-3 py-4 text-xs text-foreground-muted">
                 <Loader2 className="size-3.5 animate-spin" />
@@ -162,7 +204,7 @@ export function SearchableSelect({
                   type="button"
                   size="sm"
                   variant="outline"
-                  onClick={() => setQ((prev) => prev + " ")}
+                  onClick={() => setQ((prev) => `${prev}`.trimEnd() + " ")}
                 >
                   Try again
                 </Button>
@@ -196,10 +238,7 @@ export function SearchableSelect({
                         key={`recent-${o.value}`}
                         option={o}
                         selected={value === o.value}
-                        onSelect={() => {
-                          onChange(o.value, o);
-                          setOpen(false);
-                        }}
+                        onSelect={() => pick(o)}
                       />
                     ))}
                   </CommandGroup>
@@ -210,10 +249,7 @@ export function SearchableSelect({
                       key={o.value}
                       option={o}
                       selected={value === o.value}
-                      onSelect={() => {
-                        onChange(o.value, o);
-                        setOpen(false);
-                      }}
+                      onSelect={() => pick(o)}
                     />
                   ))}
                 </CommandGroup>
@@ -256,6 +292,10 @@ function OptionItem({
     <CommandItem
       value={`${option.label} ${option.description ?? ""} ${option.meta ?? ""}`}
       onSelect={onSelect}
+      className={cn(
+        "cursor-pointer",
+        selected && "bg-transparent data-[selected=true]:bg-transparent",
+      )}
     >
       <Check className={cn("size-3.5 shrink-0", selected ? "opacity-100" : "opacity-0")} />
       <span className="min-w-0 flex-1">

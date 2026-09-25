@@ -10,9 +10,12 @@ export type ErrorStateProps = {
   className?: string;
 };
 
+/**
+ * State what failed and how to recover — never vague, never apologetic.
+ */
 export function ErrorState({
-  title = "Something went wrong",
-  description = "We couldn’t load this content. Please try again.",
+  title = "Couldn't load this view",
+  description = "Check your connection, then try again. If it keeps failing, ask your admin.",
   icon: Icon = AlertCircle,
   onRetry,
   className,
@@ -20,16 +23,17 @@ export function ErrorState({
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center rounded-lg border border-destructive/20 bg-destructive-soft/40 px-6 py-10 text-center",
+        "flex flex-col items-center justify-center border border-danger/25 bg-danger-soft/50 px-6 py-10 text-center",
+        "rounded-[var(--radius-lg)]",
         className,
       )}
       role="alert"
     >
-      <div className="mb-3 flex size-9 items-center justify-center rounded-md bg-destructive-soft text-destructive">
-        <Icon className="size-4" />
+      <div className="mb-3 flex size-9 items-center justify-center rounded-[var(--radius-md)] bg-danger-soft text-danger">
+        <Icon className="size-4" aria-hidden />
       </div>
-      <h3 className="text-sm font-medium text-foreground">{title}</h3>
-      <p className="mt-1 max-w-sm text-xs text-foreground-muted">{description}</p>
+      <h3 className="text-section">{title}</h3>
+      <p className="mt-1 max-w-sm text-meta">{description}</p>
       {onRetry ? (
         <Button className="mt-4" size="sm" variant="outline" onClick={onRetry}>
           Try again

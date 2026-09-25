@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -23,9 +24,11 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { ErrorState } from "@/components/ui/error-state";
+import { stageSlotFromPipeline } from "@/components/ui/stage-rail";
 import { useAuth } from "@/features/auth/auth-provider";
+import type { SessionUser } from "@/features/auth/types";
 import { adminApi } from "@/lib/api/admin";
-import { crmApi, type Lead } from "@/lib/api/crm";
+import { crmApi, type Lead, type Pipeline } from "@/lib/api/crm";
 import { LeadFormDialog } from "@/features/leads/lead-form-dialog";
 import { AnzscoCombobox } from "@/components/shared/anzsco-combobox";
 import { ActivityQuickCreateDialog } from "@/features/activities/activity-quick-create";
@@ -34,25 +37,79 @@ import {
   TeamMemberFilterChip,
   useTeamMemberFilter,
 } from "@/features/teams/team-member-filter";
-
-const priorityTone = (p: string) =>
-  p === "urgent" ? "danger" : p === "high" ? "warning" : p === "low" ? "neutral" : "brand";
+import {
+  priorityBadgeClass,
+  priorityFromString,
+  stageBadgeClass,
+} from "@/lib/design-tokens";
+import { cn } from "@/lib/utils";
 
 function formatWhen(v?: string | null) {
   if (!v) return "—";
   return new Date(v).toLocaleDateString();
 }
 
+function nextActivityClass(next?: string | null) {
+  if (!next) return "text-health-warn font-medium";
+  if (new Date(next).getTime() < Date.now()) return "text-health-bad font-medium";
+  return "text-foreground-subtle";
+}
+
+function ageClass(days: number) {
+  if (days >= 30) return "text-health-bad";
+  if (days >= 14) return "text-health-warn";
+  return "text-foreground";
+}
+
+function stageMetaForLead(lead: Lead, pipelines: Pipeline[]) {
+  const pipeline =
+    pipelines.find((p) => p.id === lead.pipelineId) ??
+    pipelines.find((p) => p.stages?.some((s) => s.id === lead.stageId));
+  if (!pipeline?.stages?.length || !lead.stageId) return null;
+  const open = pipeline.stages.filter((s) => !s.isWon && !s.isLost);
+  const stage = pipeline.stages.find((s) => s.id === lead.stageId);
+  if (!stage) return null;
+  const position = open.findIndex((s) => s.id === stage.id);
+  const slot = stageSlotFromPipeline({
+    position: position >= 0 ? position : 0,
+    openStageCount: open.length || 1,
+    isWon: stage.isWon,
+    isLost: stage.isLost,
+  });
+  return { slot, name: stage.name };
+}
+
+function leadListScope(user: SessionUser | null): "own" | "team" | "organization" {
+  const scoped = user?.permissionScopes?.["leads:view"];
+  if (scoped === "own" || scoped === "team" || scoped === "organization") return scoped;
+  if (user?.roleCode === "super_admin") return "organization";
+  if (user?.roleCode === "sales_manager") return "team";
+  return "own";
+}
+
+function teamOptions(teams: { id: string; name: string }[], onlyIds?: string[]) {
+  if (!onlyIds?.length) return teams;
+  const allowed = new Set(onlyIds);
+  return teams.filter((team) => allowed.has(team.id));
+}
+
 export function LeadsTableView() {
   const { can, user } = useAuth();
   const qc = useQueryClient();
-  const [search, setSearch] = React.useState("");
+  const searchParams = useSearchParams();
+  const [search, setSearch] = React.useState(() => searchParams.get("q") ?? "");
+
+  React.useEffect(() => {
+    const q = searchParams.get("q");
+    if (q != null && q !== "") setSearch(q);
+  }, [searchParams]);
   const [ownerUserId, setOwnerUserId] = React.useState("all");
   const [teamId, setTeamId] = React.useState("all");
   const [pipelineId, setPipelineId] = React.useState("all");
   const [stageId, setStageId] = React.useState("all");
   const [source, setSource] = React.useState("");
   const [priority, setPriority] = React.useState("all");
+  const [leadStatus, setLeadStatus] = React.useState("all");
   const [anzscoId, setAnzscoId] = React.useState<string | null>(null);
   const [tag, setTag] = React.useState("");
   const [createdFrom, setCreatedFrom] = React.useState("");
@@ -64,18 +121,22 @@ export function LeadsTableView() {
   const [activityLeadId, setActivityLeadId] = React.useState<string | null>(null);
   const [insightLeadId, setInsightLeadId] = React.useState<string | null>(null);
 
-  const isTeamLead = user?.roleCode === "sales_manager";
+  const listScope = leadListScope(user);
+  const isTeamLead = listScope === "team";
+  const showOwner = listScope !== "own";
+  const managedTeamCount = user?.teamIds?.length ?? 0;
+  const showTeam = listScope === "organization" || (isTeamLead && managedTeamCount > 1);
   const { salesExecutiveId, setSalesExecutiveId } = useTeamMemberFilter(isTeamLead);
 
   const usersQuery = useQuery({
     queryKey: ["users", "lead-filters"],
     queryFn: () => adminApi.listUsers(new URLSearchParams({ limit: "100", isActive: "true" })),
-    enabled: !isTeamLead,
+    enabled: listScope === "organization",
   });
   const teamsQuery = useQuery({
     queryKey: ["teams", "lead-filters"],
     queryFn: () => adminApi.listTeams(new URLSearchParams({ limit: "100", isActive: "true" })),
-    enabled: !isTeamLead,
+    enabled: showTeam,
   });
   const pipelinesQuery = useQuery({
     queryKey: ["pipelines", "leads"],
@@ -83,13 +144,15 @@ export function LeadsTableView() {
   });
 
   const selectedPipeline = pipelinesQuery.data?.find((p) => p.id === pipelineId);
+  const pipelines = pipelinesQuery.data ?? [];
 
   const params = React.useMemo(() => {
     const p = new URLSearchParams({ limit: "50", offset: "0", sort: "created", order: "desc" });
     if (search) p.set("q", search);
-    if (isTeamLead) {
+    if (listScope === "team") {
       if (salesExecutiveId !== "all") p.set("salesExecutiveId", salesExecutiveId);
-    } else {
+      if (showTeam && teamId !== "all") p.set("teamId", teamId);
+    } else if (listScope === "organization") {
       if (ownerUserId !== "all") p.set("ownerUserId", ownerUserId);
       if (teamId !== "all") p.set("teamId", teamId);
     }
@@ -97,6 +160,7 @@ export function LeadsTableView() {
     if (stageId !== "all") p.set("stageId", stageId);
     if (source) p.set("source", source);
     if (priority !== "all") p.set("priority", priority);
+    if (leadStatus !== "all") p.set("status", leadStatus);
     if (anzscoId) p.set("anzscoId", anzscoId);
     if (tag) p.set("tag", tag);
     if (createdFrom) p.set("createdFrom", createdFrom);
@@ -105,7 +169,7 @@ export function LeadsTableView() {
     return p;
   }, [
     search, ownerUserId, teamId, pipelineId, stageId, source, priority,
-    anzscoId, tag, createdFrom, createdTo, inactiveDays, isTeamLead, salesExecutiveId,
+    anzscoId, tag, createdFrom, createdTo, inactiveDays, leadStatus, listScope, showTeam, salesExecutiveId,
   ]);
 
   const leadsQuery = useQuery({
@@ -121,7 +185,7 @@ export function LeadsTableView() {
       toast.success(ids.length === 1 ? "Lead archived" : `${ids.length} leads archived`);
     },
     onError: (err: Error) => {
-      toast.error(err.message || "Could not archive leads");
+      toast.error(err.message || "Couldn't archive leads. Check permissions and try again.");
     },
   });
 
@@ -135,7 +199,7 @@ export function LeadsTableView() {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              className="text-left font-medium text-foreground hover:text-brand-dark"
+              className="text-left font-medium text-foreground hover:text-brand"
               onClick={() => setEditLead(row.original)}
             >
               {row.original.fullName}
@@ -143,19 +207,19 @@ export function LeadsTableView() {
             {can("activities:create") ? (
               <button
                 type="button"
-                className="text-[10px] text-foreground-subtle hover:text-brand-dark"
+                className="text-meta hover:text-brand"
                 onClick={() => setActivityLeadId(row.original.id)}
               >
-                +act
+                Activity
               </button>
             ) : null}
             {can("predictions:view") || can("predictions:manage") ? (
               <button
                 type="button"
-                className="text-[10px] text-foreground-subtle hover:text-brand-dark"
+                className="text-meta hover:text-brand"
                 onClick={() => setInsightLeadId(row.original.id)}
               >
-                score
+                Score
               </button>
             ) : null}
           </div>
@@ -165,7 +229,7 @@ export function LeadsTableView() {
         id: "contact",
         header: "Contact",
         cell: ({ row }) => (
-          <div className="text-xs text-foreground-muted">
+          <div className="text-meta">
             <div>{row.original.email ?? "—"}</div>
             <div>{row.original.phone ?? ""}</div>
           </div>
@@ -174,85 +238,126 @@ export function LeadsTableView() {
       {
         accessorKey: "ownerName",
         header: "Owner",
-        cell: ({ row }) => row.original.ownerName ?? "—",
-      },
-      {
-        accessorKey: "pipelineName",
-        header: "Pipeline",
-        cell: ({ row }) => row.original.pipelineName ?? "—",
+        cell: ({ row }) => (
+          <span className="text-sm text-foreground-muted">{row.original.ownerName ?? "—"}</span>
+        ),
       },
       {
         accessorKey: "stageName",
         header: "Stage",
-        cell: ({ row }) =>
-          row.original.stageName ? (
-            <StatusBadge tone="brand">{row.original.stageName}</StatusBadge>
-          ) : (
-            "—"
-          ),
+        cell: ({ row }) => {
+          const meta = stageMetaForLead(row.original, pipelines);
+          if (!meta && !row.original.stageName) return "—";
+          if (meta) {
+            return (
+              <span
+                className={cn(
+                  "inline-flex items-center rounded-[var(--radius-sm)] px-1.5 py-0.5 text-[11px] font-medium",
+                  stageBadgeClass[meta.slot],
+                )}
+              >
+                {meta.name}
+              </span>
+            );
+          }
+          return <StatusBadge tone="brand">{row.original.stageName}</StatusBadge>;
+        },
       },
       {
         id: "anzsco",
         header: "ANZSCO",
         cell: ({ row }) =>
           row.original.anzscoCode ? (
-            <span className="text-xs">
+            <span className="text-meta">
               <span className="font-mono text-foreground-muted">{row.original.anzscoCode}</span>{" "}
-              <span className="text-foreground-muted">{row.original.anzscoTitle}</span>
+              <span>{row.original.anzscoTitle}</span>
             </span>
           ) : (
             "—"
           ),
       },
-      { accessorKey: "source", header: "Source", cell: ({ row }) => row.original.source || "—" },
       {
-        accessorKey: "priority",
-        header: ({ column }) => <SortableHeader column={column} title="Priority" />,
+        accessorKey: "source",
+        header: "Source",
         cell: ({ row }) => (
-          <StatusBadge tone={priorityTone(row.original.priority)}>
-            {row.original.priority}
-          </StatusBadge>
+          <span className="text-sm text-foreground-muted">{row.original.source || "—"}</span>
         ),
       },
       {
+        accessorKey: "priority",
+        header: ({ column }) => <SortableHeader column={column} title="Priority" />,
+        cell: ({ row }) => {
+          const level = priorityFromString(row.original.priority);
+          return (
+            <span
+              className={cn(
+                "inline-flex items-center rounded-[var(--radius-sm)] px-1.5 py-0.5 text-[11px] font-medium capitalize",
+                priorityBadgeClass[level],
+              )}
+            >
+              {level}
+            </span>
+          );
+        },
+      },
+      {
         accessorKey: "lastActivityAt",
-        header: "Last Activity",
+        header: "Last activity",
         cell: ({ row }) => (
-          <span className="text-xs text-foreground-subtle">
-            {formatWhen(row.original.lastActivityAt)}
-          </span>
+          <span className="text-meta text-data">{formatWhen(row.original.lastActivityAt)}</span>
         ),
       },
       {
         accessorKey: "nextActivityAt",
-        header: "Next Activity",
-        cell: ({ row }) => (
-          <span className="text-xs text-foreground-subtle">
-            {formatWhen(row.original.nextActivityAt)}
-          </span>
-        ),
+        header: "Next activity",
+        cell: ({ row }) => {
+          const missing = !row.original.nextActivityAt;
+          return (
+            <span className={cn("text-xs text-data", nextActivityClass(row.original.nextActivityAt))}>
+              {missing ? "None" : formatWhen(row.original.nextActivityAt)}
+            </span>
+          );
+        },
       },
       {
         accessorKey: "ageDays",
         header: ({ column }) => <SortableHeader column={column} title="Age" />,
-        cell: ({ row }) => `${row.original.ageDays}d`,
+        cell: ({ row }) => (
+          <span className={cn("text-data", ageClass(row.original.ageDays))}>
+            {row.original.ageDays}d
+          </span>
+        ),
       },
       {
         accessorKey: "createdAt",
         header: ({ column }) => <SortableHeader column={column} title="Created" />,
         cell: ({ row }) => (
-          <span className="text-xs text-foreground-subtle">
-            {formatWhen(row.original.createdAt)}
-          </span>
+          <span className="text-meta text-data">{formatWhen(row.original.createdAt)}</span>
         ),
       },
     ],
-    [can],
+    [can, pipelines],
   );
 
   if (leadsQuery.isError) {
     return <ErrorState onRetry={() => void leadsQuery.refetch()} />;
   }
+
+  const hasFilters =
+    !!search ||
+    (showOwner && listScope === "organization" && ownerUserId !== "all") ||
+    (showTeam && teamId !== "all") ||
+    (isTeamLead && salesExecutiveId !== "all") ||
+    pipelineId !== "all" ||
+    stageId !== "all" ||
+    !!source ||
+    priority !== "all" ||
+    leadStatus !== "all" ||
+    !!anzscoId ||
+    !!tag ||
+    !!createdFrom ||
+    !!createdTo ||
+    !!inactiveDays;
 
   return (
     <div className="space-y-3">
@@ -290,6 +395,7 @@ export function LeadsTableView() {
           setStageId("all");
           setSource("");
           setPriority("all");
+          setLeadStatus("all");
           setAnzscoId(null);
           setTag("");
           setCreatedFrom("");
@@ -299,28 +405,29 @@ export function LeadsTableView() {
       >
         {isTeamLead ? (
           <TeamMemberFilterChip value={salesExecutiveId} onChange={setSalesExecutiveId} />
-        ) : (
-          <>
-            <Select value={ownerUserId} onValueChange={setOwnerUserId}>
-              <SelectTrigger className="w-[140px]"><SelectValue placeholder="Owner" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All owners</SelectItem>
-                {(usersQuery.data?.data ?? []).map((u) => (
-                  <SelectItem key={u.id} value={u.id}>{u.fullName}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={teamId} onValueChange={setTeamId}>
-              <SelectTrigger className="w-[140px]"><SelectValue placeholder="Team" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All teams</SelectItem>
-                {(teamsQuery.data?.data ?? []).map((t) => (
-                  <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </>
-        )}
+        ) : null}
+        {listScope === "organization" ? (
+          <Select value={ownerUserId} onValueChange={setOwnerUserId}>
+            <SelectTrigger className="w-[140px]"><SelectValue placeholder="Owner" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All owners</SelectItem>
+              {(usersQuery.data?.data ?? []).map((u) => (
+                <SelectItem key={u.id} value={u.id}>{u.fullName}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : null}
+        {showTeam ? (
+          <Select value={teamId} onValueChange={setTeamId}>
+            <SelectTrigger className="w-[140px]"><SelectValue placeholder="Team" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{isTeamLead ? "My teams" : "All teams"}</SelectItem>
+              {teamOptions(teamsQuery.data?.data ?? [], isTeamLead ? user?.teamIds : undefined).map((t) => (
+                <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : null}
         <Select
           value={pipelineId}
           onValueChange={(v) => {
@@ -343,6 +450,16 @@ export function LeadsTableView() {
             {(selectedPipeline?.stages ?? []).map((s) => (
               <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
             ))}
+          </SelectContent>
+        </Select>
+        <Select value={leadStatus} onValueChange={setLeadStatus}>
+          <SelectTrigger className="w-[140px]"><SelectValue placeholder="Status" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All statuses</SelectItem>
+            <SelectItem value="inbox">Inbox</SelectItem>
+            <SelectItem value="working">Working</SelectItem>
+            <SelectItem value="open">Open</SelectItem>
+            <SelectItem value="qualified">Qualified</SelectItem>
           </SelectContent>
         </Select>
         <Select value={priority} onValueChange={setPriority}>
@@ -381,7 +498,9 @@ export function LeadsTableView() {
 
       {selected.length > 0 ? (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2">
-          <span className="text-xs text-foreground-muted">{selected.length} selected</span>
+          <span className="text-meta">
+            <span className="text-data">{selected.length}</span> selected
+          </span>
           {can("leads:delete") ? (
             <Button
               size="sm"
@@ -418,12 +537,20 @@ export function LeadsTableView() {
         searchValue={search}
         onRowSelectionChange={setSelected}
         pageSize={10}
+        emptyTitle={hasFilters ? "No leads match these filters" : "No leads yet"}
+        emptyDescription={
+          hasFilters
+            ? "Clear filters or broaden search to see more prospects."
+            : "Capture a new lead to start qualifying into your pipeline."
+        }
+        emptyActionLabel={can("leads:create") && !hasFilters ? "New lead" : undefined}
+        onEmptyAction={can("leads:create") && !hasFilters ? () => setCreateOpen(true) : undefined}
       />
 
       {insightLeadId ? (
         <div className="rounded-lg border border-border bg-surface p-4">
           <div className="mb-3 flex items-center justify-between gap-2">
-            <p className="text-sm font-medium">
+            <p className="text-section">
               Scoring:{" "}
               {leadsQuery.data?.data.find((l) => l.id === insightLeadId)?.fullName ?? insightLeadId}
             </p>

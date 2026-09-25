@@ -14,7 +14,7 @@ export function PlaceholderPage({
   description: string;
   breadcrumbs: Array<{ label: string; href?: string }>;
   icon?: LucideIcon;
-  /** Configuration shell — avoid sales-style "New" CTAs. */
+  /** Setup shell — avoid sales-style "New" CTAs. */
   admin?: boolean;
 }) {
   return (
@@ -40,11 +40,11 @@ export function PlaceholderPage({
       />
       <EmptyState
         icon={icon}
-        title={admin ? `${title} configuration` : `${title} is ready for the next phase`}
+        title={admin ? `${title} is not ready yet` : `${title} is on the way`}
         description={
           admin
-            ? "This Control Center module is reserved for platform configuration. Domain workflows will land here without changing the authorization model."
-            : "The shell, navigation, and design system are in place. Domain workflows will land here without changing the backend architecture."
+            ? "This Control Center page is reserved for setup. Workflows will land here without changing who can access what."
+            : "Navigation and layout are ready. Day-to-day workflows for this area will appear here next."
         }
       />
     </div>

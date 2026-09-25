@@ -17,7 +17,7 @@ import {
 import { PageHeader } from "@/components/shared/page-header";
 import { MetricCard } from "@/components/ui/metric-card";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { LoadingState } from "@/components/ui/loading-state";
+import { KpiStripSkeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
@@ -92,7 +92,7 @@ export function ControlCenterDashboard() {
       <PageHeader
         breadcrumbs={[{ label: "Control Center" }, { label: "Overview" }]}
         title="Control Center"
-        description={`Govern users, teams, and CRM configuration${user?.fullName ? ` · ${user.fullName}` : ""}`}
+        description={`Govern users, teams, and Setup${user?.fullName ? ` · ${user.fullName}` : ""}`}
         actions={
           <div className="flex flex-wrap gap-2">
             {can("users:create") || can("users:manage") ? (
@@ -109,10 +109,10 @@ export function ControlCenterDashboard() {
         }
       />
 
-      {loading ? <LoadingState label="Loading organization…" /> : null}
+      {loading ? <KpiStripSkeleton count={5} /> : null}
 
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold text-foreground">Organization</h2>
+        <h2 className="text-section">Organization</h2>
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
           <MetricCard label="Total users" value={String(users.length)} icon={Users} />
           <MetricCard label="Active users" value={String(activeUsers)} icon={Users} />
@@ -123,7 +123,7 @@ export function ControlCenterDashboard() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold text-foreground">CRM configuration</h2>
+        <h2 className="text-section">Setup</h2>
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
           <MetricCard label="Active pipelines" value={String(activePipelines)} icon={Layers} />
           <MetricCard label="Stages" value={String(stageCount)} icon={Layers} />
@@ -171,11 +171,11 @@ export function ControlCenterDashboard() {
             ) : null}
           </div>
           {!can("audit:view") ? (
-            <EmptyState title="No audit access" description="Requires audit:view." />
+            <EmptyState title="No audit access" description="You need audit log permission to view events here." />
           ) : auditQuery.isLoading ? (
-            <LoadingState />
+            <KpiStripSkeleton count={1} className="grid-cols-1" />
           ) : audit.length === 0 ? (
-            <EmptyState title="No recent events" description="Governance activity will appear here." />
+            <EmptyState title="No recent events" description="Governance actions will show up here as people change setup." />
           ) : (
             <ul className="divide-y divide-border">
               {audit.slice(0, 8).map((row) => (

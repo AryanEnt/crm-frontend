@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   DndContext,
   DragOverlay,
+  KeyboardSensor,
   PointerSensor,
   closestCorners,
   useDroppable,
@@ -15,15 +16,18 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { useDraggable } from "@dnd-kit/core";
+import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { CalendarPlus, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { FilterBar } from "@/components/ui/filter-bar";
-import { StatusBadge } from "@/components/ui/status-badge";
 import { ErrorState } from "@/components/ui/error-state";
-import { LoadingState } from "@/components/ui/loading-state";
+import { EmptyState } from "@/components/ui/empty-state";
+import { BoardSkeleton } from "@/components/ui/skeleton";
+import { StageRail, stageSlotFromPipeline, type StageSlot } from "@/components/ui/stage-rail";
+import { priorityFromString, priorityBadgeClass } from "@/lib/design-tokens";
 import {
   Select,
   SelectContent,
@@ -42,7 +46,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/features/auth/auth-provider";
-import { crmApi, type Deal, type PipelineStage, type StageMoveError } from "@/lib/api/crm";
+import {
+  crmApi,
+  type Deal,
+  type DealBoard,
+  type PipelineStage,
+  type StageMoveError,
+} from "@/lib/api/crm";
 import { ApiError } from "@/types/api";
 import { cn } from "@/lib/utils";
 import { ActivityQuickCreateDialog } from "@/features/activities/activity-quick-create";
@@ -64,18 +74,6 @@ const attentionLabel: Record<string, string> = {
   over_sla: "Over SLA",
 };
 
-const accentBar: Record<string, string> = {
-  neutral: "bg-foreground-subtle",
-  slate: "bg-foreground-muted",
-  blue: "bg-info",
-  teal: "bg-brand",
-  green: "bg-success",
-  amber: "bg-warning",
-  orange: "bg-warning",
-  rose: "bg-destructive",
-  violet: "bg-brand",
-};
-
 function formatMoney(v?: number | null, currency = "AUD") {
   if (v == null) return "—";
   return new Intl.NumberFormat(undefined, {
@@ -90,8 +88,50 @@ function formatWhen(v?: string | null) {
   return new Date(v).toLocaleDateString();
 }
 
-function priorityTone(p: string) {
-  return p === "urgent" ? "danger" : p === "high" ? "warning" : p === "low" ? "neutral" : "brand";
+function stageFillPercent(deal: Deal, stage: PipelineStage): number {
+  if (stage.isWon || stage.isLost) return 0;
+  const days = deal.daysInStage ?? 0;
+  if (stage.slaHours && stage.slaHours > 0) {
+    return Math.min(100, Math.round((days * 24 * 100) / stage.slaHours));
+  }
+  return Math.min(100, days * 8);
+}
+
+function slotForStage(stage: PipelineStage, openStages: PipelineStage[]): StageSlot {
+  const idx = openStages.findIndex((s) => s.id === stage.id);
+  return stageSlotFromPipeline({
+    position: idx >= 0 ? idx : 0,
+    openStageCount: Math.max(openStages.length, 1),
+    isWon: stage.isWon,
+    isLost: stage.isLost,
+  });
+}
+
+/** Optimistic board rearrange — move a deal into another stage column. */
+function moveDealOnBoard(board: DealBoard, dealId: string, toStageId: string): DealBoard {
+  let moved: Deal | undefined;
+  const stripped = board.columns.map((col) => {
+    const hit = col.deals.find((d) => d.id === dealId);
+    if (!hit) return col;
+    moved = hit;
+    return { ...col, deals: col.deals.filter((d) => d.id !== dealId) };
+  });
+  if (!moved) return board;
+  const stage = board.pipeline.stages.find((s) => s.id === toStageId);
+  const next: Deal = {
+    ...moved,
+    stageId: toStageId,
+    stageName: stage?.name ?? moved.stageName,
+    status: stage?.isWon ? "won" : stage?.isLost ? "lost" : "open",
+    daysInStage: 0,
+    stageEnteredAt: new Date().toISOString(),
+  };
+  return {
+    ...board,
+    columns: stripped.map((col) =>
+      col.stage.id === toStageId ? { ...col, deals: [next, ...col.deals] } : col,
+    ),
+  };
 }
 
 export function PipelineBoardView({
@@ -115,6 +155,9 @@ export function PipelineBoardView({
   const [statusFilter, setStatusFilter] = React.useState("open");
   const [closingFilter, setClosingFilter] = React.useState("all");
   const [noNextOnly, setNoNextOnly] = React.useState(false);
+  const [wonPulseId, setWonPulseId] = React.useState<string | null>(null);
+  const [stageFlashId, setStageFlashId] = React.useState<string | null>(null);
+  const [announce, setAnnounce] = React.useState("");
   const isTeamLead = user?.roleCode === "sales_manager";
   const { salesExecutiveId, setSalesExecutiveId } = useTeamMemberFilter(isTeamLead);
   const [blockers, setBlockers] = React.useState<{
@@ -137,13 +180,26 @@ export function PipelineBoardView({
   const selectedPipelineId = pipelineIdProp ?? localPipelineId;
   const activePipelineId = selectedPipelineId || preferredPipelineId;
 
+  const boardKey = [
+    "deal-board",
+    activePipelineId,
+    isTeamLead ? salesExecutiveId : "self",
+  ] as const;
+
   const boardQuery = useQuery({
-    queryKey: ["deal-board", activePipelineId],
-    queryFn: () => crmApi.getDealBoard(activePipelineId),
+    queryKey: boardKey,
+    queryFn: () =>
+      crmApi.getDealBoard(
+        activePipelineId,
+        isTeamLead && salesExecutiveId !== "all" ? salesExecutiveId : undefined,
+      ),
     enabled: !!activePipelineId,
   });
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   const moveMutation = useMutation({
     mutationFn: ({
@@ -156,6 +212,7 @@ export function PipelineBoardView({
       stageId: string;
       force?: boolean;
       lostReason?: string;
+      skipOptimistic?: boolean;
     }) =>
       crmApi.moveDeal(dealId, {
         stageId,
@@ -163,13 +220,44 @@ export function PipelineBoardView({
         force,
         lostReason,
       }),
+    onMutate: async (vars) => {
+      if (vars.skipOptimistic) return { previous: undefined };
+      await qc.cancelQueries({ queryKey: boardKey });
+      const previous = qc.getQueryData<DealBoard>(boardKey);
+      if (previous) {
+        qc.setQueryData<DealBoard>(boardKey, moveDealOnBoard(previous, vars.dealId, vars.stageId));
+      }
+      return { previous };
+    },
     onSuccess: (_d, vars) => {
       setBlockers(null);
       setLostPending(null);
-      void qc.invalidateQueries({ queryKey: ["deal-board", activePipelineId] });
-      toast.success(vars.lostReason ? "Deal marked lost" : "Deal stage updated");
+      setStageFlashId(vars.dealId);
+      window.setTimeout(() => setStageFlashId(null), 360);
+      const target = boardQuery.data?.pipeline?.stages.find((s) => s.id === vars.stageId)
+        ?? qc.getQueryData<DealBoard>(boardKey)?.pipeline.stages.find((s) => s.id === vars.stageId);
+      const dealTitle =
+        qc.getQueryData<DealBoard>(boardKey)?.columns
+          .flatMap((c) => c.deals)
+          .find((d) => d.id === vars.dealId)?.title ?? "Deal";
+      if (target?.isWon) {
+        setWonPulseId(vars.dealId);
+        window.setTimeout(() => setWonPulseId(null), 500);
+        toast.success("Deal marked won");
+        setAnnounce(`${dealTitle} marked won`);
+      } else {
+        toast.success(vars.lostReason ? "Deal marked lost" : "Deal stage updated");
+        setAnnounce(
+          vars.lostReason
+            ? `${dealTitle} marked lost`
+            : `${dealTitle} moved to ${target?.name ?? "new stage"}`,
+        );
+      }
     },
-    onError: (err, vars) => {
+    onError: (err, vars, ctx) => {
+      if (ctx?.previous) {
+        qc.setQueryData(boardKey, ctx.previous);
+      }
       if (err instanceof ApiError && err.status === 400 && err.details) {
         setBlockers({
           dealId: vars.dealId,
@@ -178,15 +266,25 @@ export function PipelineBoardView({
           lostReason: vars.lostReason,
         });
         toast.warning("Stage move blocked — review requirements");
+        setAnnounce("Stage move blocked. Review requirements.");
         return;
       }
-      toast.error(err instanceof Error ? err.message : "Could not move deal");
+      toast.error(err instanceof Error ? err.message : "Couldn't move the deal. Try again.");
+      setAnnounce("Deal stage move failed and was reverted.");
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: boardKey });
     },
   });
 
   const pipeline = boardQuery.data?.pipeline;
   const wonStage = findOutcomeStage(pipeline, "won");
   const lostStage = findOutcomeStage(pipeline, "lost");
+  const openStages = React.useMemo(
+    () =>
+      (pipeline?.stages ?? []).filter((s) => s.isActive && !s.isWon && !s.isLost),
+    [pipeline?.stages],
+  );
 
   const requestMove = (deal: Deal, stage: PipelineStage, force?: boolean) => {
     if (deal.stageId === stage.id) return;
@@ -276,10 +374,13 @@ export function PipelineBoardView({
 
   return (
     <div className="space-y-3">
+      <div className="absolute -left-[9999px] h-px w-px overflow-hidden" aria-live="polite" aria-atomic="true">
+        {announce}
+      </div>
       <PageHeader
         breadcrumbs={[{ label: "Workspace", href: "/" }, { label: "Deals" }]}
         title="Deals"
-        description="Pipeline workbench — drag stages, mark won or lost, and keep a next activity on every open deal."
+        description="Pipeline workbench — drag or keyboard-move stages, mark won or lost, and keep a next activity on every open deal."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {viewToggle}
@@ -354,31 +455,43 @@ export function PipelineBoardView({
         </Button>
       </FilterBar>
 
-      <div className="grid gap-2 rounded-lg border border-border bg-surface px-3 py-2 sm:grid-cols-4">
+      <div className="grid gap-2 rounded-[var(--radius-lg)] border border-border bg-surface px-3 py-2.5 sm:grid-cols-4">
         <div>
-          <p className="text-[11px] text-foreground-subtle">Open deals</p>
-          <p className="text-sm font-semibold">{boardStats.count}</p>
+          <p className="text-label">Open deals</p>
+          <p className="text-board-total tabular-nums">{boardStats.count}</p>
         </div>
         <div>
-          <p className="text-[11px] text-foreground-subtle">Pipeline value</p>
-          <p className="text-sm font-semibold">{formatMoney(boardStats.value)}</p>
+          <p className="text-label">Pipeline value</p>
+          <p className="text-board-total tabular-nums">{formatMoney(boardStats.value)}</p>
         </div>
         <div>
-          <p className="text-[11px] text-foreground-subtle">Weighted forecast</p>
-          <p className="text-sm font-semibold">{formatMoney(boardStats.weighted)}</p>
+          <p className="text-label">Weighted forecast</p>
+          <p className="text-board-total tabular-nums">{formatMoney(boardStats.weighted)}</p>
         </div>
         <div>
-          <p className="text-[11px] text-foreground-subtle">Missing next activity</p>
-          <p className={cn("text-sm font-semibold", boardStats.noNext > 0 && "text-warning")}>
+          <p className="text-label">Missing next activity</p>
+          <p
+            className={cn(
+              "text-board-total tabular-nums",
+              boardStats.noNext > 0 && "text-health-warn",
+            )}
+          >
             {boardStats.noNext}
           </p>
         </div>
       </div>
 
       {!activePipelineId || boardQuery.isLoading ? (
-        <LoadingState label="Loading board…" />
+        <BoardSkeleton columns={4} />
       ) : boardQuery.isError || !boardQuery.data ? (
         <ErrorState onRetry={() => void boardQuery.refetch()} />
+      ) : filteredColumns.every((c) => c.deals.length === 0) ? (
+        <EmptyState
+          title="No deals in this view"
+          description="Adjust filters or create a deal to start filling the pipeline."
+          actionLabel={can("deals:create") ? "New deal" : undefined}
+          onAction={can("deals:create") ? () => setCreateOpen(true) : undefined}
+        />
       ) : (
         <DndContext
           sensors={sensors}
@@ -391,19 +504,39 @@ export function PipelineBoardView({
               <StageColumn
                 key={col.stage.id}
                 stage={col.stage}
+                slot={slotForStage(col.stage, openStages)}
                 deals={col.deals}
                 canEdit={can("deals:edit")}
                 canCreateActivity={can("activities:create")}
                 wonStage={wonStage}
                 lostStage={lostStage}
+                wonPulseId={wonPulseId}
+                stageFlashId={stageFlashId}
                 onWon={(deal) => wonStage && requestMove(deal, wonStage)}
                 onLost={(deal) => lostStage && requestMove(deal, lostStage)}
                 onAddActivity={setActivityDeal}
               />
             ))}
           </div>
-          <DragOverlay>
-            {activeDeal ? <DealCard deal={activeDeal} overlay /> : null}
+          <DragOverlay dropAnimation={null}>
+            {activeDeal ? (
+              <DealCard
+                deal={activeDeal}
+                stage={
+                  pipeline?.stages.find((s) => s.id === activeDeal.stageId) ??
+                  openStages[0]
+                }
+                slot={
+                  pipeline?.stages.find((s) => s.id === activeDeal.stageId)
+                    ? slotForStage(
+                        pipeline.stages.find((s) => s.id === activeDeal.stageId)!,
+                        openStages,
+                      )
+                    : "1"
+                }
+                overlay
+              />
+            ) : null}
           </DragOverlay>
         </DndContext>
       )}
@@ -498,21 +631,27 @@ export function PipelineBoardView({
 
 function StageColumn({
   stage,
+  slot,
   deals,
   canEdit,
   canCreateActivity,
   wonStage,
   lostStage,
+  wonPulseId,
+  stageFlashId,
   onWon,
   onLost,
   onAddActivity,
 }: {
   stage: PipelineStage;
+  slot: StageSlot;
   deals: Deal[];
   canEdit: boolean;
   canCreateActivity: boolean;
   wonStage: PipelineStage | null;
   lostStage: PipelineStage | null;
+  wonPulseId: string | null;
+  stageFlashId: string | null;
   onWon: (deal: Deal) => void;
   onLost: (deal: Deal) => void;
   onAddActivity: (deal: Deal) => void;
@@ -523,42 +662,57 @@ function StageColumn({
     (sum, d) => sum + (d.value ?? 0) * ((d.probability ?? 0) / 100),
     0,
   );
+  const muted = stage.isWon || stage.isLost;
+
   return (
     <section
       ref={setNodeRef}
       className={cn(
-        "flex w-[280px] shrink-0 flex-col rounded-lg border border-border bg-surface-muted/40",
-        stage.isWon && "border-success/30",
-        stage.isLost && "border-destructive/30",
-        isOver && "ring-2 ring-brand/40",
+        "relative flex w-[260px] shrink-0 flex-col overflow-hidden rounded-[var(--radius-lg)] border border-border bg-canvas",
+        muted && "opacity-90",
+        stage.isWon && "border-stage-won/25",
+        stage.isLost && "border-stage-lost/25",
+        isOver && "ring-2 ring-brand/35 stage-column--drop-target",
       )}
     >
-      <header className="border-b border-border px-3 py-2">
+      <StageRail slot={slot} />
+      <header className="border-b border-border bg-surface px-3 py-2 pl-3.5">
         <div className="flex items-center gap-2">
-          <span className={cn("size-2 rounded-full", accentBar[stage.visualAccent] ?? accentBar.neutral)} />
-          <h3 className="truncate text-sm font-semibold">{stage.name}</h3>
-          <span className="ml-auto text-[11px] text-foreground-subtle">{deals.length}</span>
+          <h3 className="text-section truncate">{stage.name}</h3>
+          <span className="ml-auto text-meta tabular-nums">{deals.length}</span>
         </div>
-        <p className="mt-0.5 text-[11px] text-foreground-subtle">
-          {formatMoney(total)} · {stage.probability}%
-          {stage.isWon || stage.isLost ? "" : ` · forecast ${formatMoney(weighted)}`}
-          {stage.slaHours ? ` · SLA ${stage.slaHours}h` : ""}
+        <p className="mt-0.5 text-board-total tabular-nums text-ink-secondary">
+          {formatMoney(total)}
+          {!muted ? (
+            <span className="font-normal text-meta">
+              {" "}
+              · {formatMoney(weighted)} weighted
+            </span>
+          ) : null}
         </p>
       </header>
-      <div className="flex max-h-[calc(100vh-280px)] flex-col gap-2 overflow-y-auto p-2">
-        {deals.map((deal) => (
-          <DraggableDeal
-            key={deal.id}
-            deal={deal}
-            canEdit={canEdit}
-            canCreateActivity={canCreateActivity}
-            wonStage={wonStage}
-            lostStage={lostStage}
-            onWon={onWon}
-            onLost={onLost}
-            onAddActivity={onAddActivity}
-          />
-        ))}
+      <div className="flex max-h-[calc(100vh-280px)] flex-col gap-1.5 overflow-y-auto crm-scroll p-1.5 pl-2">
+        {deals.length === 0 ? (
+          <p className="px-2 py-6 text-center text-meta">No deals</p>
+        ) : (
+          deals.map((deal) => (
+            <DraggableDeal
+              key={deal.id}
+              deal={deal}
+              stage={stage}
+              slot={slot}
+              canEdit={canEdit}
+              canCreateActivity={canCreateActivity}
+              wonStage={wonStage}
+              lostStage={lostStage}
+              wonPulse={wonPulseId === deal.id}
+              stageFlash={stageFlashId === deal.id}
+              onWon={onWon}
+              onLost={onLost}
+              onAddActivity={onAddActivity}
+            />
+          ))
+        )}
       </div>
     </section>
   );
@@ -566,19 +720,27 @@ function StageColumn({
 
 function DraggableDeal({
   deal,
+  stage,
+  slot,
   canEdit,
   canCreateActivity,
   wonStage,
   lostStage,
+  wonPulse,
+  stageFlash,
   onWon,
   onLost,
   onAddActivity,
 }: {
   deal: Deal;
+  stage: PipelineStage;
+  slot: StageSlot;
   canEdit: boolean;
   canCreateActivity: boolean;
   wonStage: PipelineStage | null;
   lostStage: PipelineStage | null;
+  wonPulse: boolean;
+  stageFlash: boolean;
   onWon: (deal: Deal) => void;
   onLost: (deal: Deal) => void;
   onAddActivity: (deal: Deal) => void;
@@ -586,19 +748,33 @@ function DraggableDeal({
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: deal.id,
     data: { deal },
+    disabled: !canEdit,
   });
   const style = {
     transform: CSS.Translate.toString(transform),
-    opacity: isDragging ? 0.4 : 1,
+    opacity: isDragging ? 0.35 : 1,
   };
   return (
-    <div ref={setNodeRef} style={style} {...listeners} {...attributes}>
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...listeners}
+      {...attributes}
+      role="button"
+      tabIndex={canEdit ? 0 : -1}
+      aria-roledescription="draggable deal"
+      aria-label={`${deal.title}, ${stage.name}. Use space or enter to pick up, arrow keys to move.`}
+    >
       <DealCard
         deal={deal}
+        stage={stage}
+        slot={slot}
         canEdit={canEdit}
         canCreateActivity={canCreateActivity}
         wonStage={wonStage}
         lostStage={lostStage}
+        wonPulse={wonPulse}
+        stageFlash={stageFlash}
         onWon={() => onWon(deal)}
         onLost={() => onLost(deal)}
         onAddActivity={() => onAddActivity(deal)}
@@ -609,84 +785,96 @@ function DraggableDeal({
 
 function DealCard({
   deal,
+  stage,
+  slot,
   overlay,
   canEdit,
   canCreateActivity,
   wonStage,
   lostStage,
+  wonPulse,
+  stageFlash,
   onWon,
   onLost,
   onAddActivity,
 }: {
   deal: Deal;
+  stage?: PipelineStage;
+  slot: StageSlot;
   overlay?: boolean;
   canEdit?: boolean;
   canCreateActivity?: boolean;
   wonStage?: PipelineStage | null;
   lostStage?: PipelineStage | null;
+  wonPulse?: boolean;
+  stageFlash?: boolean;
   onWon?: () => void;
   onLost?: () => void;
   onAddActivity?: () => void;
 }) {
   const missingNext = deal.status === "open" && !deal.nextActivityAt;
+  const fill = stage ? stageFillPercent(deal, stage) : 0;
+  const priority = priorityFromString(deal.priority);
+
   return (
     <article
       className={cn(
-        "rounded-md border border-border bg-surface p-2.5 shadow-sm",
-        overlay && "shadow-md ring-1 ring-border",
-        missingNext && "border-warning/50 bg-warning-soft/30",
-        deal.status === "won" && "border-success/40",
-        deal.status === "lost" && "border-destructive/30",
+        "relative overflow-hidden rounded-[var(--radius-md)] border border-border bg-surface pl-2.5 pr-2 py-2",
+        overlay && "deal-card--drag-overlay shadow-md ring-1 ring-border",
+        stageFlash && "deal-card--stage-changed",
+        missingNext && "border-health-warn/40",
+        deal.status === "won" && "border-stage-won/35",
+        deal.status === "lost" && "border-stage-lost/30",
       )}
     >
+      <StageRail slot={slot} fillPercent={fill} wonPulse={wonPulse} />
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <Link
             href={`/deals/${deal.id}`}
-            className="block truncate text-sm font-medium text-foreground hover:text-brand-dark"
+            className="block truncate text-data text-foreground hover:text-brand"
             onClick={(e) => e.stopPropagation()}
           >
             {deal.title}
           </Link>
-          <p className="truncate text-xs text-foreground-muted">{deal.customerName}</p>
+          <p className="truncate text-meta">{deal.customerName}</p>
         </div>
-        <StatusBadge tone={priorityTone(deal.priority)}>{deal.priority}</StatusBadge>
+        <span className={cn("shrink-0 capitalize", priorityBadgeClass[priority], "rounded-[var(--radius-sm)] px-1.5 py-0.5 text-[10px] font-medium")}>
+          {deal.priority}
+        </span>
       </div>
-      <dl className="mt-2 grid grid-cols-2 gap-x-2 gap-y-1 text-[11px] text-foreground-muted">
-        <div>
-          <dt className="text-foreground-subtle">Owner</dt>
-          <dd className="truncate text-foreground">{deal.ownerName ?? "—"}</dd>
-        </div>
-        <div>
-          <dt className="text-foreground-subtle">Value</dt>
-          <dd className="text-foreground">{formatMoney(deal.value, deal.currency)}</dd>
-        </div>
-        <div>
-          <dt className="text-foreground-subtle">Close</dt>
-          <dd className="text-foreground">{deal.expectedCloseAt ?? "—"}</dd>
-        </div>
-        <div>
-          <dt className="text-foreground-subtle">Next</dt>
-          <dd className={cn("text-foreground", missingNext && "font-medium text-warning")}>
-            {missingNext ? "None" : formatWhen(deal.nextActivityAt)}
-          </dd>
-        </div>
-      </dl>
+
+      <div className="mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-meta">
+        <span className="tabular-nums text-data text-ink">
+          {formatMoney(deal.value, deal.currency)}
+        </span>
+        <span className="tabular-nums">
+          {deal.daysInStage ?? 0}d in stage
+        </span>
+        <span className={cn(missingNext && "font-medium text-health-warn")}>
+          {missingNext ? "No next activity" : `Next ${formatWhen(deal.nextActivityAt)}`}
+        </span>
+      </div>
+
       {deal.status === "lost" && deal.lostReason ? (
-        <p className="mt-2 text-[11px] text-destructive">Lost: {deal.lostReason}</p>
+        <p className="mt-1.5 text-[11px] text-stage-lost">Lost: {deal.lostReason}</p>
       ) : null}
-      {deal.attention ? (
-        <p className="mt-2 text-[11px] text-warning">{attentionLabel[deal.attention] ?? deal.attention}</p>
+      {deal.attention && deal.attention !== "no_next_activity" ? (
+        <p className="mt-1 text-[11px] text-health-warn">
+          {attentionLabel[deal.attention] ?? deal.attention}
+        </p>
       ) : null}
+
       {!overlay ? (
         <div
-          className="mt-2 flex flex-wrap items-center gap-1.5"
+          className="mt-2 flex flex-wrap items-center gap-1"
           onPointerDown={(e) => e.stopPropagation()}
         >
           {canCreateActivity && deal.status === "open" ? (
             <Button
               size="sm"
-              variant="outline"
+              variant="ghost"
+              className="h-7 px-2"
               onClick={(e) => {
                 e.stopPropagation();
                 onAddActivity?.();

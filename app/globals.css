@@ -1,89 +1,177 @@
 @import "tailwindcss";
 
+/*
+  Aurora design tokens — Phase 1
+  Source of truth: /docs/design-system.md
+  Feature code must use semantic token names, never raw hex.
+*/
+
 :root {
-  /* Brand */
-  --brand: #6c63d9;
-  --brand-dark: #403a8f;
-  --brand-soft: #eeecff;
-
-  /* Surfaces */
-  --background: #faf9fc;
+  /* —— Neutrals (cool graphite) —— */
+  --ink: #14171f;
+  --ink-secondary: #3d4450;
+  --ink-muted: #6b7280;
+  --ink-subtle: #9aa1ad;
+  --line: #e4e7ec;
+  --line-strong: #cdd3dd;
+  --canvas: #f5f6f8;
   --surface: #ffffff;
-  --surface-muted: #f4f3f8;
+  --surface-muted: #eef0f3;
 
-  /* Text — neutral dark, not pure black */
-  --foreground: #2a2838;
-  --foreground-muted: #6b6780;
-  --foreground-subtle: #9a96ab;
+  /* —— Brand / action (Aurora teal) —— */
+  --brand: #0e7490;
+  --brand-hover: #0a5f75;
+  --brand-ink: #083344;
+  --brand-soft: #ecfeff;
 
-  /* Borders */
-  --border: #e8e6f0;
-  --border-strong: #d4d0e3;
+  /* —— Semantic —— */
+  --success: #047857;
+  --success-soft: #ecfdf5;
+  --warning: #b45309;
+  --warning-soft: #fffbeb;
+  --danger: #b91c1c;
+  --danger-soft: #fef2f2;
+  --info: #1d4ed8;
+  --info-soft: #eff6ff;
 
-  /* Semantic */
-  --primary: #6c63d9;
+  /* —— Pipeline stages (ordinal) —— */
+  --stage-1: #64748b;
+  --stage-1-soft: #f1f5f9;
+  --stage-2: #0284c7;
+  --stage-2-soft: #e0f2fe;
+  --stage-3: #7c3aed;
+  --stage-3-soft: #f3e8ff;
+  --stage-4: #c2410c;
+  --stage-4-soft: #ffedd5;
+  --stage-won: #047857;
+  --stage-won-soft: #ecfdf5;
+  --stage-lost: #9f1239;
+  --stage-lost-soft: #fff1f2;
+
+  /* —— Priority —— */
+  --priority-low: #6b7280;
+  --priority-low-soft: #f3f4f6;
+  --priority-medium: #1d4ed8;
+  --priority-medium-soft: #eff6ff;
+  --priority-high: #b45309;
+  --priority-high-soft: #fffbeb;
+  --priority-urgent: #b91c1c;
+  --priority-urgent-soft: #fef2f2;
+
+  /* —— Deal health —— */
+  --health-ok: #047857;
+  --health-warn: #b45309;
+  --health-bad: #b91c1c;
+
+  /* —— Aliases (backward-compatible class names) —— */
+  --background: var(--canvas);
+  --foreground: var(--ink);
+  --foreground-muted: var(--ink-muted);
+  --foreground-subtle: var(--ink-subtle);
+  --border: var(--line);
+  --border-strong: var(--line-strong);
+  --brand-dark: var(--brand-ink);
+  --primary: var(--brand);
   --primary-foreground: #ffffff;
-  --primary-hover: #5a52c7;
-  --destructive: #d14343;
+  --primary-hover: var(--brand-hover);
+  --destructive: var(--danger);
   --destructive-foreground: #ffffff;
-  --destructive-soft: #fdecec;
-  --success: #2f9e6b;
-  --success-soft: #e8f7f0;
-  --warning: #c4841d;
-  --warning-soft: #fff6e5;
-  --info: #3b82c4;
-  --info-soft: #eaf3fb;
+  --destructive-soft: var(--danger-soft);
+  --ring: var(--brand);
+  --ring-offset: var(--canvas);
 
-  /* Focus / ring */
-  --ring: #6c63d9;
-  --ring-offset: #faf9fc;
+  /* —— Sidebar —— */
+  --sidebar-bg: var(--surface);
+  --sidebar-border: var(--line);
+  --sidebar-active: var(--brand-soft);
+  --sidebar-active-text: var(--brand-ink);
+  --sidebar-hover: var(--surface-muted);
 
-  /* Sidebar */
-  --sidebar-bg: #ffffff;
-  --sidebar-border: #e8e6f0;
-  --sidebar-active: #eeecff;
-  --sidebar-active-text: #403a8f;
-  --sidebar-hover: #f4f3f8;
+  /* —— Radius (restrained) —— */
+  --radius-sm: 0.25rem; /* 4px */
+  --radius-md: 0.375rem; /* 6px */
+  --radius-lg: 0.5rem; /* 8px */
 
-  /* Radius — restrained */
-  --radius-sm: 0.375rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 0.625rem;
+  /* —— Elevation —— */
+  --shadow-sm: 0 1px 2px rgba(20, 23, 31, 0.05);
+  --shadow-md: 0 4px 12px rgba(20, 23, 31, 0.08);
 
-  /* Spacing scale reference: 4 / 8 / 12 / 16 / 20 / 24 / 32 */
+  /* —— Layout —— */
   --header-height: 3.25rem;
   --sidebar-width: 15.5rem;
   --sidebar-collapsed-width: 4rem;
 
-  /* Shadows — subtle only */
-  --shadow-sm: 0 1px 2px rgba(42, 40, 56, 0.04);
-  --shadow-md: 0 2px 8px rgba(42, 40, 56, 0.06);
+  /* —— Density (compact default for sales surfaces) —— */
+  --row-height: 2.25rem; /* 36px compact */
+  --control-height: 2rem; /* 32px */
+  --section-gap: 0.875rem;
+}
+
+/* Comfortable density — detail / admin */
+[data-density="comfortable"] {
+  --row-height: 2.75rem; /* 44px */
+  --control-height: 2.25rem; /* 36px */
+  --section-gap: 1.25rem;
 }
 
 @theme inline {
   --color-background: var(--background);
+  --color-canvas: var(--canvas);
   --color-surface: var(--surface);
   --color-surface-muted: var(--surface-muted);
   --color-foreground: var(--foreground);
   --color-foreground-muted: var(--foreground-muted);
   --color-foreground-subtle: var(--foreground-subtle);
+  --color-ink: var(--ink);
+  --color-ink-secondary: var(--ink-secondary);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-subtle: var(--ink-subtle);
   --color-border: var(--border);
   --color-border-strong: var(--border-strong);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
   --color-brand: var(--brand);
   --color-brand-dark: var(--brand-dark);
+  --color-brand-ink: var(--brand-ink);
   --color-brand-soft: var(--brand-soft);
+  --color-brand-hover: var(--brand-hover);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   --color-primary-hover: var(--primary-hover);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-destructive-soft: var(--destructive-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
   --color-success: var(--success);
   --color-success-soft: var(--success-soft);
   --color-warning: var(--warning);
   --color-warning-soft: var(--warning-soft);
   --color-info: var(--info);
   --color-info-soft: var(--info-soft);
+  --color-stage-1: var(--stage-1);
+  --color-stage-1-soft: var(--stage-1-soft);
+  --color-stage-2: var(--stage-2);
+  --color-stage-2-soft: var(--stage-2-soft);
+  --color-stage-3: var(--stage-3);
+  --color-stage-3-soft: var(--stage-3-soft);
+  --color-stage-4: var(--stage-4);
+  --color-stage-4-soft: var(--stage-4-soft);
+  --color-stage-won: var(--stage-won);
+  --color-stage-won-soft: var(--stage-won-soft);
+  --color-stage-lost: var(--stage-lost);
+  --color-stage-lost-soft: var(--stage-lost-soft);
+  --color-priority-low: var(--priority-low);
+  --color-priority-low-soft: var(--priority-low-soft);
+  --color-priority-medium: var(--priority-medium);
+  --color-priority-medium-soft: var(--priority-medium-soft);
+  --color-priority-high: var(--priority-high);
+  --color-priority-high-soft: var(--priority-high-soft);
+  --color-priority-urgent: var(--priority-urgent);
+  --color-priority-urgent-soft: var(--priority-urgent-soft);
+  --color-health-ok: var(--health-ok);
+  --color-health-warn: var(--health-warn);
+  --color-health-bad: var(--health-bad);
   --color-ring: var(--ring);
   --color-sidebar: var(--sidebar-bg);
   --color-sidebar-border: var(--sidebar-border);
@@ -109,23 +197,187 @@ body {
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--canvas);
+  color: var(--ink);
   font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   font-size: 0.875rem;
-  line-height: 1.5;
+  line-height: 1.25rem;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 ::selection {
   background: var(--brand-soft);
-  color: var(--brand-dark);
+  color: var(--brand-ink);
 }
 
 :focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
+}
+
+/* Dropdowns use a soft ring. This outline is the thick teal edge on the trigger and search row. */
+[role="combobox"]:focus,
+[role="combobox"]:focus-visible,
+[cmdk-input]:focus,
+[cmdk-input]:focus-visible,
+[cmdk-input-wrapper] input:focus,
+[cmdk-input-wrapper] input:focus-visible {
+  outline: none;
+  outline-offset: 0;
+}
+
+/* —— Type roles —— */
+.text-page-title {
+  font-size: 1.25rem;
+  line-height: 1.75rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.text-section {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.text-data {
+  font-size: 0.8125rem;
+  line-height: 1.125rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.text-meta {
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 400;
+  color: var(--ink-muted);
+}
+
+.text-label {
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 500;
+  color: var(--ink-secondary);
+}
+
+.text-kpi {
+  font-size: 1.5rem;
+  line-height: 2rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.text-board-total {
+  font-size: 0.8125rem;
+  line-height: 1.125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* —— Stage Rail (signature) —— */
+.stage-rail {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: 0 1px 1px 0;
+  background: var(--stage-rail-color, var(--stage-1));
+  overflow: hidden;
+  transition: background-color 140ms ease-out;
+}
+
+.stage-rail__fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--stage-rail-fill, 0%);
+  background: color-mix(in srgb, var(--stage-rail-color, var(--stage-1)) 55%, transparent);
+  transition: height 160ms ease-out, background-color 140ms ease-out;
+}
+
+@keyframes stage-won-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.stage-rail--won-pulse {
+  animation: stage-won-pulse 420ms ease-out 1;
+}
+
+/* Stage land: brief brand ring after a successful stage move */
+@keyframes deal-stage-land {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--brand) 45%, transparent);
+  }
+  40% {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 28%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+.deal-card--stage-changed {
+  animation: deal-stage-land 320ms ease-out 1;
+}
+
+.deal-card--drag-overlay {
+  transform: scale(1.02);
+  box-shadow:
+    0 8px 24px color-mix(in srgb, var(--ink) 12%, transparent),
+    0 0 0 1px var(--line);
+}
+
+.stage-column--drop-target {
+  background: color-mix(in srgb, var(--brand-soft) 65%, var(--canvas));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage-rail {
+    transition: none;
+  }
+  .stage-rail__fill {
+    transition: none;
+  }
+  .stage-rail--won-pulse {
+    animation: none !important;
+  }
+  .deal-card--stage-changed {
+    animation: none !important;
+  }
+  .deal-card--drag-overlay {
+    transform: none;
+  }
+}
+
+/* —— Density helpers —— */
+.density-row {
+  min-height: var(--row-height);
+}
+
+.density-control {
+  height: var(--control-height);
+}
+
+.density-section {
+  gap: var(--section-gap);
 }
 
 /* Compact scrollbar for dense CRM surfaces */
@@ -134,7 +386,7 @@ body {
   height: 8px;
 }
 .crm-scroll::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
+  background: var(--line-strong);
   border-radius: 999px;
 }
 .crm-scroll::-webkit-scrollbar-track {

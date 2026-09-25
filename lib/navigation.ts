@@ -88,13 +88,13 @@ export const crmNav: NavSection[] = [
   },
 ];
 
-/** Super Admin Control Center — governance & configuration only. */
+/** Super Admin Control Center — governance & setup only. */
 export const controlCenterNav: NavSection[] = [
   {
     title: "Control Center",
     items: [
       { label: "Overview", href: "/", icon: LayoutDashboard },
-      { label: "Record Lookup", href: "/admin/lookup", icon: Search },
+      { label: "Find records", href: "/admin/lookup", icon: Search },
     ],
   },
   {
@@ -105,13 +105,13 @@ export const controlCenterNav: NavSection[] = [
     ],
   },
   {
-    title: "CRM Configuration",
+    title: "Setup",
     items: [
       { label: "Pipelines", href: "/admin/pipelines", icon: Layers },
       { label: "Stages", href: "/admin/pipelines?tab=stages", icon: ListTree },
-      { label: "Custom Fields", href: "/admin/custom-fields", icon: FormInput },
-      { label: "Lead Sources", href: "/admin/lead-sources", icon: Share2 },
-      { label: "Activity Types", href: "/admin/activity-types", icon: ListChecks },
+      { label: "Custom fields", href: "/admin/custom-fields", icon: FormInput },
+      { label: "Lead sources", href: "/admin/lead-sources", icon: Share2 },
+      { label: "Activity types", href: "/admin/activity-types", icon: ListChecks },
       { label: "Referrals", href: "/admin/referrals", icon: Building2 },
       { label: "Automations", href: "/admin/automations", icon: Zap },
     ],
@@ -119,16 +119,16 @@ export const controlCenterNav: NavSection[] = [
   {
     title: "Governance",
     items: [
-      { label: "Audit Logs", href: "/admin/audit-logs", icon: ScrollText },
-      { label: "System Activity", href: "/admin/system-activity", icon: Activity },
-      { label: "Organization Analytics", href: "/admin/org-analytics", icon: BarChart3 },
+      { label: "Audit log", href: "/admin/audit-logs", icon: ScrollText },
+      { label: "Activity log", href: "/admin/system-activity", icon: Activity },
+      { label: "Org analytics", href: "/admin/org-analytics", icon: BarChart3 },
     ],
   },
   {
     title: "Settings",
     items: [
-      { label: "System Settings", href: "/admin/settings", icon: Settings },
-      { label: "Gmail", href: "/admin/gmail", icon: Mail },
+      { label: "System settings", href: "/admin/settings", icon: Settings },
+      { label: "Email sync", href: "/admin/gmail", icon: Mail },
     ],
   },
 ];

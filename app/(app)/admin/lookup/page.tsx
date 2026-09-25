@@ -170,7 +170,7 @@ export default function AdminLookupPage() {
               items={(teamsQuery.data?.data ?? []).map((t) => ({
                 id: t.id,
                 primary: t.name,
-                secondary: t.ownerName || "No owner",
+                secondary: t.teamLeadName || "No Team Lead",
                 href: `/admin/teams`,
               }))}
             />

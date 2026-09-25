@@ -20,6 +20,7 @@ import { MobileMenuButton } from "@/components/layout/sidebar";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { useAuth } from "@/features/auth/auth-provider";
 import { useQuickCreateOptional } from "@/components/forms/quick-create-provider";
+import { useDensity } from "@/lib/density";
 
 type TopBarProps = {
   onMenuClick: () => void;
@@ -31,6 +32,7 @@ export function TopBar({ onMenuClick, className }: TopBarProps) {
   const { user, logout } = useAuth();
   const router = useRouter();
   const quickCreate = useQuickCreateOptional();
+  const { density, toggle: toggleDensity } = useDensity();
 
   const initials =
     user?.fullName
@@ -63,7 +65,9 @@ export function TopBar({ onMenuClick, className }: TopBarProps) {
             tabIndex={-1}
           />
           <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded border border-border bg-surface px-1.5 py-0.5 text-[10px] font-medium text-foreground-subtle">
-            ⌘K
+            {typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform)
+              ? "⌘K"
+              : "Ctrl K"}
           </kbd>
         </button>
 
@@ -124,13 +128,20 @@ export function TopBar({ onMenuClick, className }: TopBarProps) {
             <DropdownMenuContent align="end" className="w-48">
               <DropdownMenuLabel>Account</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => {
+                  router.push("/profile");
+                }}
+              >
                 <User className="size-3.5" />
                 Profile
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem onSelect={(e) => {
+                e.preventDefault();
+                toggleDensity();
+              }}>
                 <Settings className="size-3.5" />
-                Preferences
+                Density: {density === "compact" ? "Compact" : "Comfortable"}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem

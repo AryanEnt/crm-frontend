@@ -24,14 +24,23 @@ export type AdminRole = {
   permissions: string[];
 };
 
+export type AdminTeamMember = {
+  id: string;
+  fullName: string;
+  email: string;
+  roleCode: string;
+  roleName: string;
+};
+
 export type AdminTeam = {
   id: string;
   name: string;
   description: string;
-  ownerUserId?: string | null;
-  ownerName?: string | null;
+  teamLeadUserId?: string | null;
+  teamLeadName?: string | null;
   isActive: boolean;
   memberIds: string[];
+  members?: AdminTeamMember[];
   memberCount: number;
   createdAt: string;
   updatedAt: string;
@@ -196,6 +205,10 @@ export type CustomFieldDefinition = {
   isRequired: boolean;
   isActive: boolean;
   displayOrder: number;
+  pipelineId?: string | null;
+  pipelineName?: string | null;
+  stageId?: string | null;
+  stageName?: string | null;
   createdBy?: string | null;
   createdByName?: string | null;
   options: CustomFieldOption[];
@@ -219,6 +232,8 @@ export type CustomFieldCreateInput = {
   isRequired?: boolean;
   isActive?: boolean;
   displayOrder?: number;
+  pipelineId?: string;
+  stageId?: string;
   options?: CustomFieldOptionInput[];
 };
 
@@ -229,6 +244,8 @@ export type CustomFieldUpdateInput = {
   isRequired?: boolean;
   isActive?: boolean;
   displayOrder?: number;
+  pipelineId?: string;
+  stageId?: string;
   options?: CustomFieldOptionInput[];
 };
 

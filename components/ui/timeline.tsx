@@ -44,15 +44,15 @@ export function Timeline({
           <div className="min-w-0 flex-1">
             <div className="flex items-baseline justify-between gap-2">
               <p className="truncate text-sm font-medium text-foreground">{item.title}</p>
-              <time className="shrink-0 text-[11px] text-foreground-subtle">
+              <time className="shrink-0 text-meta text-data">
                 {item.timestamp}
               </time>
             </div>
             {item.description ? (
-              <p className="mt-0.5 text-xs text-foreground-muted">{item.description}</p>
+              <p className="mt-0.5 text-meta">{item.description}</p>
             ) : null}
             {item.href ? (
-              <Link href={item.href} className="mt-1 inline-block text-xs text-primary hover:underline">
+              <Link href={item.href} className="mt-1 inline-block text-xs text-brand hover:underline">
                 View email
               </Link>
             ) : null}

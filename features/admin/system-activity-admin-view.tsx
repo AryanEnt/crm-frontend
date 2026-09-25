@@ -204,7 +204,7 @@ export function SystemActivityAdminView() {
                 ) : null}
               </>
             ) : (
-              <ErrorState title="Could not load event" onRetry={() => void detailQuery.refetch()} />
+              <ErrorState title="Couldn't load this event" onRetry={() => void detailQuery.refetch()} />
             )}
           </DrawerBody>
         </DrawerContent>

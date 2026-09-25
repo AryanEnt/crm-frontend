@@ -38,6 +38,7 @@ import {
   type CustomFieldDefinition,
   type CustomFieldOptionInput,
 } from "@/lib/api/admin";
+import { crmApi } from "@/lib/api/crm";
 
 const ENTITIES = ["lead", "customer", "deal", "activity"] as const;
 const FIELD_TYPES = [
@@ -65,6 +66,8 @@ type FormState = {
   isRequired: boolean;
   isActive: boolean;
   displayOrder: string;
+  pipelineId: string;
+  stageId: string;
   options: CustomFieldOptionInput[];
 };
 
@@ -78,6 +81,8 @@ const emptyForm = (): FormState => ({
   isRequired: false,
   isActive: true,
   displayOrder: "0",
+  pipelineId: "",
+  stageId: "",
   options: [],
 });
 
@@ -100,6 +105,13 @@ export function CustomFieldsAdminView() {
 
   const canManage = can("custom_fields:manage");
   const canView = can("custom_fields:view") || canManage;
+  const pipelinesQuery = useQuery({
+    queryKey: ["pipelines", "custom-fields"],
+    queryFn: () => crmApi.listPipelines(undefined, true),
+    enabled: formOpen,
+  });
+  const scopeStages =
+    pipelinesQuery.data?.find((p) => p.id === form.pipelineId)?.stages.filter((s) => s.isActive) ?? [];
 
   const query = useQuery({
     queryKey: ["custom-fields", search, entityFilter, typeFilter, activeOnly],
@@ -124,6 +136,8 @@ export function CustomFieldsAdminView() {
           isRequired: form.isRequired,
           isActive: form.isActive,
           displayOrder: Number(form.displayOrder) || 0,
+          pipelineId: form.pipelineId,
+          stageId: form.stageId,
           options: needsOptions(form.fieldType) ? opts : undefined,
         });
       }
@@ -137,6 +151,8 @@ export function CustomFieldsAdminView() {
         isRequired: form.isRequired,
         isActive: form.isActive,
         displayOrder: Number(form.displayOrder) || 0,
+        pipelineId: form.pipelineId || undefined,
+        stageId: form.stageId || undefined,
         options: opts,
       });
     },
@@ -146,7 +162,7 @@ export function CustomFieldsAdminView() {
       setEdit(null);
       toast.success(edit ? "Custom field updated" : "Custom field created");
     },
-    onError: (err: Error) => toast.error(err.message || "Save failed"),
+    onError: (err: Error) => toast.error(err.message || "Couldn't save. Check required fields and try again."),
   });
 
   const deleteMutation = useMutation({
@@ -156,7 +172,7 @@ export function CustomFieldsAdminView() {
       setDeleteTarget(null);
       toast.success("Custom field deleted");
     },
-    onError: (err: Error) => toast.error(err.message || "Delete failed"),
+    onError: (err: Error) => toast.error(err.message || "Couldn't delete. Try again."),
   });
 
   const openCreate = () => {
@@ -177,6 +193,8 @@ export function CustomFieldsAdminView() {
       isRequired: item.isRequired,
       isActive: item.isActive,
       displayOrder: String(item.displayOrder),
+      pipelineId: item.pipelineId ?? "",
+      stageId: item.stageId ?? "",
       options: (item.options ?? []).map((o, i) => ({
         label: o.label,
         value: o.value,
@@ -199,6 +217,15 @@ export function CustomFieldsAdminView() {
         ),
       },
       { accessorKey: "entity", header: "Entity" },
+      {
+        id: "scope",
+        header: "Applies to",
+        cell: ({ row }) => {
+          if (!row.original.pipelineName) return "All pipelines";
+          if (!row.original.stageName) return row.original.pipelineName;
+          return `${row.original.pipelineName} · ${row.original.stageName}`;
+        },
+      },
       { accessorKey: "fieldType", header: "Type" },
       {
         accessorKey: "displayOrder",
@@ -265,7 +292,7 @@ export function CustomFieldsAdminView() {
       <PageHeader
         breadcrumbs={[
           { label: "Control Center", href: "/" },
-          { label: "CRM Configuration" },
+          { label: "Setup" },
           { label: "Custom Fields" },
         ]}
         title="Custom Fields"
@@ -404,6 +431,51 @@ export function CustomFieldsAdminView() {
                 {form.entity} · {form.fieldType} · {form.internalKey}
               </p>
             )}
+            {form.entity !== "activity" ? (
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label>Pipeline</Label>
+                  <Select
+                    value={form.pipelineId || "all"}
+                    onValueChange={(v) =>
+                      setForm({ ...form, pipelineId: v === "all" ? "" : v, stageId: "" })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="All pipelines" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All pipelines</SelectItem>
+                      {(pipelinesQuery.data ?? []).map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Stage</Label>
+                  <Select
+                    value={form.stageId || "all"}
+                    onValueChange={(v) => setForm({ ...form, stageId: v === "all" ? "" : v })}
+                    disabled={!form.pipelineId}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="All stages" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All stages</SelectItem>
+                      {scopeStages.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            ) : null}
             <div className="space-y-1.5">
               <Label>Name</Label>
               <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />

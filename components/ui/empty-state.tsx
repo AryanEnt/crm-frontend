@@ -11,6 +11,10 @@ export type EmptyStateProps = {
   className?: string;
 };
 
+/**
+ * Invitation to act — not a blank “No data” wall.
+ * Keep copy concrete: what appears here + what to do next.
+ */
 export function EmptyState({
   icon: Icon = Inbox,
   title,
@@ -22,16 +26,17 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center rounded-lg border border-dashed border-border bg-surface px-6 py-10 text-center",
+        "flex flex-col items-center justify-center border border-dashed border-border bg-surface px-6 py-10 text-center",
+        "rounded-[var(--radius-lg)]",
         className,
       )}
     >
-      <div className="mb-3 flex size-9 items-center justify-center rounded-md bg-surface-muted text-foreground-muted">
-        <Icon className="size-4" />
+      <div className="mb-3 flex size-9 items-center justify-center rounded-[var(--radius-md)] bg-surface-muted text-foreground-muted">
+        <Icon className="size-4" aria-hidden />
       </div>
-      <h3 className="text-sm font-medium text-foreground">{title}</h3>
+      <h3 className="text-section">{title}</h3>
       {description ? (
-        <p className="mt-1 max-w-sm text-xs text-foreground-muted">{description}</p>
+        <p className="mt-1 max-w-sm text-meta">{description}</p>
       ) : null}
       {actionLabel && onAction ? (
         <Button className="mt-4" size="sm" onClick={onAction}>

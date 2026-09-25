@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { FilterBar } from "@/components/ui/filter-bar";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { ErrorState } from "@/components/ui/error-state";
+import { CalendarSkeleton } from "@/components/ui/skeleton";
 import { LoadingState } from "@/components/ui/loading-state";
 import {
   Select,
@@ -124,7 +125,7 @@ function CalendarViewToggle({
     <div
       role="radiogroup"
       aria-label="Calendar layout"
-      className="relative isolate inline-flex h-9 shrink-0 items-center rounded-full border border-border-strong/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.7),rgba(244,243,248,0.95))] p-[3px] shadow-[inset_0_1px_2px_rgba(42,40,56,0.06),0_1px_0_rgba(255,255,255,0.8)]"
+      className="relative isolate inline-flex h-9 shrink-0 items-center rounded-full border border-border bg-surface-muted p-[3px]"
     >
       <span
         aria-hidden
@@ -498,7 +499,7 @@ export function CalendarView() {
       </FilterBar>
 
       {calendarQuery.isLoading ? (
-        <LoadingState label="Loading calendar…" />
+        <CalendarSkeleton />
       ) : view === "month" ? (
         <MonthGrid
           cursor={cursor}
@@ -562,7 +563,7 @@ function MonthGrid({
 
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-[0_1px_0_rgba(42,40,56,0.04)]">
-      <div className="grid grid-cols-7 border-b border-border bg-[linear-gradient(180deg,rgba(238,236,255,0.55),rgba(244,243,248,0.9))] text-[11px] text-foreground-muted">
+      <div className="grid grid-cols-7 border-b border-border bg-surface-muted/60 text-label text-foreground-muted">
         {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
           <div key={d} className="px-2 py-2 text-center font-semibold tracking-wide">
             <span className="sm:hidden">{d.slice(0, 1)}</span>
@@ -733,7 +734,7 @@ function WeekDayStrip({
                   <li key={a.id}>
                     <button
                       type="button"
-                      className="w-full rounded-lg border border-border/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.9),rgba(244,243,248,0.55))] px-2 py-1.5 text-left transition-colors hover:border-brand/30 hover:bg-brand-soft/40"
+                      className="w-full rounded-[var(--radius-md)] border border-border bg-surface px-2 py-1.5 text-left transition-colors hover:border-brand/30 hover:bg-brand-soft/40"
                       onClick={() => onSelect(a)}
                     >
                       <div className="flex items-center gap-1.5">

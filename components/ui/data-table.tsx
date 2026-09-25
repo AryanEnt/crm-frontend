@@ -30,6 +30,8 @@ export type DataTableProps<TData, TValue> = {
   onSearchChange?: (value: string) => void;
   emptyTitle?: string;
   emptyDescription?: string;
+  emptyActionLabel?: string;
+  onEmptyAction?: () => void;
   pageSize?: number;
   className?: string;
   onRowSelectionChange?: (rows: TData[]) => void;
@@ -40,8 +42,10 @@ export function DataTable<TData, TValue>({
   data,
   loading,
   searchValue = "",
-  emptyTitle = "No results",
-  emptyDescription = "Try adjusting filters or create a new record.",
+  emptyTitle = "Nothing to show",
+  emptyDescription = "Adjust filters or create a new record.",
+  emptyActionLabel,
+  onEmptyAction,
   pageSize = 10,
   className,
   onRowSelectionChange,
@@ -83,11 +87,7 @@ export function DataTable<TData, TValue>({
   }, [rowSelection, onRowSelectionChange, table]);
 
   if (loading) {
-    return (
-      <div className={cn("rounded-lg border border-border bg-surface", className)}>
-        <LoadingState compact />
-      </div>
-    );
+    return <LoadingState variant="table" className={className} />;
   }
 
   return (
@@ -100,7 +100,7 @@ export function DataTable<TData, TValue>({
                 {headerGroup.headers.map((header) => (
                   <th
                     key={header.id}
-                    className="h-9 px-3 text-[11px] font-medium uppercase tracking-wide text-foreground-muted"
+                    className="h-9 px-3 text-label text-foreground-muted"
                   >
                     {header.isPlaceholder
                       ? null
@@ -119,7 +119,7 @@ export function DataTable<TData, TValue>({
                   className="border-b border-border/70 last:border-0 hover:bg-surface-muted/50 data-[state=selected]:bg-brand-soft/40"
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className="h-10 px-3 align-middle text-foreground">
+                    <td key={cell.id} className="density-row px-3 align-middle text-foreground">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>
                   ))}
@@ -131,6 +131,8 @@ export function DataTable<TData, TValue>({
                   <EmptyState
                     title={emptyTitle}
                     description={emptyDescription}
+                    actionLabel={emptyActionLabel}
+                    onAction={onEmptyAction}
                     className="rounded-none border-0 py-12"
                   />
                 </td>
@@ -141,9 +143,12 @@ export function DataTable<TData, TValue>({
       </div>
 
       <div className="flex items-center justify-between gap-3 border-t border-border px-3 py-2">
-        <p className="text-xs text-foreground-muted">
-          {table.getFilteredSelectedRowModel().rows.length} of{" "}
-          {table.getFilteredRowModel().rows.length} selected
+        <p className="text-meta">
+          <span className="text-data">
+            {table.getFilteredSelectedRowModel().rows.length}
+          </span>{" "}
+          of{" "}
+          <span className="text-data">{table.getFilteredRowModel().rows.length}</span> selected
         </p>
         <div className="flex items-center gap-2">
           <span className="text-xs text-foreground-muted">

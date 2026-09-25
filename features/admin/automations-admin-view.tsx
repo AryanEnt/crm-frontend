@@ -36,6 +36,7 @@ import {
   type CrmAutomation,
 } from "@/lib/api/admin";
 import { crmApi } from "@/lib/api/crm";
+import { emailApi } from "@/lib/api/email";
 
 type Draft = {
   name: string;
@@ -114,7 +115,7 @@ export function AutomationsAdminView() {
       toast.success(editing ? "Automation updated" : "Automation created");
     },
     onError: (err: Error) => {
-      const message = err.message || "Could not save automation";
+      const message = err.message || "Couldn't save the automation. Try again.";
       setFormError(message);
       toast.error(message);
     },
@@ -126,7 +127,7 @@ export function AutomationsAdminView() {
       void qc.invalidateQueries({ queryKey: ["automations"] });
       toast.success("Automation deleted");
     },
-    onError: (err: Error) => toast.error(err.message || "Could not delete automation"),
+    onError: (err: Error) => toast.error(err.message || "Couldn't delete the automation. Try again."),
   });
 
   const toggleMutation = useMutation({
@@ -136,7 +137,7 @@ export function AutomationsAdminView() {
       void qc.invalidateQueries({ queryKey: ["automations"] });
       toast.success(vars.isActive ? "Automation enabled" : "Automation disabled");
     },
-    onError: (err: Error) => toast.error(err.message || "Could not update automation"),
+    onError: (err: Error) => toast.error(err.message || "Couldn't update the automation. Try again."),
   });
 
   const retryMutation = useMutation({
@@ -146,7 +147,7 @@ export function AutomationsAdminView() {
       void qc.invalidateQueries({ queryKey: ["automation-runs"] });
       toast.success("Job queued for retry");
     },
-    onError: (err: Error) => toast.error(err.message || "Could not retry job"),
+    onError: (err: Error) => toast.error(err.message || "Couldn't retry the job. Try again."),
   });
 
   if (!can("automations:view") && !can("automations:manage")) {
@@ -415,7 +416,7 @@ export function AutomationsAdminView() {
             </div>
 
             <section className="rounded-lg border border-border p-3">
-              <h4 className="mb-2 text-sm font-semibold" style={{ color: "#6c63d9" }}>
+              <h4 className="mb-2 text-section text-brand">
                 When
               </h4>
               <Select
@@ -437,7 +438,7 @@ export function AutomationsAdminView() {
 
             <section className="rounded-lg border border-border p-3">
               <div className="mb-2 flex items-center justify-between">
-                <h4 className="text-sm font-semibold" style={{ color: "#6c63d9" }}>
+                <h4 className="text-section text-brand">
                   If <span className="font-normal text-foreground-muted">(optional)</span>
                 </h4>
                 <Button
@@ -547,7 +548,7 @@ export function AutomationsAdminView() {
 
             <section className="rounded-lg border border-border p-3">
               <div className="mb-2 flex items-center justify-between">
-                <h4 className="text-sm font-semibold" style={{ color: "#6c63d9" }}>
+                <h4 className="text-section text-brand">
                   Then
                 </h4>
                 <Button
@@ -635,6 +636,10 @@ function ActionEditor({
   const selectedPipelineId = String(params.pipelineId ?? "");
   const stages =
     pipelines.find((p) => p.id === selectedPipelineId)?.stages.filter((s) => s.isActive) ?? [];
+  const templates = useQuery({
+    queryKey: ["email-templates"],
+    queryFn: () => emailApi.listTemplates(),
+  });
 
   return (
     <div className="space-y-2 rounded border border-border/80 p-2">
@@ -736,6 +741,25 @@ function ActionEditor({
         />
       ) : null}
 
+      {action.type === "send_email" ? (
+        <Select
+          value={String(params.templateId ?? "none")}
+          onValueChange={(v) => setParam("templateId", v === "none" ? "" : v)}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Email template" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">Select template…</SelectItem>
+            {(templates.data ?? []).map((t) => (
+              <SelectItem key={t.id} value={t.id}>
+                {t.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ) : null}
+
       {action.type === "update_field" ? (
         <div className="grid gap-2 sm:grid-cols-2">
           <Select
@@ -783,6 +807,8 @@ function defaultParams(type: string): Record<string, unknown> {
       return { pipelineId: "", stageId: "" };
     case "send_notification":
       return { message: "" };
+    case "send_email":
+      return { templateId: "" };
     case "update_field":
       return { field: "priority", value: "high" };
     case "add_tag":

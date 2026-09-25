@@ -12,6 +12,7 @@ import {
 } from "@/components/forms";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CustomFieldsSection } from "@/components/forms/custom-fields-section";
 import { useAuth } from "@/features/auth/auth-provider";
 import { crmApi } from "@/lib/api/crm";
 
@@ -36,6 +37,7 @@ export function DealQuickCreateDrawer({
   const [ownerUserId, setOwnerUserId] = React.useState(user?.id ?? "");
   const [pipelineId, setPipelineId] = React.useState("");
   const [stageId, setStageId] = React.useState("");
+  const [customFields, setCustomFields] = React.useState<Record<string, unknown>>({});
   const [loading, setLoading] = React.useState(false);
 
   const pipelinesQuery = useQuery({
@@ -75,7 +77,7 @@ export function DealQuickCreateDrawer({
     <QuickCreateDrawer
       open={open}
       onOpenChange={onOpenChange}
-      title="Create Deal"
+      title="Create deal"
       description="Link a deal to a customer with pipeline defaults filled in."
       footer={
         <div className="flex w-full justify-end gap-2">
@@ -88,7 +90,7 @@ export function DealQuickCreateDrawer({
             onClick={() => {
               void (async () => {
                 if (!title.trim()) {
-                  toast.error("Title is required");
+                  toast.error("Enter a title");
                   return;
                 }
                 if (!customerId) {
@@ -97,7 +99,7 @@ export function DealQuickCreateDrawer({
                 }
                 setLoading(true);
                 try {
-                  await crmApi.createDeal({
+                  const deal = await crmApi.createDeal({
                     title: title.trim(),
                     customerId,
                     value: value ? Number(value) : null,
@@ -107,18 +109,23 @@ export function DealQuickCreateDrawer({
                     pipelineId: pipelineId || null,
                     stageId: stageId || null,
                   });
+                  if (Object.keys(customFields).length > 0) {
+                    await crmApi.setCustomFieldValues("deal", deal.id, customFields);
+                  }
                   toast.success("Deal created");
                   onOpenChange(false);
                   onCreated?.();
                 } catch (err) {
-                  toast.error(err instanceof Error ? err.message : "Failed to create deal");
+                  toast.error(
+                    err instanceof Error ? err.message : "Couldn't create the deal. Try again.",
+                  );
                 } finally {
                   setLoading(false);
                 }
               })();
             }}
           >
-            Create Deal
+            Create deal
           </Button>
         </div>
       }
@@ -155,6 +162,14 @@ export function DealQuickCreateDrawer({
             setStageId(sid);
           }}
           onStageChange={setStageId}
+        />
+        <CustomFieldsSection
+          entity="deal"
+          values={customFields}
+          onChange={setCustomFields}
+          enabled={open}
+          pipelineId={pipelineId}
+          stageId={stageId}
         />
         <FormFieldSlot label="Potential Value">
           <Input

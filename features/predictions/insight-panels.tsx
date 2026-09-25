@@ -30,7 +30,7 @@ export function InsightCard({ result }: { result: PredictionResult }) {
         <p className="text-sm font-medium text-warning">Insufficient historical data.</p>
       ) : (
         <>
-          <p className="text-2xl font-semibold tabular-nums" style={{ color: "#6c63d9" }}>
+          <p className="text-kpi text-brand">
             {result.score != null ? Math.round(result.score) : "—"}
           </p>
           <p className="mt-0.5 text-sm text-foreground">{result.label}</p>
@@ -156,7 +156,7 @@ export function LeadInsightsPanel({ leadId }: { leadId: string }) {
           <ul className="space-y-1 text-xs">
             {historyQuery.data!.slice(0, 8).map((h) => (
               <li key={h.id} className="flex justify-between gap-2">
-                <span className="font-medium tabular-nums" style={{ color: "#6c63d9" }}>
+                <span className="font-medium tabular-nums text-brand">
                   {Math.round(h.score)}
                 </span>
                 <span className="text-foreground-subtle">

@@ -27,7 +27,7 @@ export function CrmFormSection({
     <>
       {divided ? <div className="border-t border-border" aria-hidden /> : null}
       <section className={cn("space-y-2.5", className)}>
-        <h3 className="text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-subtle">
+        <h3 className="text-label text-foreground-muted">
           {title}
         </h3>
         <div className="space-y-2.5">{children}</div>
