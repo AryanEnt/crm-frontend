@@ -7,6 +7,8 @@ export type PageHeaderProps = {
   description?: string;
   breadcrumbs?: BreadcrumbItem[];
   actions?: React.ReactNode;
+  /** Larger title for reference screens. */
+  display?: boolean;
   className?: string;
 };
 
@@ -15,16 +17,24 @@ export function PageHeader({
   description,
   breadcrumbs,
   actions,
+  display,
   className,
 }: PageHeaderProps) {
   return (
     <header className={cn("mb-4 space-y-2", className)}>
       {breadcrumbs && breadcrumbs.length > 0 ? <Breadcrumbs items={breadcrumbs} /> : null}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+      <div
+        className={cn(
+          "flex flex-col gap-2 sm:flex-row sm:justify-between",
+          display ? "sm:items-end" : "sm:items-start",
+        )}
+      >
         <div className="min-w-0">
-          <h1 className="text-page-title">{title}</h1>
+          <h1 className={display ? "text-display" : "text-page-title"}>{title}</h1>
           {description ? (
-            <p className="mt-0.5 max-w-2xl text-meta">{description}</p>
+            <p className={cn("max-w-2xl", display ? "mt-1 text-body text-ink-muted" : "mt-0.5 text-meta")}>
+              {description}
+            </p>
           ) : null}
         </div>
         {actions ? <PageActions>{actions}</PageActions> : null}

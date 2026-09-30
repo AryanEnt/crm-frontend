@@ -8,16 +8,13 @@ import { Plus } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { FilterBar } from "@/components/ui/filter-bar";
-import { DataTable, SortableHeader } from "@/components/ui/data-table";
+import { DataTable, EntityCell, SortableHeader } from "@/components/ui/data-table";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { ErrorState } from "@/components/ui/error-state";
 import { useAuth } from "@/features/auth/auth-provider";
 import { crmApi, type Customer } from "@/lib/api/crm";
 import { CustomerFormDialog } from "@/features/customers/customer-form-dialog";
-import {
-  TeamMemberFilterChip,
-  useTeamMemberFilter,
-} from "@/features/teams/team-member-filter";
+import { ScopeFilterControls, useScopeFilters } from "@/features/teams/scope-filters";
 import { priorityBadgeClass, priorityFromString } from "@/lib/design-tokens";
 import { cn } from "@/lib/utils";
 
@@ -33,19 +30,19 @@ function followUpClass(next?: string | null) {
 }
 
 export function CustomersTableView() {
-  const { can, user } = useAuth();
+  const { can } = useAuth();
   const router = useRouter();
   const [search, setSearch] = React.useState("");
   const [createOpen, setCreateOpen] = React.useState(false);
-  const isTeamLead = user?.roleCode === "sales_manager";
-  const { salesExecutiveId, setSalesExecutiveId } = useTeamMemberFilter(isTeamLead);
+  const scopeFilters = useScopeFilters("customers:view");
+  const scopeParams = scopeFilters.params;
 
   const params = React.useMemo(() => {
     const p = new URLSearchParams({ limit: "50", offset: "0" });
     if (search) p.set("q", search);
-    if (isTeamLead && salesExecutiveId !== "all") p.set("salesExecutiveId", salesExecutiveId);
+    for (const [key, value] of scopeParams) p.set(key, value);
     return p;
-  }, [search, isTeamLead, salesExecutiveId]);
+  }, [search, scopeParams]);
 
   const customersQuery = useQuery({
     queryKey: ["customers", params.toString()],
@@ -56,26 +53,25 @@ export function CustomersTableView() {
     () => [
       {
         accessorKey: "fullName",
-        header: ({ column }) => <SortableHeader column={column} title="Name" />,
+        header: ({ column }) => <SortableHeader column={column} title="Customer" />,
         cell: ({ row }) => (
-          <button
-            type="button"
-            className="text-left font-medium text-foreground hover:text-brand"
-            onClick={() => router.push(`/customers/${row.original.id}`)}
-          >
-            {row.original.fullName}
-          </button>
+          <EntityCell
+            name={row.original.fullName}
+            subtitle={row.original.email ?? row.original.phone ?? "No contact details"}
+          />
         ),
       },
       {
-        id: "contact",
-        header: "Contact",
-        cell: ({ row }) => (
-          <div className="text-meta">
-            <div>{row.original.email ?? "—"}</div>
-            <div>{row.original.phone ?? ""}</div>
-          </div>
-        ),
+        accessorKey: "phone",
+        header: "Phone",
+        cell: ({ row }) =>
+          row.original.phone ? (
+            <span className="font-mono text-caption tabular-nums text-ink-secondary">
+              {row.original.phone}
+            </span>
+          ) : (
+            <span className="text-ink-muted">Not added</span>
+          ),
       },
       {
         accessorKey: "ownerName",
@@ -165,14 +161,14 @@ export function CustomersTableView() {
         ),
       },
     ],
-    [router],
+    [],
   );
 
   if (customersQuery.isError) {
     return <ErrorState onRetry={() => void customersQuery.refetch()} />;
   }
 
-  const hasFilters = !!search || salesExecutiveId !== "all";
+  const hasFilters = !!search || scopeFilters.active;
 
   return (
     <div className="space-y-3">
@@ -196,12 +192,10 @@ export function CustomersTableView() {
         searchPlaceholder="Search name, email, phone…"
         onClear={() => {
           setSearch("");
-          setSalesExecutiveId("all");
+          scopeFilters.reset();
         }}
       >
-        {isTeamLead ? (
-          <TeamMemberFilterChip value={salesExecutiveId} onChange={setSalesExecutiveId} />
-        ) : null}
+        <ScopeFilterControls filters={scopeFilters} />
       </FilterBar>
 
       <DataTable
@@ -210,6 +204,8 @@ export function CustomersTableView() {
         loading={customersQuery.isLoading}
         searchValue={search}
         pageSize={10}
+        itemLabel="customers"
+        onRowClick={(customer) => router.push(`/customers/${customer.id}`)}
         emptyTitle={hasFilters ? "No customers match these filters" : "No customers yet"}
         emptyDescription={
           hasFilters

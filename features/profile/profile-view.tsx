@@ -3,27 +3,21 @@
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { z } from "zod";
 import { PageHeader } from "@/components/shared/page-header";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ErrorState } from "@/components/ui/error-state";
 import { DetailSkeleton } from "@/components/ui/skeleton";
+import { Form, SubmitButton, useZodForm } from "@/components/forms/form";
+import { SelectField, TextField } from "@/components/forms/fields";
 import { useAuth } from "@/features/auth/auth-provider";
-import {
-  changePassword,
-  updateProfile,
-} from "@/lib/api/auth";
+import { changePassword, updateProfile } from "@/lib/api/auth";
 import { adminApi } from "@/lib/api/admin";
+import { messages } from "@/lib/forms/messages";
+import { applyServerError, type ServerErrorRule } from "@/lib/forms/server-errors";
 import { commonTimezones } from "@/lib/timezone";
+import { copy } from "@/lib/copy";
+import { PASSWORD_MIN_LENGTH, newPasswordSchema } from "@/validations/common";
 import { ApiError } from "@/types/api";
 
 export function ProfileView() {
@@ -95,9 +89,7 @@ export function ProfileView() {
             phone: user.phone ?? "",
             timezone: user.timezone || "UTC",
           }}
-          onSaved={async () => {
-            await refresh();
-          }}
+          onSaved={refresh}
         />
       </section>
 
@@ -115,212 +107,143 @@ function ReadOnly({ label, value }: { label: string; value: string }) {
   );
 }
 
+function unknownErrorMessage(err: unknown): string {
+  if (err instanceof ApiError && err.code === "network_error") return copy.error.network;
+  if (err instanceof ApiError && err.message) return err.message;
+  return copy.error.generic;
+}
+
+const profileSchema = z.object({
+  fullName: z.string().trim().min(1, messages.enter("your name")),
+  phone: z.string().trim(),
+  timezone: z.string().min(1, messages.choose("a timezone")),
+});
+
+const profileServerErrors: ServerErrorRule<z.input<typeof profileSchema>>[] = [
+  { match: /full name is required/i, field: "fullName", message: messages.enter("your name") },
+  { match: /timezone/i, field: "timezone", message: messages.choose("a timezone from the list") },
+];
+
 function ProfileForm({
   initial,
   onSaved,
 }: {
-  initial: { fullName: string; phone: string; timezone: string };
-  onSaved: () => Promise<void>;
+  initial: z.input<typeof profileSchema>;
+  onSaved: () => Promise<unknown>;
 }) {
-  const [fullName, setFullName] = React.useState(initial.fullName);
-  const [phone, setPhone] = React.useState(initial.phone);
-  const [timezone, setTimezone] = React.useState(initial.timezone);
-  const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-
-  const dirty =
-    fullName.trim() !== initial.fullName.trim() ||
-    phone.trim() !== initial.phone.trim() ||
-    timezone !== initial.timezone;
+  const form = useZodForm(profileSchema, { defaultValues: initial });
 
   const zones = React.useMemo(() => {
     const list = commonTimezones();
-    if (timezone && !list.includes(timezone)) return [timezone, ...list];
-    return list;
-  }, [timezone]);
+    return list.includes(initial.timezone) ? list : [initial.timezone, ...list];
+  }, [initial.timezone]);
 
   return (
-    <form
+    <Form
+      form={form}
+      schema={profileSchema}
       className="space-y-3 border-t border-border pt-4"
-      onSubmit={(e) => {
-        e.preventDefault();
-        void (async () => {
-          setLoading(true);
-          setError(null);
-          try {
-            await updateProfile({
-              fullName: fullName.trim(),
-              phone: phone.trim(),
-              timezone,
-            });
-            await onSaved();
-            toast.success("Profile updated");
-          } catch (err) {
-            const message =
-              err instanceof ApiError
-                ? err.message
-                : err instanceof Error
-                  ? err.message
-                  : "Couldn't update profile";
-            setError(message);
-            toast.error(message);
-          } finally {
-            setLoading(false);
-          }
-        })();
+      onSubmit={async (values) => {
+        try {
+          await updateProfile(values);
+          form.reset(values);
+          toast.success("Profile updated");
+          await onSaved();
+        } catch (err) {
+          if (applyServerError(form, err, profileServerErrors)) return;
+          toast.error(unknownErrorMessage(err));
+        }
       }}
     >
       <h3 className="text-section">Editable details</h3>
       <div className="grid gap-3 sm:grid-cols-2">
-        <div className="space-y-1.5 sm:col-span-2">
-          <Label required>Full name</Label>
-          <Input
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-            required
-            aria-required="true"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label>Phone</Label>
-          <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
-        </div>
-        <div className="space-y-1.5">
-          <Label required>Timezone</Label>
-          <Select value={timezone} onValueChange={setTimezone}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select timezone" />
-            </SelectTrigger>
-            <SelectContent>
-              {zones.map((z) => (
-                <SelectItem key={z} value={z}>
-                  {z}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <TextField name="fullName" label="Full name" autoComplete="name" className="sm:col-span-2" />
+        <TextField name="phone" label="Phone" type="tel" autoComplete="tel" />
+        <SelectField name="timezone" label="Timezone">
+          {zones.map((zone) => (
+            <option key={zone} value={zone}>
+              {zone}
+            </option>
+          ))}
+        </SelectField>
       </div>
-      {error ? <p className="text-xs text-destructive">{error}</p> : null}
       <div className="flex justify-end">
-        <Button type="submit" size="sm" loading={loading} disabled={!dirty || loading}>
-          Save changes
-        </Button>
+        <SubmitButton requireDirty>Save changes</SubmitButton>
       </div>
-    </form>
+    </Form>
   );
 }
 
+const passwordSchema = z
+  .object({
+    currentPassword: z.string().min(1, messages.enter("your current password")),
+    newPassword: newPasswordSchema,
+    confirmPassword: z.string().min(1, "Re-enter your new password"),
+  })
+  .refine((v) => !v.confirmPassword || v.newPassword === v.confirmPassword, {
+    path: ["confirmPassword"],
+    message: messages.passwordsMatch,
+    when: () => true,
+  })
+  .refine((v) => !v.newPassword || v.newPassword !== v.currentPassword, {
+    path: ["newPassword"],
+    message: messages.passwordDifferent,
+    when: () => true,
+  });
+
+const passwordServerErrors: ServerErrorRule<z.input<typeof passwordSchema>>[] = [
+  { match: /current password is incorrect/i, field: "currentPassword", message: messages.currentPasswordWrong },
+  { match: /current password is required/i, field: "currentPassword", message: messages.enter("your current password") },
+  { match: /at least \d+ characters/i, field: "newPassword", message: messages.minLength(PASSWORD_MIN_LENGTH) },
+  { match: /must be different/i, field: "newPassword", message: messages.passwordDifferent },
+];
+
+const EMPTY_PASSWORDS = { currentPassword: "", newPassword: "", confirmPassword: "" };
+
 function ChangePasswordCard() {
   const { refresh } = useAuth();
-  const [currentPassword, setCurrentPassword] = React.useState("");
-  const [newPassword, setNewPassword] = React.useState("");
-  const [confirmPassword, setConfirmPassword] = React.useState("");
-  const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-
-  const clientError = (() => {
-    if (!newPassword && !confirmPassword) return null;
-    if (newPassword.length > 0 && newPassword.length < 8) {
-      return "Password must be at least 8 characters";
-    }
-    if (confirmPassword && newPassword !== confirmPassword) {
-      return "New passwords do not match";
-    }
-    return null;
-  })();
+  const form = useZodForm(passwordSchema, { defaultValues: EMPTY_PASSWORDS });
 
   return (
     <section className="rounded-lg border border-border bg-surface p-4">
       <h3 className="text-section">Change password</h3>
-      <p className="mt-1 text-meta">
-        Other signed-in devices will be signed out. This session stays active.
-      </p>
-      <form
+      <p className="mt-1 text-meta">Other signed-in devices will be signed out. This session stays active.</p>
+      <Form
+        form={form}
+        schema={passwordSchema}
         className="mt-4 space-y-3"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (clientError) {
-            setError(clientError);
-            return;
+        onSubmit={async ({ currentPassword, newPassword }) => {
+          try {
+            await changePassword({ currentPassword, newPassword });
+            form.reset(EMPTY_PASSWORDS);
+            toast.success("Password updated. Other devices have been signed out.");
+            await refresh();
+          } catch (err) {
+            if (applyServerError(form, err, passwordServerErrors)) return;
+            toast.error(unknownErrorMessage(err));
           }
-          void (async () => {
-            setLoading(true);
-            setError(null);
-            try {
-              await changePassword({ currentPassword, newPassword });
-              setCurrentPassword("");
-              setNewPassword("");
-              setConfirmPassword("");
-              await refresh();
-              toast.success("Password updated");
-            } catch (err) {
-              const message =
-                err instanceof ApiError
-                  ? err.message
-                  : err instanceof Error
-                    ? err.message
-                    : "Couldn't change password";
-              setError(message);
-              toast.error(message);
-            } finally {
-              setLoading(false);
-            }
-          })();
         }}
       >
-        <div className="space-y-1.5">
-          <Label required>Current password</Label>
-          <Input
-            type="password"
-            autoComplete="current-password"
-            value={currentPassword}
-            onChange={(e) => setCurrentPassword(e.target.value)}
-            required
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label required>New password</Label>
-          <Input
-            type="password"
-            autoComplete="new-password"
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-            required
-            minLength={8}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label required>Confirm new password</Label>
-          <Input
-            type="password"
-            autoComplete="new-password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            required
-            minLength={8}
-          />
-        </div>
-        {error || clientError ? (
-          <p className="text-xs text-destructive">{error ?? clientError}</p>
-        ) : null}
+        <TextField
+          name="currentPassword"
+          label="Current password"
+          type="password"
+          autoComplete="current-password"
+          deps={["newPassword"]}
+        />
+        <TextField
+          name="newPassword"
+          label="New password"
+          type="password"
+          autoComplete="new-password"
+          helper={`At least ${PASSWORD_MIN_LENGTH} characters.`}
+          deps={["confirmPassword"]}
+        />
+        <TextField name="confirmPassword" label="Confirm new password" type="password" autoComplete="new-password" />
         <div className="flex justify-end">
-          <Button
-            type="submit"
-            size="sm"
-            loading={loading}
-            disabled={
-              loading ||
-              !currentPassword ||
-              !newPassword ||
-              !confirmPassword ||
-              !!clientError
-            }
-          >
-            Update password
-          </Button>
+          <SubmitButton requireDirty>Update password</SubmitButton>
         </div>
-      </form>
+      </Form>
     </section>
   );
 }

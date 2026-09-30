@@ -18,6 +18,8 @@ import {
 } from "@/components/ui/select";
 import { crmApi } from "@/lib/api/crm";
 import { adminApi } from "@/lib/api/admin";
+import { useListFilterScope } from "@/features/auth/list-scope";
+import { TeamMemberFilter } from "@/features/teams/team-member-filter";
 import { formatMoney } from "@/features/analytics/charts";
 
 export function ForecastsView() {
@@ -48,13 +50,16 @@ export function ForecastsView() {
     }
   }, [pipelinesQuery.data, pipelineId]);
 
+  const { teamMemberFilter, ownerFilter, teamFilter } = useListFilterScope("forecasts:view");
   const teamsQuery = useQuery({
     queryKey: ["teams", "forecasts"],
     queryFn: () => adminApi.listTeams(new URLSearchParams({ limit: "100", isActive: "true" })),
+    enabled: teamFilter,
   });
   const usersQuery = useQuery({
     queryKey: ["users", "forecasts"],
     queryFn: () => adminApi.listUsers(new URLSearchParams({ limit: "100", isActive: "true" })),
+    enabled: ownerFilter,
   });
   const methodQuery = useQuery({
     queryKey: ["forecast-methodology"],
@@ -69,10 +74,10 @@ export function ForecastsView() {
       historyFrom,
       historyTo,
     });
-    if (teamId !== "all") p.set("teamId", teamId);
-    if (ownerUserId !== "all") p.set("ownerUserId", ownerUserId);
+    if (teamFilter && teamId !== "all") p.set("teamId", teamId);
+    if ((ownerFilter || teamMemberFilter) && ownerUserId !== "all") p.set("ownerUserId", ownerUserId);
     return p;
-  }, [pipelineId, from, to, historyFrom, historyTo, teamId, ownerUserId]);
+  }, [pipelineId, from, to, historyFrom, historyTo, teamId, ownerUserId, teamFilter, ownerFilter, teamMemberFilter]);
 
   const forecastQuery = useQuery({
     queryKey: ["pipeline-forecast", params.toString()],
@@ -124,30 +129,39 @@ export function ForecastsView() {
           <Label className="text-[11px]">History to</Label>
           <Input type="date" value={historyTo} onChange={(e) => setHistoryTo(e.target.value)} />
         </div>
-        <div className="space-y-1">
-          <Label className="text-[11px]">Team</Label>
-          <Select value={teamId} onValueChange={setTeamId}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All teams</SelectItem>
-              {(teamsQuery.data?.data ?? []).map((team) => (
-                <SelectItem key={team.id} value={team.id}>{team.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1 xl:col-span-2">
-          <Label className="text-[11px]">Sales executive</Label>
-          <Select value={ownerUserId} onValueChange={setOwnerUserId}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All owners</SelectItem>
-              {(usersQuery.data?.data ?? []).map((u) => (
-                <SelectItem key={u.id} value={u.id}>{u.fullName}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        {teamFilter ? (
+          <div className="space-y-1">
+            <Label className="text-[11px]">Team</Label>
+            <Select value={teamId} onValueChange={setTeamId}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All teams</SelectItem>
+                {(teamsQuery.data?.data ?? []).map((team) => (
+                  <SelectItem key={team.id} value={team.id}>{team.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
+        {ownerFilter ? (
+          <div className="space-y-1 xl:col-span-2">
+            <Label className="text-[11px]">Sales executive</Label>
+            <Select value={ownerUserId} onValueChange={setOwnerUserId}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All owners</SelectItem>
+                {(usersQuery.data?.data ?? []).map((u) => (
+                  <SelectItem key={u.id} value={u.id}>{u.fullName}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : teamMemberFilter ? (
+          <div className="space-y-1 xl:col-span-2">
+            <Label className="text-[11px]">Sales executive</Label>
+            <TeamMemberFilter value={ownerUserId} onChange={setOwnerUserId} className="w-full text-sm" />
+          </div>
+        ) : null}
       </div>
 
       {!pipelineId ? (

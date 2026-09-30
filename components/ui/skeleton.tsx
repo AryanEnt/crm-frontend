@@ -65,15 +65,23 @@ export function BoardSkeleton({ columns = 4, className }: { columns?: number; cl
       aria-busy="true"
     >
       {Array.from({ length: columns }).map((_, i) => (
-        <div
-          key={i}
-          className="w-64 shrink-0 rounded-md border border-border bg-surface p-2"
-        >
-          <Skeleton className="mb-3 h-4 w-24" />
-          <div className="space-y-2">
-            <Skeleton className="h-16 w-full" />
-            <Skeleton className="h-16 w-full" />
-            <Skeleton className="h-16 w-full" />
+        <div key={i} className="w-[264px] shrink-0 overflow-hidden rounded-card bg-surface-muted/60">
+          <div className="h-[3px] w-full bg-surface-muted" />
+          <div className="space-y-1.5 px-3 pb-2 pt-2.5">
+            <Skeleton className="h-3.5 w-24" />
+            <Skeleton className="h-4 w-32" />
+          </div>
+          <div className="space-y-1.5 px-1.5 pb-1.5">
+            {Array.from({ length: 3 - (i % 2) }).map((__, j) => (
+              <div key={j} className="space-y-2 rounded-md border border-line bg-surface py-2 pl-3 pr-2.5">
+                <div className="flex justify-between gap-3">
+                  <Skeleton className="h-3.5 w-28" />
+                  <Skeleton className="h-3.5 w-14" />
+                </div>
+                <Skeleton className="h-3 w-20" />
+                <Skeleton className="h-5 w-36 rounded-full" />
+              </div>
+            ))}
           </div>
         </div>
       ))}

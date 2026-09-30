@@ -1,9 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { Check, ChevronsUpDown, Loader2, Plus, X } from "lucide-react";
+import { ChevronsUpDown, Loader2, Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { dropdownMenuClass, dropdownTriggerClass } from "@/components/ui/dropdown-styles";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Command,
@@ -125,10 +126,8 @@ export function SearchableSelect({
           aria-expanded={open}
           disabled={disabled}
           className={cn(
-            "h-8 w-full justify-between gap-2 border border-line bg-surface px-2.5 font-normal shadow-none",
-            "hover:border-line hover:bg-surface",
-            "focus-visible:border-line focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30 focus-visible:ring-offset-0",
-            "data-[state=open]:border-line data-[state=open]:shadow-none data-[state=open]:ring-0",
+            dropdownTriggerClass,
+            "h-8 w-full justify-between gap-2 px-2.5",
             !selected && "text-foreground-subtle",
             error && "border-destructive focus-visible:ring-destructive",
             className,
@@ -174,7 +173,7 @@ export function SearchableSelect({
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        className="z-[80] w-[var(--radix-popover-trigger-width)] min-w-[16rem] overflow-visible border border-line bg-surface p-0 shadow-sm"
+        className={dropdownMenuClass}
         align="start"
         sideOffset={4}
         collisionPadding={12}
@@ -185,7 +184,10 @@ export function SearchableSelect({
           input?.focus();
         }}
       >
-        <Command shouldFilter={!isAsync} className="rounded-md border-0 shadow-none">
+        <Command
+          shouldFilter={!isAsync}
+          defaultValue={selected ? optionValue(selected) : undefined}
+        >
           <CommandInput
             placeholder={searchPlaceholder}
             value={q}
@@ -279,6 +281,10 @@ export function SearchableSelect({
   );
 }
 
+function optionValue(option: EntityPickerOption) {
+  return `${option.label} ${option.description ?? ""} ${option.meta ?? ""}`.trim();
+}
+
 function OptionItem({
   option,
   selected,
@@ -290,14 +296,11 @@ function OptionItem({
 }) {
   return (
     <CommandItem
-      value={`${option.label} ${option.description ?? ""} ${option.meta ?? ""}`}
+      value={optionValue(option)}
       onSelect={onSelect}
-      className={cn(
-        "cursor-pointer",
-        selected && "bg-transparent data-[selected=true]:bg-transparent",
-      )}
+      checked={selected}
+      className="cursor-pointer"
     >
-      <Check className={cn("size-3.5 shrink-0", selected ? "opacity-100" : "opacity-0")} />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm">{option.label}</span>
         {option.description || option.meta ? (

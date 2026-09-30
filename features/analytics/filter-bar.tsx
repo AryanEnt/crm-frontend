@@ -13,6 +13,8 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { adminApi } from "@/lib/api/admin";
 import { crmApi } from "@/lib/api/crm";
+import { useListFilterScope } from "@/features/auth/list-scope";
+import { TeamMemberFilter } from "@/features/teams/team-member-filter";
 
 export type AnalyticsFiltersState = {
   from: string;
@@ -63,13 +65,16 @@ export function AnalyticsFilterBar({
     queryKey: ["pipelines", "analytics"],
     queryFn: () => crmApi.listPipelines(),
   });
+  const { teamMemberFilter, ownerFilter, teamFilter } = useListFilterScope("analytics:view");
   const teamsQuery = useQuery({
     queryKey: ["teams", "analytics"],
     queryFn: () => adminApi.listTeams(new URLSearchParams({ limit: "100", isActive: "true" })),
+    enabled: teamFilter,
   });
   const usersQuery = useQuery({
     queryKey: ["users", "analytics"],
     queryFn: () => adminApi.listUsers(new URLSearchParams({ limit: "100", isActive: "true" })),
+    enabled: ownerFilter,
   });
   const anzscoQuery = useQuery({
     queryKey: ["anzsco", "analytics"],
@@ -102,30 +107,43 @@ export function AnalyticsFilterBar({
           </Select>
         </div>
       ) : null}
-      <div className="space-y-1">
-        <Label className="text-[11px]">Team</Label>
-        <Select value={value.teamId} onValueChange={(v) => set({ teamId: v })}>
-          <SelectTrigger><SelectValue placeholder="Team" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All teams</SelectItem>
-            {(teamsQuery.data?.data ?? []).map((t) => (
-              <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="space-y-1">
-        <Label className="text-[11px]">Sales executive</Label>
-        <Select value={value.ownerUserId} onValueChange={(v) => set({ ownerUserId: v })}>
-          <SelectTrigger><SelectValue placeholder="Owner" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All owners</SelectItem>
-            {(usersQuery.data?.data ?? []).map((u) => (
-              <SelectItem key={u.id} value={u.id}>{u.fullName}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      {teamFilter ? (
+        <div className="space-y-1">
+          <Label className="text-[11px]">Team</Label>
+          <Select value={value.teamId} onValueChange={(v) => set({ teamId: v })}>
+            <SelectTrigger><SelectValue placeholder="Team" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All teams</SelectItem>
+              {(teamsQuery.data?.data ?? []).map((t) => (
+                <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      ) : null}
+      {ownerFilter ? (
+        <div className="space-y-1">
+          <Label className="text-[11px]">Sales executive</Label>
+          <Select value={value.ownerUserId} onValueChange={(v) => set({ ownerUserId: v })}>
+            <SelectTrigger><SelectValue placeholder="Owner" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All owners</SelectItem>
+              {(usersQuery.data?.data ?? []).map((u) => (
+                <SelectItem key={u.id} value={u.id}>{u.fullName}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      ) : teamMemberFilter ? (
+        <div className="space-y-1">
+          <Label className="text-[11px]">Sales executive</Label>
+          <TeamMemberFilter
+            value={value.ownerUserId}
+            onChange={(v) => set({ ownerUserId: v })}
+            className="w-full text-sm"
+          />
+        </div>
+      ) : null}
       <div className="space-y-1">
         <Label className="text-[11px]">Source</Label>
         <Input

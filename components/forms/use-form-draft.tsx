@@ -14,19 +14,20 @@ import {
 
 const DRAFT_PREFIX = "crm-form-draft:";
 
-type UseFormDraftOptions<T extends FieldValues> = {
-  form: UseFormReturn<T>;
+type UseFormDraftOptions<T extends FieldValues, TOut extends FieldValues> = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- matches react-hook-form's own default context type
+  form: UseFormReturn<T, any, TOut>;
   draftKey?: string;
   enabled?: boolean;
   debounceMs?: number;
 };
 
-export function useFormDraft<T extends FieldValues>({
+export function useFormDraft<T extends FieldValues, TOut extends FieldValues = T>({
   form,
   draftKey,
   enabled = true,
   debounceMs = 800,
-}: UseFormDraftOptions<T>) {
+}: UseFormDraftOptions<T, TOut>) {
   const [lastDraftSavedAt, setLastDraftSavedAt] = React.useState<number | null>(null);
   const [isDirtyDraft, setIsDirtyDraft] = React.useState(false);
   const [pendingRestore, setPendingRestore] = React.useState<T | null>(null);
@@ -54,7 +55,9 @@ export function useFormDraft<T extends FieldValues>({
   React.useEffect(() => {
     if (!enabled || !storageKey) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const sub = form.watch((values) => {
+    const sub = form.watch((values, { type }) => {
+      // Only user edits count; setValue/reset (defaults, restores) must not create a draft.
+      if (type !== "change") return;
       setIsDirtyDraft(true);
       clearTimeout(timer);
       timer = setTimeout(() => {

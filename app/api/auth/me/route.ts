@@ -30,6 +30,10 @@ export async function GET() {
         refreshToken: rotated.refreshToken,
       });
     }
+    // Middleware treats any refresh cookie as a session, so a dead one would bounce /login back to /.
+    const envelope = (await upstream.json()) as BackendEnvelope<SessionUser>;
+    const res = NextResponse.json(envelope, { status: upstream.status });
+    return applyAuthCookies(res, { clear: true });
   }
 
   const envelope = (await upstream.json()) as BackendEnvelope<SessionUser>;

@@ -10,16 +10,34 @@ import {
   useReactTable,
   type ColumnDef,
   type ColumnFiltersState,
+  type RowData,
   type RowSelectionState,
   type SortingState,
   type VisibilityState,
 } from "@tanstack/react-table";
-import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Inbox, Plus, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Button } from "@/components/ui/button";
-import { EmptyState } from "@/components/ui/empty-state";
-import { LoadingState } from "@/components/ui/loading-state";
+import { Avatar } from "@/components/ui/console/avatar";
+import { Button } from "@/components/ui/console/button";
+import { Checkbox } from "@/components/ui/console/checkbox";
+import { EmptyState } from "@/components/ui/console/empty-state";
+import { Skeleton } from "@/components/ui/console/skeleton";
+import {
+  Table,
+  TableCard,
+  TableCell,
+  TableHead,
+  TablePagination,
+  TableRow,
+} from "@/components/ui/console/data-table";
+
+declare module "@tanstack/react-table" {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  interface ColumnMeta<TData extends RowData, TValue> {
+    /** Plain-text column name for menus when `header` renders a component. */
+    label?: string;
+  }
+}
 
 export type DataTableProps<TData, TValue> = {
   columns: ColumnDef<TData, TValue>[];
@@ -32,10 +50,20 @@ export type DataTableProps<TData, TValue> = {
   emptyDescription?: string;
   emptyActionLabel?: string;
   onEmptyAction?: () => void;
+  emptyIcon?: LucideIcon;
   pageSize?: number;
   className?: string;
   onRowSelectionChange?: (rows: TData[]) => void;
+  /** Row click / Enter. Clicks on links, buttons and checkboxes inside the row are ignored. */
+  onRowClick?: (row: TData) => void;
+  /** Noun for the footer, e.g. "customers" -> "Showing 1–10 of 42 customers". */
+  itemLabel?: string;
+  /** Hidden columns from `useColumnVisibility`; omit to show every column. */
+  columnVisibility?: VisibilityState;
 };
+
+const SELECT_COLUMN_ID = "select";
+const ALL_VISIBLE: VisibilityState = {};
 
 export function DataTable<TData, TValue>({
   columns,
@@ -46,14 +74,17 @@ export function DataTable<TData, TValue>({
   emptyDescription = "Adjust filters or create a new record.",
   emptyActionLabel,
   onEmptyAction,
+  emptyIcon = Inbox,
   pageSize = 10,
   className,
   onRowSelectionChange,
+  onRowClick,
+  itemLabel,
+  columnVisibility = ALL_VISIBLE,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
   const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({});
-  const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
 
   const table = useReactTable({
     data,
@@ -69,7 +100,6 @@ export function DataTable<TData, TValue>({
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onRowSelectionChange: setRowSelection,
-    onColumnVisibilityChange: setColumnVisibility,
     onGlobalFilterChange: undefined,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
@@ -86,125 +116,186 @@ export function DataTable<TData, TValue>({
     onRowSelectionChange(selected);
   }, [rowSelection, onRowSelectionChange, table]);
 
+  const headerGroups = table.getHeaderGroups();
+  const visibleColumns = table.getVisibleLeafColumns();
+  const rows = table.getRowModel().rows;
+  const filteredCount = table.getFilteredRowModel().rows.length;
+  const { pageIndex, pageSize: currentPageSize } = table.getState().pagination;
+
+  const head = (
+    <thead>
+      {headerGroups.map((headerGroup) => (
+        <tr key={headerGroup.id}>
+          {headerGroup.headers.map((header) => (
+            <TableHead
+              key={header.id}
+              className={cn(header.column.id === SELECT_COLUMN_ID && "w-10 pr-0")}
+            >
+              {header.isPlaceholder
+                ? null
+                : flexRender(header.column.columnDef.header, header.getContext())}
+            </TableHead>
+          ))}
+        </tr>
+      ))}
+    </thead>
+  );
+
+  let body: React.ReactNode;
   if (loading) {
-    return <LoadingState variant="table" className={className} />;
+    body = (
+      <Table aria-busy="true">
+        {head}
+        <tbody>
+          {Array.from({ length: 6 }, (_, i) => (
+            <tr key={i} className="[&>td]:border-b [&>td]:border-line last:[&>td]:border-b-0">
+              {visibleColumns.map((column, colIndex) => (
+                <td
+                  key={column.id}
+                  className={cn(
+                    "h-(--table-row-height) px-3 first:pl-4 last:pr-4",
+                    column.id === SELECT_COLUMN_ID && "w-10 pr-0",
+                  )}
+                >
+                  {column.id === SELECT_COLUMN_ID ? (
+                    <Skeleton className="size-4 rounded-sm" />
+                  ) : colIndex <= 1 ? (
+                    <div className="flex items-center gap-2.5">
+                      <Skeleton className="size-6 rounded-full" />
+                      <Skeleton className="h-3 w-28" />
+                    </div>
+                  ) : (
+                    <Skeleton className="h-3 w-16" />
+                  )}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </Table>
+    );
+  } else if (rows.length === 0) {
+    body = (
+      <EmptyState
+        icon={emptyIcon}
+        title={emptyTitle}
+        description={emptyDescription}
+        action={
+          emptyActionLabel && onEmptyAction ? (
+            <Button variant="primary" onClick={onEmptyAction}>
+              <Plus aria-hidden />
+              {emptyActionLabel}
+            </Button>
+          ) : null
+        }
+      />
+    );
+  } else {
+    body = (
+      <Table>
+        {head}
+        <tbody>
+          {rows.map((row) => (
+            <TableRow
+              key={row.id}
+              selected={row.getIsSelected()}
+              onActivate={onRowClick ? () => onRowClick(row.original) : undefined}
+            >
+              {row.getVisibleCells().map((cell) => (
+                <TableCell
+                  key={cell.id}
+                  className={cn(cell.column.id === SELECT_COLUMN_ID && "w-10 pr-0")}
+                  data-row-ignore={cell.column.id === SELECT_COLUMN_ID ? true : undefined}
+                >
+                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                </TableCell>
+              ))}
+            </TableRow>
+          ))}
+        </tbody>
+      </Table>
+    );
   }
 
   return (
-    <div className={cn("overflow-hidden rounded-lg border border-border bg-surface", className)}>
-      <div className="overflow-x-auto crm-scroll">
-        <table className="w-full min-w-[640px] border-collapse text-left text-sm">
-          <thead className="bg-surface-muted/70">
-            {table.getHeaderGroups().map((headerGroup) => (
-              <tr key={headerGroup.id} className="border-b border-border">
-                {headerGroup.headers.map((header) => (
-                  <th
-                    key={header.id}
-                    className="h-9 px-3 text-label text-foreground-muted"
-                  >
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(header.column.columnDef.header, header.getContext())}
-                  </th>
-                ))}
-              </tr>
-            ))}
-          </thead>
-          <tbody>
-            {table.getRowModel().rows.length ? (
-              table.getRowModel().rows.map((row) => (
-                <tr
-                  key={row.id}
-                  data-state={row.getIsSelected() && "selected"}
-                  className="border-b border-border/70 last:border-0 hover:bg-surface-muted/50 data-[state=selected]:bg-brand-soft/40"
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className="density-row px-3 align-middle text-foreground">
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </td>
-                  ))}
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={columns.length} className="p-0">
-                  <EmptyState
-                    title={emptyTitle}
-                    description={emptyDescription}
-                    actionLabel={emptyActionLabel}
-                    onAction={onEmptyAction}
-                    className="rounded-none border-0 py-12"
-                  />
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="flex items-center justify-between gap-3 border-t border-border px-3 py-2">
-        <p className="text-meta">
-          <span className="text-data">
-            {table.getFilteredSelectedRowModel().rows.length}
-          </span>{" "}
-          of{" "}
-          <span className="text-data">{table.getFilteredRowModel().rows.length}</span> selected
-        </p>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-foreground-muted">
-            Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount() || 1}
-          </span>
-          <Button
-            variant="outline"
-            size="icon-sm"
-            onClick={() => table.previousPage()}
-            disabled={!table.getCanPreviousPage()}
-            aria-label="Previous page"
-          >
-            <ChevronLeft className="size-3.5" />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon-sm"
-            onClick={() => table.nextPage()}
-            disabled={!table.getCanNextPage()}
-            aria-label="Next page"
-          >
-            <ChevronRight className="size-3.5" />
-          </Button>
-        </div>
-      </div>
-    </div>
+    <TableCard
+      className={className}
+      scrollClassName="max-h-[calc(100dvh-17rem)]"
+      footer={
+        !loading && filteredCount > 0 ? (
+          <TablePagination
+            page={pageIndex + 1}
+            pageSize={currentPageSize}
+            total={filteredCount}
+            itemLabel={itemLabel}
+            onPageChange={(next) => table.setPageIndex(next - 1)}
+            onPageSizeChange={(size) => {
+              table.setPageSize(size);
+              table.setPageIndex(0);
+            }}
+          />
+        ) : null
+      }
+    >
+      {body}
+    </TableCard>
   );
 }
 
 export function createSelectColumn<TData>(): ColumnDef<TData> {
   return {
-    id: "select",
+    id: SELECT_COLUMN_ID,
     header: ({ table }) => (
       <Checkbox
-        checked={
-          table.getIsAllPageRowsSelected()
-            ? true
-            : table.getIsSomePageRowsSelected()
-              ? "indeterminate"
-              : false
-        }
-        onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-        aria-label="Select all"
+        aria-label="Select all rows on this page"
+        checked={table.getIsAllPageRowsSelected()}
+        indeterminate={!table.getIsAllPageRowsSelected() && table.getIsSomePageRowsSelected()}
+        onCheckedChange={(checked) => table.toggleAllPageRowsSelected(checked)}
       />
     ),
     cell: ({ row }) => (
       <Checkbox
-        checked={row.getIsSelected()}
-        onCheckedChange={(value) => row.toggleSelected(!!value)}
         aria-label="Select row"
+        checked={row.getIsSelected()}
+        onCheckedChange={(checked) => row.toggleSelected(checked)}
       />
     ),
     enableSorting: false,
     enableHiding: false,
     size: 36,
   };
+}
+
+/** Avatar + name + secondary line, matching the Control Center users table. */
+export function EntityCell({
+  name,
+  subtitle,
+  avatarName,
+  children,
+}: {
+  name: React.ReactNode;
+  subtitle?: React.ReactNode;
+  /** Text used for initials and tint; defaults to `name` when it is a string. */
+  avatarName?: string;
+  children?: React.ReactNode;
+}) {
+  const initialsSource = avatarName ?? (typeof name === "string" ? name : "");
+  return (
+    <div className="flex min-w-0 items-center gap-2.5 comfortable:gap-3">
+      <Avatar
+        name={initialsSource || "?"}
+        size="sm"
+        className="comfortable:size-8 comfortable:text-caption"
+      />
+      <div className="min-w-0">
+        <div className="flex min-w-0 items-center gap-2">
+          <p className="truncate font-medium text-ink">{name}</p>
+          {children}
+        </div>
+        {subtitle ? <p className="truncate text-caption text-ink-muted">{subtitle}</p> : null}
+      </div>
+    </div>
+  );
 }
 
 export function SortableHeader({
@@ -218,20 +309,24 @@ export function SortableHeader({
   title: string;
 }) {
   const sorted = column.getIsSorted();
+  const Arrow = sorted === "asc" ? ArrowUp : sorted === "desc" ? ArrowDown : ArrowUpDown;
   return (
     <button
       type="button"
-      className="inline-flex items-center gap-1 hover:text-foreground"
+      className={cn(
+        "group/sort -mx-1 inline-flex items-center gap-1 rounded px-1 py-0.5 transition-colors duration-150 hover:text-ink",
+        sorted && "text-ink",
+      )}
       onClick={() => column.toggleSorting(sorted === "asc")}
     >
       {title}
-      {sorted === "asc" ? (
-        <ArrowUp className="size-3" />
-      ) : sorted === "desc" ? (
-        <ArrowDown className="size-3" />
-      ) : (
-        <ArrowUpDown className="size-3 opacity-50" />
-      )}
+      <Arrow
+        aria-hidden
+        className={cn(
+          "size-3 transition-opacity duration-150",
+          sorted ? "opacity-100" : "opacity-0 group-hover/sort:opacity-60 group-focus-visible/sort:opacity-60",
+        )}
+      />
     </button>
   );
 }

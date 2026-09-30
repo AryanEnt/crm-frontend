@@ -2,13 +2,14 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Plus } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { FilterBar } from "@/components/ui/filter-bar";
-import { DataTable, SortableHeader } from "@/components/ui/data-table";
+import { DataTable, EntityCell, SortableHeader } from "@/components/ui/data-table";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { ErrorState } from "@/components/ui/error-state";
 import {
@@ -21,10 +22,13 @@ import {
 import { useAuth } from "@/features/auth/auth-provider";
 import { crmApi, type Deal } from "@/lib/api/crm";
 import { DealQuickCreateDrawer } from "@/features/deals/deal-quick-create";
-import {
-  TeamMemberFilterChip,
-  useTeamMemberFilter,
-} from "@/features/teams/team-member-filter";
+import { ScopeFilterControls, useOwnerOptions, useScopeFilters } from "@/features/teams/scope-filters";
+import { InlineSelectCell } from "@/components/ui/inline-select-cell";
+import { ColumnsMenu } from "@/components/ui/console/toolbar";
+import { useColumnVisibility } from "@/lib/column-visibility";
+import { DEAL_PRIORITIES } from "@/validations/deal";
+
+const PRIORITY_OPTIONS = DEAL_PRIORITIES.map((p) => ({ value: p, label: p[0].toUpperCase() + p.slice(1) }));
 
 const attentionLabel: Record<string, string> = {
   no_next_activity: "No next activity",
@@ -51,15 +55,25 @@ export function DealsTableView({
   pipelineId?: string;
   onPipelineIdChange?: (id: string) => void;
 }) {
-  const { user, can } = useAuth();
+  const { can, user } = useAuth();
+  const router = useRouter();
   const qc = useQueryClient();
+  const canEditDeals = can("deals:edit");
+  // The API ignores owner changes from other roles.
+  const canAssignOwner =
+    canEditDeals && (user?.roleCode === "sales_manager" || user?.roleCode === "super_admin");
+  const ownersQuery = useOwnerOptions(canAssignOwner);
+  const ownerOptions = React.useMemo(
+    () => (ownersQuery.data?.data ?? []).map((u) => ({ value: u.id, label: u.fullName })),
+    [ownersQuery.data],
+  );
   const [search, setSearch] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState("open");
   const [createOpen, setCreateOpen] = React.useState(false);
   const [localPipelineId, setLocalPipelineId] = React.useState("");
   const setPipelineId = onPipelineIdChange ?? setLocalPipelineId;
-  const isTeamLead = user?.roleCode === "sales_manager";
-  const { salesExecutiveId, setSalesExecutiveId } = useTeamMemberFilter(isTeamLead);
+  const scopeFilters = useScopeFilters("deals:view");
+  const scopeParams = scopeFilters.params;
 
   const pipelinesQuery = useQuery({
     queryKey: ["pipelines", "sales-board"],
@@ -79,37 +93,56 @@ export function DealsTableView({
     if (search) p.set("q", search);
     if (activePipelineId) p.set("pipelineId", activePipelineId);
     if (statusFilter) p.set("status", statusFilter);
-    if (isTeamLead && salesExecutiveId !== "all") p.set("salesExecutiveId", salesExecutiveId);
+    for (const [key, value] of scopeParams) p.set(key, value);
     return p;
-  }, [search, activePipelineId, isTeamLead, salesExecutiveId, statusFilter]);
+  }, [search, activePipelineId, scopeParams, statusFilter]);
 
   const dealsQuery = useQuery({
     queryKey: ["deals", params.toString()],
     queryFn: () => crmApi.listDeals(params),
   });
 
+  const refreshDeals = React.useCallback(async () => {
+    await qc.invalidateQueries({ queryKey: ["deals"] });
+    void qc.invalidateQueries({ queryKey: ["deal-board"] });
+  }, [qc]);
+
   const columns = React.useMemo<ColumnDef<Deal>[]>(
     () => [
       {
         accessorKey: "title",
         header: ({ column }) => <SortableHeader column={column} title="Deal" />,
+        enableHiding: false,
         cell: ({ row }) => (
-          <Link
-            href={`/deals/${row.original.id}`}
-            className="font-medium text-foreground hover:text-brand"
-          >
-            {row.original.title}
-          </Link>
+          <EntityCell
+            name={
+              <Link href={`/deals/${row.original.id}`} className="hover:text-brand">
+                {row.original.title}
+              </Link>
+            }
+            avatarName={row.original.customerName || row.original.title}
+            subtitle={row.original.customerName}
+          />
         ),
-      },
-      {
-        accessorKey: "customerName",
-        header: "Customer",
       },
       {
         accessorKey: "ownerName",
         header: "Owner",
-        cell: ({ row }) => row.original.ownerName ?? "—",
+        cell: ({ row }) => (
+          <InlineSelectCell
+            label="owner"
+            value={row.original.ownerUserId}
+            options={ownerOptions}
+            loading={ownersQuery.isLoading}
+            disabled={!canAssignOwner}
+            onSave={async (ownerUserId) => {
+              await crmApi.updateDeal(row.original.id, { ownerUserId });
+              await refreshDeals();
+            }}
+          >
+            {row.original.ownerName ?? "—"}
+          </InlineSelectCell>
+        ),
       },
       {
         accessorKey: "stageName",
@@ -129,7 +162,20 @@ export function DealsTableView({
       {
         accessorKey: "priority",
         header: "Priority",
-        cell: ({ row }) => <StatusBadge tone="neutral">{row.original.priority}</StatusBadge>,
+        cell: ({ row }) => (
+          <InlineSelectCell
+            label="priority"
+            value={row.original.priority}
+            options={PRIORITY_OPTIONS}
+            disabled={!canEditDeals}
+            onSave={async (priority) => {
+              await crmApi.updateDeal(row.original.id, { priority });
+              await refreshDeals();
+            }}
+          >
+            <StatusBadge tone="neutral">{row.original.priority}</StatusBadge>
+          </InlineSelectCell>
+        ),
       },
       {
         accessorKey: "status",
@@ -182,8 +228,9 @@ export function DealsTableView({
         cell: ({ row }) => `${row.original.ageDays}d`,
       },
     ],
-    [],
+    [canAssignOwner, canEditDeals, ownerOptions, ownersQuery.isLoading, refreshDeals],
   );
+  const columnPrefs = useColumnVisibility("deals", columns);
 
   if (dealsQuery.isError) {
     return <ErrorState onRetry={() => void dealsQuery.refetch()} />;
@@ -223,15 +270,14 @@ export function DealsTableView({
         search={search}
         onSearchChange={setSearch}
         searchPlaceholder="Search deals or customers…"
+        trailing={<ColumnsMenu {...columnPrefs.menu} />}
         onClear={() => {
           setSearch("");
-          setSalesExecutiveId("all");
+          scopeFilters.reset();
           setStatusFilter("open");
         }}
       >
-        {isTeamLead ? (
-          <TeamMemberFilterChip value={salesExecutiveId} onChange={setSalesExecutiveId} />
-        ) : null}
+        <ScopeFilterControls filters={scopeFilters} />
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="h-8 w-[130px] text-xs">
             <SelectValue placeholder="Status" />
@@ -246,10 +292,13 @@ export function DealsTableView({
       </FilterBar>
       <DataTable
         columns={columns}
+        columnVisibility={columnPrefs.columnVisibility}
         data={dealsQuery.data?.data ?? []}
         loading={dealsQuery.isLoading}
         searchValue={search}
         pageSize={10}
+        itemLabel="deals"
+        onRowClick={(deal) => router.push(`/deals/${deal.id}`)}
       />
       <DealQuickCreateDrawer
         open={createOpen}

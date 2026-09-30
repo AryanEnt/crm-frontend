@@ -82,6 +82,7 @@ export const routePermissions: Record<string, PermissionCode[]> = {
   "/calendar": ["activities:view"],
   "/documents": ["documents:view"],
   "/email": ["email:view"],
+  "/calls": ["leads:view", "customers:view"],
   "/settings/email": ["email:view", "email:send"],
   "/settings/email/templates": ["email:manage"],
   "/admin/gmail": ["email:configure", "email:view"],

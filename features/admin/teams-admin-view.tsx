@@ -33,11 +33,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useAuth } from "@/features/auth/auth-provider";
+import { dataScopeFor } from "@/features/auth/list-scope";
 import { adminApi, type AdminTeam, type AdminTeamMember, type AdminUser } from "@/lib/api/admin";
 import { ErrorState } from "@/components/ui/error-state";
 
 export function TeamsAdminView() {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
+  const scope = dataScopeFor(user, "teams:view");
+  /** Own scope gets the team without its member list (the server redacts it). */
+  const canViewMembers = scope !== "own";
   const qc = useQueryClient();
   const [search, setSearch] = React.useState("");
   const [status, setStatus] = React.useState("all");
@@ -94,18 +98,26 @@ export function TeamsAdminView() {
       {
         accessorKey: "name",
         header: ({ column }) => <SortableHeader column={column} title="Team" />,
-        cell: ({ row }) => (
-          <button
-            type="button"
-            className="text-left"
-            onClick={() => setViewTeam(row.original)}
-          >
-            <p className="font-medium text-foreground hover:underline">{row.original.name}</p>
-            <p className="text-xs text-foreground-muted line-clamp-1">
-              {row.original.description || "—"}
-            </p>
-          </button>
-        ),
+        cell: ({ row }) =>
+          canViewMembers ? (
+            <button
+              type="button"
+              className="text-left"
+              onClick={() => setViewTeam(row.original)}
+            >
+              <p className="font-medium text-foreground hover:underline">{row.original.name}</p>
+              <p className="text-xs text-foreground-muted line-clamp-1">
+                {row.original.description || "—"}
+              </p>
+            </button>
+          ) : (
+            <div>
+              <p className="font-medium text-foreground">{row.original.name}</p>
+              <p className="text-xs text-foreground-muted line-clamp-1">
+                {row.original.description || "—"}
+              </p>
+            </div>
+          ),
       },
       {
         accessorKey: "teamLeadName",
@@ -117,15 +129,18 @@ export function TeamsAdminView() {
       {
         accessorKey: "memberCount",
         header: "Members",
-        cell: ({ row }) => (
-          <button
-            type="button"
-            className="text-foreground-muted hover:text-foreground hover:underline"
-            onClick={() => setViewTeam(row.original)}
-          >
-            {row.original.memberCount}
-          </button>
-        ),
+        cell: ({ row }) =>
+          canViewMembers ? (
+            <button
+              type="button"
+              className="text-foreground-muted hover:text-foreground hover:underline"
+              onClick={() => setViewTeam(row.original)}
+            >
+              {row.original.memberCount}
+            </button>
+          ) : (
+            <span className="text-foreground-muted">{row.original.memberCount}</span>
+          ),
       },
       {
         accessorKey: "isActive",
@@ -161,7 +176,7 @@ export function TeamsAdminView() {
         ),
       },
     ],
-    [can],
+    [can, canViewMembers],
   );
 
   if (teamsQuery.isError) {
@@ -171,9 +186,16 @@ export function TeamsAdminView() {
   return (
     <div className="space-y-3">
       <PageHeader
-        breadcrumbs={[{ label: "Control Center", href: "/" }, { label: "Teams" }]}
-        title="Teams"
-        description="Create teams, assign Team Leads, and manage membership for CRM operating roles."
+        breadcrumbs={[
+          scope === "organization" ? { label: "Control Center", href: "/" } : { label: "Workspace", href: "/" },
+          { label: scope === "organization" ? "Teams" : "Your team" },
+        ]}
+        title={scope === "organization" ? "Teams" : "Your team"}
+        description={
+          scope === "organization"
+            ? "Create teams, assign Team Leads, and manage membership for CRM operating roles."
+            : "The team you work in and who leads it. Team setup is managed by your Super Admin."
+        }
         actions={
           can("teams:create") || can("teams:manage") ? (
             <Button size="sm" onClick={() => setCreateOpen(true)}>

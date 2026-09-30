@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Command as CommandPrimitive } from "cmdk";
-import { Search } from "lucide-react";
+import { Check, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const Command = React.forwardRef<
@@ -81,18 +81,31 @@ CommandGroup.displayName = CommandPrimitive.Group.displayName;
 
 export const CommandItem = React.forwardRef<
   React.ElementRef<typeof CommandPrimitive.Item>,
-  React.ComponentPropsWithoutRef<typeof CommandPrimitive.Item>
->(({ className, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof CommandPrimitive.Item> & {
+    /** Single-select value state: renders a trailing brand check and never fills the row. */
+    checked?: boolean;
+  }
+>(({ className, checked, children, ...props }, ref) => (
   <CommandPrimitive.Item
     ref={ref}
+    data-checked={checked || undefined}
     className={cn(
-      "relative flex cursor-default select-none items-center gap-2 rounded-sm bg-transparent px-2 py-1.5 text-sm outline-none",
-      "hover:bg-surface-muted data-[selected=true]:bg-surface-muted data-[selected=true]:text-foreground",
+      "relative flex cursor-default select-none items-center gap-2 rounded-sm bg-transparent px-2 py-1.5 text-sm text-foreground outline-none",
+      "hover:bg-surface-muted",
+      !checked && "data-[selected=true]:bg-surface-muted",
       "data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50",
       className,
     )}
     {...props}
-  />
+  >
+    {children}
+    {checked !== undefined ? (
+      <Check
+        aria-hidden
+        className={cn("ml-auto size-4 shrink-0 text-brand", !checked && "invisible")}
+      />
+    ) : null}
+  </CommandPrimitive.Item>
 ));
 CommandItem.displayName = CommandPrimitive.Item.displayName;
 

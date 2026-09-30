@@ -2,12 +2,12 @@ import type { StageSlot } from "@/components/ui/stage-rail";
 
 /** Soft + solid class pairs for stage badges (solid text on soft fill). */
 export const stageBadgeClass: Record<StageSlot, string> = {
-  "1": "bg-stage-1-soft text-stage-1",
-  "2": "bg-stage-2-soft text-stage-2",
-  "3": "bg-stage-3-soft text-stage-3",
-  "4": "bg-stage-4-soft text-stage-4",
-  won: "bg-stage-won-soft text-stage-won",
-  lost: "bg-stage-lost-soft text-stage-lost",
+  "1": "bg-stage-1-soft text-stage-1-ink",
+  "2": "bg-stage-2-soft text-stage-2-ink",
+  "3": "bg-stage-3-soft text-stage-3-ink",
+  "4": "bg-stage-4-soft text-stage-4-ink",
+  won: "bg-stage-won-soft text-stage-won-ink",
+  lost: "bg-stage-lost-soft text-stage-lost-ink",
 };
 
 export type PriorityLevel = "low" | "medium" | "high" | "urgent";

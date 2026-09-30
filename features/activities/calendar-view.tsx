@@ -36,7 +36,7 @@ import {
   ModalTitle,
 } from "@/components/ui/modal";
 import { useAuth } from "@/features/auth/auth-provider";
-import { adminApi } from "@/lib/api/admin";
+import { ScopeFilterControls, useScopeFilters } from "@/features/teams/scope-filters";
 import { crmApi, type Activity } from "@/lib/api/crm";
 import { ActivityQuickCreateDialog } from "@/features/activities/activity-quick-create";
 import {
@@ -161,16 +161,11 @@ export function CalendarView() {
   const { user, can } = useAuth();
   const qc = useQueryClient();
   const timezone = user?.timezone || "UTC";
-  const role = user?.roleCode;
-  const isAdmin = role === "super_admin";
-  const isTeamLead = role === "sales_manager";
-  const isOwnOnly = role === "sales_executive" || role === "sales_support";
-  const teamIdForScope = user?.teamIds?.[0];
+  const scopeFilters = useScopeFilters("activities:view");
+  const scopeParams = scopeFilters.params;
 
   const [view, setView] = React.useState<ViewMode>("month");
   const [cursor, setCursor] = React.useState(() => new Date());
-  const [ownerUserId, setOwnerUserId] = React.useState(isOwnOnly && user?.id ? user.id : "all");
-  const [teamId, setTeamId] = React.useState("all");
   const [typeCode, setTypeCode] = React.useState("all");
   const [pipelineId, setPipelineId] = React.useState("all");
   const [status, setStatus] = React.useState("all");
@@ -178,12 +173,6 @@ export function CalendarView() {
   const [createDueAt, setCreateDueAt] = React.useState<string | undefined>();
   const [selected, setSelected] = React.useState<Activity | null>(null);
   const [tzDraft, setTzDraft] = React.useState(timezone);
-
-  React.useEffect(() => {
-    if (isOwnOnly && user?.id) {
-      setOwnerUserId(user.id);
-    }
-  }, [isOwnOnly, user?.id]);
 
   const range = React.useMemo(() => {
     if (view === "month") {
@@ -211,17 +200,12 @@ export function CalendarView() {
       to: range.to.toISOString(),
       limit: "500",
     });
-    if (isOwnOnly && user?.id) {
-      p.set("ownerUserId", user.id);
-    } else if (ownerUserId !== "all") {
-      p.set("ownerUserId", ownerUserId);
-    }
-    if (!isOwnOnly && teamId !== "all") p.set("teamId", teamId);
+    for (const [key, value] of scopeParams) p.set(key, value);
     if (typeCode !== "all") p.set("type", typeCode);
     if (pipelineId !== "all") p.set("pipelineId", pipelineId);
     if (status !== "all") p.set("status", status);
     return p;
-  }, [range, ownerUserId, teamId, typeCode, pipelineId, status, isOwnOnly, user?.id]);
+  }, [range, scopeParams, typeCode, pipelineId, status]);
 
   const calendarQuery = useQuery({
     queryKey: ["calendar", params.toString()],
@@ -231,30 +215,10 @@ export function CalendarView() {
     queryKey: ["activity-types"],
     queryFn: () => crmApi.listActivityTypes(),
   });
-  const usersQuery = useQuery({
-    queryKey: ["users", "calendar", isAdmin ? "org" : "team", teamIdForScope],
-    enabled: (isAdmin || isTeamLead) && can("users:view"),
-    queryFn: () => {
-      const p = new URLSearchParams({ limit: "100", isActive: "true" });
-      if (isTeamLead && teamIdForScope) p.set("teamId", teamIdForScope);
-      return adminApi.listUsers(p);
-    },
-  });
-  const teamsQuery = useQuery({
-    queryKey: ["teams", "calendar"],
-    queryFn: () => adminApi.listTeams(new URLSearchParams({ limit: "100", isActive: "true" })),
-    enabled: isAdmin && can("teams:view"),
-  });
   const pipelinesQuery = useQuery({
     queryKey: ["pipelines", "calendar"],
     queryFn: () => crmApi.listPipelines("sales"),
   });
-
-  const ownerOptions = React.useMemo(() => {
-    const rows = usersQuery.data?.data ?? [];
-    if (isAdmin || isTeamLead) return rows;
-    return user ? [{ id: user.id, fullName: user.fullName }] : [];
-  }, [usersQuery.data?.data, isAdmin, isTeamLead, user]);
 
   const events = React.useMemo(
     () => calendarQuery.data?.data ?? [],
@@ -289,8 +253,7 @@ export function CalendarView() {
   }, [cursor, timezone, view]);
 
   const filtersActive =
-    (!isOwnOnly && ownerUserId !== "all") ||
-    teamId !== "all" ||
+    scopeFilters.active ||
     typeCode !== "all" ||
     pipelineId !== "all" ||
     status !== "all";
@@ -412,8 +375,7 @@ export function CalendarView() {
         onClear={
           filtersActive
             ? () => {
-                if (!isOwnOnly) setOwnerUserId("all");
-                setTeamId("all");
+                scopeFilters.reset();
                 setTypeCode("all");
                 setPipelineId("all");
                 setStatus("all");
@@ -421,42 +383,7 @@ export function CalendarView() {
             : undefined
         }
       >
-        {isOwnOnly ? (
-          <div className="flex h-8 items-center rounded-md border border-border bg-surface-muted/50 px-2.5 text-xs text-foreground-muted">
-            Owner: {user?.fullName ?? "You"}
-          </div>
-        ) : (
-          <Select value={ownerUserId} onValueChange={setOwnerUserId}>
-            <SelectTrigger className="w-[160px]">
-              <SelectValue placeholder="User" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">
-                {isTeamLead ? "All team members" : "All users"}
-              </SelectItem>
-              {ownerOptions.map((u) => (
-                <SelectItem key={u.id} value={u.id}>
-                  {u.fullName}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-        {isAdmin ? (
-          <Select value={teamId} onValueChange={setTeamId}>
-            <SelectTrigger className="w-[140px]">
-              <SelectValue placeholder="Team" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All teams</SelectItem>
-              {(teamsQuery.data?.data ?? []).map((t) => (
-                <SelectItem key={t.id} value={t.id}>
-                  {t.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        ) : null}
+        <ScopeFilterControls filters={scopeFilters} />
         <Select value={typeCode} onValueChange={setTypeCode}>
           <SelectTrigger className="w-[150px]">
             <SelectValue placeholder="Type" />

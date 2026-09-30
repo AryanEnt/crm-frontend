@@ -2,80 +2,128 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
-import { z } from "zod";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { toast } from "sonner";
+import { Check, LockKeyhole, Mail } from "lucide-react";
+import { Form, PasswordField, TextField, useZodForm } from "@/components/forms";
+import { Button } from "@/components/ui/console/button";
 import { useAuth } from "@/features/auth/auth-provider";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { copy } from "@/lib/copy";
+import { canAccessPath } from "@/lib/permissions";
 import { ApiError } from "@/types/api";
+import { loginSchema, type LoginValues } from "@/validations/auth";
 
-const schema = z.object({
-  email: z.string().email("Enter a valid email"),
-  password: z.string().min(1, "Password is required"),
-});
+/** Label + 44px control + one message line, so inline errors never move the fields below. */
+const FIELD_SLOT = "min-h-22";
 
-type FormValues = z.infer<typeof schema>;
+/** Both fields are always required here, so the required marker is hidden. */
+const FIELDS =
+  "flex flex-col gap-2 [&_input]:h-11 [&_input]:rounded-xl [&_input]:bg-surface [&_input]:pl-9 [&_label>span]:hidden";
 
-export function LoginForm() {
+const UNREACHABLE = new Set([0, 502, 503, 504]);
+
+function submitErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (UNREACHABLE.has(error.status)) return copy.error.network;
+    if (error.status === 401 && /deactivated/i.test(error.message)) {
+      return "This account is deactivated. Ask your workspace admin to reactivate it.";
+    }
+    if (error.status === 400 || error.status === 401) return "Incorrect email or password.";
+  }
+  return copy.failed("sign you in");
+}
+
+/** Only same-origin app paths the user can open; anything else lands on the role home at "/". */
+function landingPath(next: string | undefined, permissions: string[]) {
+  if (!next) return "/";
+  try {
+    const url = new URL(next, window.location.origin);
+    if (url.origin !== window.location.origin || url.pathname.startsWith("/login")) return "/";
+    if (!canAccessPath(permissions, url.pathname)) return "/";
+    return `${url.pathname}${url.search}`;
+  } catch {
+    return "/";
+  }
+}
+
+export function LoginForm({ next }: { next?: string }) {
   const { login } = useAuth();
   const router = useRouter();
-  const [error, setError] = React.useState<string | null>(null);
+  const [submitError, setSubmitError] = React.useState<string | null>(null);
+  const [signedIn, setSignedIn] = React.useState(false);
 
-  const form = useForm<FormValues>({
-    resolver: zodResolver(schema),
-    defaultValues: { email: "admin@crm.local", password: "ChangeMe123!" },
-  });
+  const form = useZodForm(loginSchema, { defaultValues: { email: "", password: "" } });
+  const submitting = form.formState.isSubmitting;
 
-  const onSubmit = form.handleSubmit(async (values) => {
-    setError(null);
+  const onSubmit = async (values: LoginValues) => {
+    if (signedIn) return;
+    setSubmitError(null);
     try {
-      await login(values.email, values.password);
-      toast.success("Signed in");
-      router.replace("/");
+      const user = await login(values.email, values.password);
+      setSignedIn(true);
+      router.replace(landingPath(next, user.permissions));
       router.refresh();
     } catch (err) {
-      const message = err instanceof ApiError ? err.message : "Login failed";
-      setError(message);
-      toast.error(message);
+      setSubmitError(submitErrorMessage(err));
     }
-  });
+  };
 
   return (
-    <form onSubmit={onSubmit} className="space-y-3">
-      <div className="space-y-1.5">
-        <Label htmlFor="email" required>
-          Email
-        </Label>
-        <Input id="email" type="email" autoComplete="username" {...form.register("email")} />
-        {form.formState.errors.email ? (
-          <p className="text-xs text-destructive">{form.formState.errors.email.message}</p>
+    <Form form={form} schema={loginSchema} onSubmit={onSubmit} className="flex flex-col">
+      <div aria-live="assertive" aria-atomic="true">
+        {submitError ? (
+          <p className="mb-6 rounded-control border border-danger-border bg-danger-soft px-3 py-2.5 text-body text-danger">
+            {submitError}
+          </p>
         ) : null}
       </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="password" required>
-          Password
-        </Label>
-        <Input
-          id="password"
-          type="password"
-          autoComplete="current-password"
-          {...form.register("password")}
+
+      <div className={FIELDS}>
+        <TextField
+          name="email"
+          label="Work email"
+          type="email"
+          inputMode="email"
+          autoComplete="username"
+          autoCapitalize="none"
+          spellCheck={false}
+          placeholder="you@company.com"
+          leadingIcon={Mail}
+          className={FIELD_SLOT}
         />
-        {form.formState.errors.password ? (
-          <p className="text-xs text-destructive">{form.formState.errors.password.message}</p>
-        ) : null}
+        <PasswordField
+          name="password"
+          label="Password"
+          autoComplete="current-password"
+          placeholder="Enter your password"
+          leadingIcon={LockKeyhole}
+          className={FIELD_SLOT}
+        />
       </div>
-      {error ? (
-        <div className="rounded-md border border-destructive/20 bg-destructive-soft px-3 py-2 text-xs text-destructive">
-          {error}
-        </div>
-      ) : null}
-      <Button type="submit" className="w-full" loading={form.formState.isSubmitting}>
-        Sign in
+
+      <Button
+        type="submit"
+        variant="primary"
+        loading={submitting}
+        disabled={signedIn}
+        className="mt-4 h-11 w-full rounded-xl text-body shadow-[inset_0_1px_0_0_rgb(255_255_255/0.18),0_8px_20px_-8px_color-mix(in_srgb,var(--brand)_60%,transparent)] transition-[color,background-color,border-color,opacity,translate,box-shadow] hover:-translate-y-px active:translate-y-0 motion-reduce:hover:translate-y-0"
+      >
+        {signedIn ? (
+          <span
+            key="signed-in"
+            className="inline-flex items-center gap-1.5 transition-opacity duration-(--motion-base) ease-standard starting:opacity-0 motion-reduce:transition-none"
+          >
+            <Check aria-hidden />
+            Signed in
+          </span>
+        ) : submitting ? (
+          "Signing in…"
+        ) : (
+          "Sign in"
+        )}
       </Button>
-    </form>
+
+      <p role="status" className="mt-3 min-h-4 text-center text-meta">
+        {signedIn ? "Opening your workspace…" : null}
+      </p>
+    </Form>
   );
 }

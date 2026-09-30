@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { useQuery } from "@tanstack/react-query";
 import { FormFieldSlot } from "@/components/forms";
 import { SearchableSelect } from "@/components/forms/searchable-select";
 import { Input } from "@/components/ui/input";
@@ -14,7 +13,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { InlineCreateModal } from "@/components/forms/inline-create";
-import { adminApi } from "@/lib/api/admin";
 import { crmApi } from "@/lib/api/crm";
 import {
   referralsApi,
@@ -35,10 +33,13 @@ export function SmartReferralFields({
   value,
   onChange,
   meta,
+  error,
 }: {
   value: ReferralFormState;
   onChange: (next: ReferralFormState) => void;
   meta?: ReferralMeta | null;
+  /** "Who referred" message; shown under the referrer picker, or the name field for "Other". */
+  error?: string;
 }) {
   const set = <K extends keyof ReferralFormState>(key: K, v: ReferralFormState[K]) =>
     onChange({ ...value, [key]: v });
@@ -65,10 +66,8 @@ export function SmartReferralFields({
         }));
       }
       if (typeCode === "sales_executive" || typeCode === "employee") {
-        const res = await adminApi.listUsers(
-          new URLSearchParams({ limit: "20", isActive: "true", q: q || "" }),
-        );
-        return (res.data ?? []).map((u) => ({
+        const users = await referralsApi.listReferrerUsers(q || "");
+        return (users ?? []).map((u) => ({
           value: u.id,
           label: u.fullName,
           description: typeCode === "sales_executive" ? "Sales Executive" : "Employee",
@@ -155,8 +154,9 @@ export function SmartReferralFields({
       </div>
 
       {typeCode !== "other" ? (
-        <FormFieldSlot label="Referred By" required>
+        <FormFieldSlot label="Referred By" required error={error}>
           <SearchableSelect
+            error={Boolean(error)}
             value={selectedReferrerValue}
             selectedLabel={value.referrerName.trim() || null}
             onChange={(id, opt) => {
@@ -205,7 +205,13 @@ export function SmartReferralFields({
             value={value.referrerName}
             onChange={(e) => set("referrerName", e.target.value)}
             placeholder="John Smith"
+            aria-invalid={error ? true : undefined}
           />
+          {error && typeCode === "other" ? (
+            <p className="text-[12px] text-destructive" role="alert">
+              {error}
+            </p>
+          ) : null}
         </div>
         <div className="space-y-1.5">
           <Label required>Referral date</Label>

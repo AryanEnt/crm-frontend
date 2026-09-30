@@ -20,7 +20,7 @@ import { SearchableSelect } from "@/components/forms/searchable-select";
 import { FormFieldSlot } from "@/components/forms/form-field";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { adminApi } from "@/lib/api/admin";
-import { crmApi, type Pipeline } from "@/lib/api/crm";
+import type { Pipeline } from "@/lib/api/crm";
 import type { EntityPickerOption } from "@/components/forms/types";
 import { cn } from "@/lib/utils";
 
@@ -318,25 +318,23 @@ export function LeadSourceSelect({
   value: string;
   onChange: (v: string) => void;
   sources: readonly string[];
-  error?: boolean;
+  /** A string replaces the default message. */
+  error?: boolean | string;
   required?: boolean;
   /** Kept for call-site compatibility; chip grid does not use a trigger. */
   triggerClassName?: string;
 }) {
   void _triggerClassName;
   const list = sources;
+  const message = typeof error === "string" ? error : error ? "Lead source is required" : undefined;
 
   return (
-    <FormFieldSlot
-      label="Lead Source"
-      required={required}
-      error={error ? "Lead source is required" : undefined}
-    >
+    <FormFieldSlot label="Lead Source" required={required} error={message}>
       <div
         role="radiogroup"
         aria-label="Lead source"
         aria-required={required || undefined}
-        aria-invalid={error || undefined}
+        aria-invalid={message ? true : undefined}
         className={cn(
           "grid grid-cols-2 gap-1.5 sm:grid-cols-3",
           error && "rounded-md ring-2 ring-destructive/30 ring-offset-1",

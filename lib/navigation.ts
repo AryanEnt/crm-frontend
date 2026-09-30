@@ -25,6 +25,7 @@ import {
   Share2,
   ListTree,
   Mail,
+  Phone,
   type LucideIcon,
 } from "lucide-react";
 import type { RoleCode } from "@/features/auth/types";
@@ -49,7 +50,13 @@ export const crmNav: NavSection[] = [
       { label: "Leads", href: "/leads", icon: UserPlus },
       { label: "Customers", href: "/customers", icon: Users },
       { label: "Deals", href: "/deals", icon: Handshake },
+    ],
+  },
+  {
+    title: "Communications",
+    items: [
       { label: "Email", href: "/email", icon: Mail },
+      { label: "Calls", href: "/calls", icon: Phone },
     ],
   },
   {
@@ -74,8 +81,8 @@ export const crmNav: NavSection[] = [
   {
     title: "Team",
     items: [
-      { label: "Users", href: "/admin/users", icon: UserCog },
-      { label: "Teams", href: "/admin/teams", icon: UsersRound },
+      // Team Leads only see their own team, so there is no cross-team Teams page here.
+      { label: "My team", href: "/admin/users", icon: UsersRound },
       { label: "Referrals", href: "/admin/referrals", icon: Building2 },
     ],
   },

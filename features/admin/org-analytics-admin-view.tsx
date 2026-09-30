@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { format, subDays } from "date-fns";
 import { PageHeader } from "@/components/shared/page-header";
 import { FilterBar } from "@/components/ui/filter-bar";
@@ -18,6 +18,7 @@ import {
 import { useAuth } from "@/features/auth/auth-provider";
 import { adminApi } from "@/lib/api/admin";
 import { crmApi } from "@/lib/api/crm";
+import { cn } from "@/lib/utils";
 import { ChartCard, SoftIndigoLineChart } from "@/features/analytics/charts";
 
 function defaultFrom() {
@@ -51,11 +52,13 @@ export function OrgAnalyticsAdminView() {
     queryKey: ["org-analytics", params.toString()],
     queryFn: () => adminApi.getOrganizationAnalytics(params),
     enabled: canView,
+    placeholderData: keepPreviousData,
   });
 
   const teamsQuery = useQuery({
     queryKey: ["teams", "org-analytics"],
-    queryFn: () => adminApi.listTeams(new URLSearchParams({ limit: "100", isActive: "true" })),
+    queryFn: () =>
+      adminApi.listTeams(new URLSearchParams({ limit: "100", isActive: "true" })),
     enabled: canView,
   });
 
@@ -67,19 +70,18 @@ export function OrgAnalyticsAdminView() {
 
   const usersQuery = useQuery({
     queryKey: ["users", "org-analytics"],
-    queryFn: () => adminApi.listUsers(new URLSearchParams({ limit: "100", isActive: "true" })),
+    queryFn: () =>
+      adminApi.listUsers(new URLSearchParams({ limit: "100", isActive: "true" })),
     enabled: canView,
   });
 
   if (!canView) {
     return (
-      <ErrorState title="Access denied" description="Organization analytics requires analytics:view." />
+      <ErrorState
+        title="Access denied"
+        description="Organization analytics requires analytics:view."
+      />
     );
-  }
-
-  if (analyticsQuery.isLoading) return <LoadingState />;
-  if (analyticsQuery.isError) {
-    return <ErrorState onRetry={() => void analyticsQuery.refetch()} />;
   }
 
   const data = analyticsQuery.data;
@@ -92,7 +94,11 @@ export function OrgAnalyticsAdminView() {
         { label: "Leads", value: metrics.totalLeads },
         { label: "Customers", value: metrics.totalCustomers },
         { label: "Open deals", value: metrics.activeDeals },
-        { label: "Pipeline value", value: metrics.pipelineValue, format: "currency" as const },
+        {
+          label: "Pipeline value",
+          value: metrics.pipelineValue,
+          format: "currency" as const,
+        },
         { label: "Completed activities", value: metrics.completedActivities },
       ]
     : [];
@@ -121,8 +127,18 @@ export function OrgAnalyticsAdminView() {
           setOwnerUserId("");
         }}
       >
-        <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-[150px]" />
-        <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-[150px]" />
+        <Input
+          type="date"
+          value={from}
+          onChange={(e) => setFrom(e.target.value)}
+          className="w-[150px]"
+        />
+        <Input
+          type="date"
+          value={to}
+          onChange={(e) => setTo(e.target.value)}
+          className="w-[150px]"
+        />
         <Select value={period} onValueChange={setPeriod}>
           <SelectTrigger className="w-[120px]">
             <SelectValue />
@@ -133,7 +149,10 @@ export function OrgAnalyticsAdminView() {
             <SelectItem value="month">Monthly</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={teamId || "all"} onValueChange={(v) => setTeamId(v === "all" ? "" : v)}>
+        <Select
+          value={teamId || "all"}
+          onValueChange={(v) => setTeamId(v === "all" ? "" : v)}
+        >
           <SelectTrigger className="w-[160px]">
             <SelectValue placeholder="Team" />
           </SelectTrigger>
@@ -146,7 +165,10 @@ export function OrgAnalyticsAdminView() {
             ))}
           </SelectContent>
         </Select>
-        <Select value={pipelineId || "all"} onValueChange={(v) => setPipelineId(v === "all" ? "" : v)}>
+        <Select
+          value={pipelineId || "all"}
+          onValueChange={(v) => setPipelineId(v === "all" ? "" : v)}
+        >
           <SelectTrigger className="w-[160px]">
             <SelectValue placeholder="Pipeline" />
           </SelectTrigger>
@@ -159,7 +181,10 @@ export function OrgAnalyticsAdminView() {
             ))}
           </SelectContent>
         </Select>
-        <Select value={ownerUserId || "all"} onValueChange={(v) => setOwnerUserId(v === "all" ? "" : v)}>
+        <Select
+          value={ownerUserId || "all"}
+          onValueChange={(v) => setOwnerUserId(v === "all" ? "" : v)}
+        >
           <SelectTrigger className="w-[160px]">
             <SelectValue placeholder="Owner" />
           </SelectTrigger>
@@ -174,58 +199,93 @@ export function OrgAnalyticsAdminView() {
         </Select>
       </FilterBar>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {metricCards.map((m) => (
-          <MetricCard key={m.label} label={m.label} value={m.value} format={m.format} />
-        ))}
-      </div>
+      {analyticsQuery.isLoading ? (
+        <LoadingState />
+      ) : analyticsQuery.isError && !data ? (
+        <ErrorState onRetry={() => void analyticsQuery.refetch()} />
+      ) : (
+        <div
+          aria-busy={analyticsQuery.isFetching || undefined}
+          className={cn(
+            "space-y-3 transition-opacity duration-150",
+            analyticsQuery.isPlaceholderData && "opacity-60",
+          )}
+        >
+          {analyticsQuery.isError ? (
+            <ErrorState
+              title="Couldn't apply these filters"
+              description="Showing the previous results. Try again, or change the filters."
+              onRetry={() => void analyticsQuery.refetch()}
+            />
+          ) : null}
 
-      <div className="grid gap-3 lg:grid-cols-2">
-        <ChartCard title="Lead growth" empty={!data?.growth.leads?.length}>
-          <SoftIndigoLineChart data={toChart(data?.growth.leads)} xKey="name" />
-        </ChartCard>
-        <ChartCard title="Customer growth" empty={!data?.growth.customers?.length}>
-          <SoftIndigoLineChart data={toChart(data?.growth.customers)} xKey="name" />
-        </ChartCard>
-        <ChartCard title="Deal creation" empty={!data?.growth.deals?.length}>
-          <SoftIndigoLineChart data={toChart(data?.growth.deals)} xKey="name" />
-        </ChartCard>
-        <ChartCard title="Activities logged" empty={!data?.growth.activities?.length}>
-          <SoftIndigoLineChart data={toChart(data?.growth.activities)} xKey="name" />
-        </ChartCard>
-      </div>
+          <p className="text-caption text-ink-muted">
+            Totals are current and follow the team, pipeline and owner filters. Charts and
+            the summaries below also use the date range.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {metricCards.map((m) => (
+              <MetricCard
+                key={m.label}
+                label={m.label}
+                value={m.value}
+                format={m.format}
+              />
+            ))}
+          </div>
 
-      {data ? (
-        <section className="grid gap-3 rounded-lg border border-border bg-surface p-4 lg:grid-cols-3">
-          <div>
-            <h3 className="text-sm font-semibold">User adoption</h3>
-            <ul className="mt-2 space-y-1 text-sm text-foreground-muted">
-              <li>Users with activity: {data.userAdoption.usersWithActivity}</li>
-              <li>No recent activity: {data.userAdoption.usersWithNoRecentActivity}</li>
-              <li>Activities created: {data.userAdoption.activitiesCreated}</li>
-              <li>Activities completed: {data.userAdoption.activitiesCompleted}</li>
-            </ul>
+          <div className="grid gap-3 lg:grid-cols-2">
+            <ChartCard title="Lead growth" empty={!data?.growth.leads?.length}>
+              <SoftIndigoLineChart data={toChart(data?.growth.leads)} xKey="name" />
+            </ChartCard>
+            <ChartCard title="Customer growth" empty={!data?.growth.customers?.length}>
+              <SoftIndigoLineChart data={toChart(data?.growth.customers)} xKey="name" />
+            </ChartCard>
+            <ChartCard title="Deal creation" empty={!data?.growth.deals?.length}>
+              <SoftIndigoLineChart data={toChart(data?.growth.deals)} xKey="name" />
+            </ChartCard>
+            <ChartCard title="Activities logged" empty={!data?.growth.activities?.length}>
+              <SoftIndigoLineChart data={toChart(data?.growth.activities)} xKey="name" />
+            </ChartCard>
           </div>
-          <div>
-            <h3 className="text-sm font-semibold">Conversion</h3>
-            <ul className="mt-2 space-y-1 text-sm text-foreground-muted">
-              <li>Leads: {data.conversionOverview.leads}</li>
-              <li>Qualified: {data.conversionOverview.qualifiedLeads}</li>
-              <li>Deals: {data.conversionOverview.deals}</li>
-              <li>Rate: {data.conversionOverview.conversionRate}%</li>
-            </ul>
-          </div>
-          <div>
-            <h3 className="text-sm font-semibold">Referrals</h3>
-            <ul className="mt-2 space-y-1 text-sm text-foreground-muted">
-              <li>Total: {data.referralOverview.total}</li>
-              <li>Active: {data.referralOverview.active}</li>
-              <li>Converted: {data.referralOverview.converted}</li>
-              <li>Pipeline value: {data.referralOverview.pipelineValue.toLocaleString()}</li>
-            </ul>
-          </div>
-        </section>
-      ) : null}
+
+          {data ? (
+            <section className="grid gap-3 rounded-lg border border-border bg-surface p-4 lg:grid-cols-3">
+              <div>
+                <h3 className="text-sm font-semibold">User adoption</h3>
+                <ul className="mt-2 space-y-1 text-sm text-foreground-muted">
+                  <li>Users with activity: {data.userAdoption.usersWithActivity}</li>
+                  <li>
+                    No recent activity: {data.userAdoption.usersWithNoRecentActivity}
+                  </li>
+                  <li>Activities created: {data.userAdoption.activitiesCreated}</li>
+                  <li>Activities completed: {data.userAdoption.activitiesCompleted}</li>
+                </ul>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold">Conversion</h3>
+                <ul className="mt-2 space-y-1 text-sm text-foreground-muted">
+                  <li>Leads: {data.conversionOverview.leads}</li>
+                  <li>Qualified: {data.conversionOverview.qualifiedLeads}</li>
+                  <li>Deals: {data.conversionOverview.deals}</li>
+                  <li>Rate: {data.conversionOverview.conversionRate}%</li>
+                </ul>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold">Referrals</h3>
+                <ul className="mt-2 space-y-1 text-sm text-foreground-muted">
+                  <li>Total: {data.referralOverview.total}</li>
+                  <li>Active: {data.referralOverview.active}</li>
+                  <li>Converted: {data.referralOverview.converted}</li>
+                  <li>
+                    Pipeline value: {data.referralOverview.pipelineValue.toLocaleString()}
+                  </li>
+                </ul>
+              </div>
+            </section>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }

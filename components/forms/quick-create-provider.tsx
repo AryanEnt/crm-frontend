@@ -81,7 +81,10 @@ export function QuickCreateProvider({ children }: { children: React.ReactNode })
       <DealQuickCreateDrawer
         open={dealOpen}
         onOpenChange={setDealOpen}
-        onCreated={() => void qc.invalidateQueries({ queryKey: ["deals"] })}
+        onCreated={() => {
+          void qc.invalidateQueries({ queryKey: ["deals"] });
+          void qc.invalidateQueries({ queryKey: ["deal-board"] });
+        }}
       />
       <ActivityQuickCreateDialog
         open={activityOpen}

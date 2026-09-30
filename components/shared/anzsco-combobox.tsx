@@ -2,9 +2,10 @@
 
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Check, ChevronsUpDown } from "lucide-react";
+import { ChevronsUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { dropdownMenuClass, dropdownTriggerClass } from "@/components/ui/dropdown-styles";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Command,
@@ -41,7 +42,12 @@ export function AnzscoCombobox({
         <Button
           variant="outline"
           role="combobox"
-          className={cn("h-8 w-full justify-between px-2.5 font-normal shadow-none", !value && "text-foreground-subtle", className)}
+          className={cn(
+            dropdownTriggerClass,
+            "h-8 w-full justify-between px-2.5",
+            !value && "text-foreground-subtle",
+            className,
+          )}
         >
           <span className="truncate">
             {selected
@@ -53,8 +59,11 @@ export function AnzscoCombobox({
           <ChevronsUpDown className="size-3.5 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
-        <Command shouldFilter={false}>
+      <PopoverContent className={dropdownMenuClass} align="start" sideOffset={4}>
+        <Command
+          shouldFilter={false}
+          defaultValue={selected ? `${selected.code} ${selected.title}` : !value ? "__none" : undefined}
+        >
           <CommandInput
             placeholder="Code or title…"
             value={q}
@@ -69,8 +78,8 @@ export function AnzscoCombobox({
                   onChange(null, null);
                   setOpen(false);
                 }}
+                checked={!value}
               >
-                <Check className={cn("size-3.5", !value ? "opacity-100" : "opacity-0")} />
                 Clear
               </CommandItem>
               {(search.data ?? []).map((o) => (
@@ -81,10 +90,10 @@ export function AnzscoCombobox({
                     onChange(o.id, o);
                     setOpen(false);
                   }}
+                  checked={value === o.id}
                 >
-                  <Check className={cn("size-3.5", value === o.id ? "opacity-100" : "opacity-0")} />
                   <span className="font-mono text-xs text-foreground-muted">{o.code}</span>
-                  <span className="truncate">{o.title}</span>
+                  <span className="min-w-0 truncate">{o.title}</span>
                 </CommandItem>
               ))}
             </CommandGroup>

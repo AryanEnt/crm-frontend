@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Plus } from "lucide-react";
+import { Pencil, Plus, Power, PowerOff, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,16 @@ import {
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useAuth } from "@/features/auth/auth-provider";
 import { adminApi, type LeadSource } from "@/lib/api/admin";
+import { cn } from "@/lib/utils";
+
+const ROW_ACTION = "h-7 gap-1.5 px-2.5 text-xs font-medium text-ink-secondary shadow-xs [&_svg]:size-3.5";
+
+const ROW_ACTION_TONE = {
+  brand: "hover:border-brand-border hover:bg-brand-soft hover:text-brand",
+  warning: "hover:border-warning-border hover:bg-warning-soft hover:text-warning",
+  danger: "hover:border-danger-border hover:bg-danger-soft hover:text-danger",
+  success: "hover:border-success-border hover:bg-success-soft hover:text-success",
+} as const;
 
 type FormState = {
   name: string;
@@ -92,13 +102,13 @@ export function LeadSourcesAdminView() {
     onError: (err: Error) => toast.error(err.message || "Couldn't delete. Try again."),
   });
 
-  const deactivateMutation = useMutation({
-    mutationFn: (item: LeadSource) =>
-      adminApi.updateLeadSource(item.id, { isActive: false }),
-    onSuccess: () => {
+  const statusMutation = useMutation({
+    mutationFn: ({ item, isActive }: { item: LeadSource; isActive: boolean }) =>
+      adminApi.updateLeadSource(item.id, { isActive }),
+    onSuccess: (_data, { isActive }) => {
       void qc.invalidateQueries({ queryKey: ["lead-sources"] });
       setDeactivateTarget(null);
-      toast.success("Lead source deactivated");
+      toast.success(isActive ? "Lead source activated" : "Lead source deactivated");
     },
     onError: (err: Error) => toast.error(err.message || "Update failed"),
   });
@@ -163,37 +173,68 @@ export function LeadSourcesAdminView() {
       {
         id: "actions",
         header: "",
-        cell: ({ row }) =>
-          canManage ? (
-            <div className="flex justify-end gap-1">
-              <Button size="sm" variant="ghost" onClick={() => openEdit(row.original)}>
+        cell: ({ row }) => {
+          if (!canManage) return null;
+          const item = row.original;
+          const inUse = item.usageCount > 0;
+          return (
+            <div className="flex items-center justify-end gap-1.5">
+              <Button
+                size="sm"
+                variant="outline"
+                className={cn(ROW_ACTION, ROW_ACTION_TONE.brand)}
+                aria-label={`Edit ${item.name}`}
+                onClick={() => openEdit(item)}
+              >
+                <Pencil aria-hidden />
                 Edit
               </Button>
-              {row.original.usageCount > 0 ? (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="text-destructive"
-                  disabled={!row.original.isActive}
-                  onClick={() => setDeactivateTarget(row.original)}
-                >
-                  Deactivate
-                </Button>
+              {item.isActive ? (
+                inUse ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className={cn(ROW_ACTION, ROW_ACTION_TONE.warning)}
+                    aria-label={`Deactivate ${item.name}`}
+                    onClick={() => setDeactivateTarget(item)}
+                  >
+                    <PowerOff aria-hidden />
+                    Deactivate
+                  </Button>
+                ) : null
               ) : (
                 <Button
                   size="sm"
-                  variant="ghost"
-                  className="text-destructive"
-                  onClick={() => setDeleteTarget(row.original)}
+                  variant="outline"
+                  className={cn(ROW_ACTION, ROW_ACTION_TONE.success)}
+                  aria-label={`Activate ${item.name}`}
+                  loading={statusMutation.isPending && statusMutation.variables?.item.id === item.id}
+                  onClick={() => statusMutation.mutate({ item, isActive: true })}
                 >
-                  Delete
+                  {statusMutation.isPending && statusMutation.variables?.item.id === item.id ? null : (
+                    <Power aria-hidden />
+                  )}
+                  Activate
                 </Button>
               )}
+              {!inUse ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className={cn(ROW_ACTION, ROW_ACTION_TONE.danger)}
+                  aria-label={`Delete ${item.name}`}
+                  onClick={() => setDeleteTarget(item)}
+                >
+                  <Trash2 aria-hidden />
+                  Delete
+                </Button>
+              ) : null}
             </div>
-          ) : null,
+          );
+        },
       },
     ],
-    [canManage],
+    [canManage, statusMutation],
   );
 
   if (!canView) {
@@ -324,9 +365,9 @@ export function LeadSourcesAdminView() {
         title="Deactivate lead source?"
         description={`"${deactivateTarget?.name}" is in use (${deactivateTarget?.usageCount} records). Deactivate instead of deleting.`}
         confirmLabel="Deactivate"
-        loading={deactivateMutation.isPending}
+        loading={statusMutation.isPending}
         onConfirm={() => {
-          if (deactivateTarget) deactivateMutation.mutate(deactivateTarget);
+          if (deactivateTarget) statusMutation.mutate({ item: deactivateTarget, isActive: false });
         }}
       />
     </div>

@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { ComboboxOption } from "@/components/ui/combobox";
+import { dropdownMenuClass, dropdownTriggerClass } from "@/components/ui/dropdown-styles";
 
 interface MultiComboboxProps {
   options: ComboboxOption[];
@@ -106,11 +107,8 @@ export function MultiCombobox({
           aria-expanded={open}
           aria-label={aria["aria-label"]}
           className={cn(
-            "flex min-h-9 w-full flex-wrap items-center gap-1.5 rounded-md border border-line bg-surface px-2.5 py-1.5 text-left text-sm",
-            "hover:border-line",
-            "focus-visible:border-line focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30 focus-visible:ring-offset-0",
-            "data-[state=open]:border-line data-[state=open]:shadow-none data-[state=open]:ring-0",
-            disabled && "cursor-not-allowed opacity-50",
+            dropdownTriggerClass,
+            "flex min-h-9 w-full flex-wrap items-center gap-1.5 px-2.5 py-1.5 text-left",
             className,
           )}
         >
@@ -142,7 +140,7 @@ export function MultiCombobox({
       </PopoverTrigger>
 
       <PopoverContent
-        className="w-[var(--radix-popover-trigger-width)] min-w-[16rem] border border-line bg-surface p-0 shadow-sm"
+        className={dropdownMenuClass}
         align="start"
         sideOffset={4}
       >

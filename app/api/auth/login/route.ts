@@ -14,15 +14,31 @@ type AuthPayload = {
   refreshExpiresAt: string;
 };
 
+function unavailable() {
+  return NextResponse.json(
+    {
+      success: false,
+      error: { code: "upstream_unavailable", message: "Authentication service is unavailable" },
+      timestamp: new Date().toISOString(),
+    },
+    { status: 502 },
+  );
+}
+
 export async function POST(req: Request) {
   const body = await req.json();
-  const upstream = await backendFetch("/api/v1/auth/login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-
-  const envelope = (await upstream.json()) as BackendEnvelope<AuthPayload>;
+  let upstream: Response;
+  let envelope: BackendEnvelope<AuthPayload>;
+  try {
+    upstream = await backendFetch("/api/v1/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    envelope = (await upstream.json()) as BackendEnvelope<AuthPayload>;
+  } catch {
+    return unavailable();
+  }
   if (!upstream.ok || !envelope.success || !envelope.data) {
     return NextResponse.json(envelope, { status: upstream.status });
   }

@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { crmApi } from "@/lib/api/crm";
+import { useListFilterScope } from "@/features/auth/list-scope";
 import {
   AnalyticsFilterBar,
   defaultAnalyticsFilters,
@@ -37,6 +38,7 @@ export function AnalyticsView() {
   const [groupBy, setGroupBy] = React.useState("user");
   const [sortBy, setSortBy] = React.useState("pipelineValue");
   const [period, setPeriod] = React.useState("month");
+  const { scope } = useListFilterScope("analytics:view");
 
   const baseParams = React.useMemo(() => filtersToParams(filters), [filters]);
 
@@ -279,7 +281,7 @@ export function AnalyticsView() {
                 <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="user">User</SelectItem>
-                  <SelectItem value="team">Team</SelectItem>
+                  {scope !== "own" ? <SelectItem value="team">Team</SelectItem> : null}
                   <SelectItem value="period">Period</SelectItem>
                   <SelectItem value="pipeline">Pipeline</SelectItem>
                 </SelectContent>

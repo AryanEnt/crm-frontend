@@ -14,18 +14,15 @@ import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { DetailSkeleton } from "@/components/ui/skeleton";
 import {
   Modal,
   ModalContent,
-  ModalDescription,
   ModalFooter,
   ModalHeader,
   ModalTitle,
 } from "@/components/ui/modal";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -38,7 +35,9 @@ import { useAuth } from "@/features/auth/auth-provider";
 import { adminApi } from "@/lib/api/admin";
 import { crmApi, type Customer } from "@/lib/api/crm";
 import { CustomerFormDialog } from "@/features/customers/customer-form-dialog";
+import { CustomerDealsPanel } from "@/features/customers/customer-deals-panel";
 import { ActivityQuickCreateDialog } from "@/features/activities/activity-quick-create";
+import { DealQuickCreateDrawer } from "@/features/deals/deal-quick-create";
 import { FollowUpIntelPanel } from "@/features/activities/follow-up-intel";
 import { DocumentsTableView } from "@/features/documents/documents-table-view";
 import { UnifiedTimeline } from "@/features/timeline/unified-timeline";
@@ -65,7 +64,7 @@ function followUpClass(next?: string | null) {
 }
 
 export function Customer360View({ customerId }: { customerId: string }) {
-  const { can, user } = useAuth();
+  const { can } = useAuth();
   const qc = useQueryClient();
   const [editOpen, setEditOpen] = React.useState(false);
   const [noteOpen, setNoteOpen] = React.useState(false);
@@ -248,48 +247,11 @@ export function Customer360View({ customerId }: { customerId: string }) {
         </TabsContent>
 
         <TabsContent value="deals" className="mt-3">
-          {deals.length === 0 ? (
-            <EmptyState
-              title="No deals yet"
-              description="Create a deal from quick actions to track this opportunity."
-              actionLabel={can("deals:create") ? "Create deal" : undefined}
-              onAction={can("deals:create") ? () => setDealOpen(true) : undefined}
-            />
-          ) : (
-            <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
-              {deals.map((d) => (
-                <li key={d.id} className="flex items-center justify-between gap-3 px-3 density-row">
-                  <div className="min-w-0">
-                    <Link
-                      href={`/deals/${d.id}`}
-                      className="text-sm font-medium text-foreground hover:text-brand"
-                    >
-                      {d.title}
-                    </Link>
-                    <p className="text-meta">
-                      {[d.pipelineName, d.stageName, d.ownerName].filter(Boolean).join(" · ")}
-                    </p>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <p className="text-data text-sm font-medium">
-                      {formatMoney(d.value, d.currency)}
-                    </p>
-                    <StatusBadge
-                      tone={
-                        d.status === "won"
-                          ? "success"
-                          : d.status === "lost"
-                            ? "danger"
-                            : "brand"
-                      }
-                    >
-                      {d.status}
-                    </StatusBadge>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
+          <CustomerDealsPanel
+            deals={deals}
+            canCreate={can("deals:create")}
+            onCreate={() => setDealOpen(true)}
+          />
         </TabsContent>
 
         <TabsContent value="email" className="mt-3">
@@ -368,12 +330,14 @@ export function Customer360View({ customerId }: { customerId: string }) {
         defaultType="note"
         onCreated={invalidate}
       />
-      <QuickDealDialog
+      <DealQuickCreateDrawer
         open={dealOpen}
         onOpenChange={setDealOpen}
         customer={customer}
-        actorId={user?.id}
-        onDone={invalidate}
+        onCreated={() => {
+          invalidate();
+          void qc.invalidateQueries({ queryKey: ["deals"] });
+        }}
       />
       {assignOpen ? (
         <AssignDialog
@@ -477,77 +441,6 @@ function InfoRow({ label, value }: { label: string; value: string }) {
       <dt className="w-32 shrink-0 text-foreground-subtle">{label}</dt>
       <dd className="min-w-0 text-foreground">{value || "—"}</dd>
     </div>
-  );
-}
-
-function QuickDealDialog({
-  open,
-  onOpenChange,
-  customer,
-  actorId,
-  onDone,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  customer: Customer;
-  actorId?: string;
-  onDone: () => void;
-}) {
-  const [title, setTitle] = React.useState("");
-  const [value, setValue] = React.useState("");
-  const [loading, setLoading] = React.useState(false);
-  return (
-    <Modal open={open} onOpenChange={onOpenChange}>
-      <ModalContent>
-        <ModalHeader>
-          <ModalTitle>Create deal</ModalTitle>
-          <ModalDescription>A customer can have multiple deals.</ModalDescription>
-        </ModalHeader>
-        <div className="grid gap-3">
-          <div className="space-y-1.5">
-            <Label required>Title</Label>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} required aria-required="true" />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Value</Label>
-            <Input value={value} onChange={(e) => setValue(e.target.value)} />
-          </div>
-        </div>
-        <ModalFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button
-            loading={loading}
-            onClick={() => {
-              void (async () => {
-                setLoading(true);
-                try {
-                  await crmApi.createDeal({
-                    customerId: customer.id,
-                    title: title || `Deal for ${customer.fullName}`,
-                    value: value ? Number(value) : null,
-                    ownerUserId: customer.ownerUserId ?? actorId ?? null,
-                    teamId: customer.teamId ?? null,
-                    pipelineId: customer.pipelineId ?? null,
-                    stageId: customer.stageId ?? null,
-                  });
-                  onOpenChange(false);
-                  setTitle("");
-                  setValue("");
-                  onDone();
-                  toast.success("Deal created");
-                } catch (err) {
-                  toast.error(err instanceof Error ? err.message : "Could not create deal");
-                } finally {
-                  setLoading(false);
-                }
-              })();
-            }}
-          >
-            Create deal
-          </Button>
-        </ModalFooter>
-      </ModalContent>
-    </Modal>
   );
 }
 

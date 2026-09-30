@@ -1,10 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { Check, ChevronsUpDown, Loader2, Plus, X } from "lucide-react";
+import { ChevronsUpDown, Loader2, Plus, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { dropdownMenuClass, dropdownTriggerClass } from "@/components/ui/dropdown-styles";
 import {
   Command,
   CommandEmpty,
@@ -39,6 +40,8 @@ interface ComboboxProps {
   createLabel?: (inputValue: string) => string;
   className?: string;
   triggerClassName?: string;
+  /** Replaces the input-style trigger, e.g. to edit a table cell in place. Must render a single focusable element. */
+  renderTrigger?: (state: { selected: ComboboxOption | null; open: boolean }) => React.ReactElement;
   "aria-label"?: string;
 }
 
@@ -57,6 +60,7 @@ export function Combobox({
   createLabel = (v) => `Create "${v}"`,
   className,
   triggerClassName,
+  renderTrigger,
   ...aria
 }: ComboboxProps) {
   const [open, setOpen] = React.useState(false);
@@ -130,7 +134,7 @@ export function Combobox({
     >
       <div className={cn("relative", className)}>
         <PopoverTrigger asChild>
-          <Button
+          {renderTrigger ? renderTrigger({ selected, open }) : <Button
             type="button"
             variant="outline"
             role="combobox"
@@ -138,10 +142,8 @@ export function Combobox({
             aria-label={aria["aria-label"]}
             disabled={disabled}
             className={cn(
-              "h-9 w-full justify-between border border-line bg-surface px-3 font-normal shadow-none",
-              "hover:border-line hover:bg-surface",
-              "focus-visible:border-line focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30 focus-visible:ring-offset-0",
-              "data-[state=open]:border-line data-[state=open]:shadow-none data-[state=open]:ring-0",
+              dropdownTriggerClass,
+              "h-9 w-full justify-between px-3",
               !selected && "text-foreground-muted",
               clearable && selected && "pr-14",
               triggerClassName,
@@ -156,10 +158,10 @@ export function Combobox({
               <span className="truncate">{selected ? selected.label : placeholder}</span>
             </span>
             <ChevronsUpDown className="ml-2 size-3.5 shrink-0 opacity-50" />
-          </Button>
+          </Button>}
         </PopoverTrigger>
 
-        {clearable && selected && !disabled ? (
+        {clearable && selected && !disabled && !renderTrigger ? (
           <button
             type="button"
             aria-label="Clear selection"
@@ -176,11 +178,11 @@ export function Combobox({
       </div>
 
       <PopoverContent
-        className="w-[var(--radix-popover-trigger-width)] min-w-[16rem] border border-line bg-surface p-0 shadow-sm"
+        className={dropdownMenuClass}
         align="start"
         sideOffset={4}
       >
-        <Command shouldFilter={false} loop>
+        <Command shouldFilter={false} loop defaultValue={value ?? undefined}>
           {showSearch ? (
             <CommandInput
               ref={searchRef}
@@ -212,7 +214,8 @@ export function Combobox({
                           onChange(opt.value);
                           close();
                         }}
-                        className={cn("gap-2", opt.value === value && "bg-transparent data-[selected=true]:bg-transparent")}
+                        checked={opt.value === value}
+                        className="gap-2"
                       >
                         {opt.visual}
                         <span className="flex min-w-0 flex-1 flex-col">
@@ -223,9 +226,6 @@ export function Combobox({
                             </span>
                           ) : null}
                         </span>
-                        {opt.value === value ? (
-                          <Check className="size-4 shrink-0 text-brand" />
-                        ) : null}
                       </CommandItem>
                     ))}
                   </CommandGroup>

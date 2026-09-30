@@ -1,51 +1,108 @@
 @import "tailwindcss";
 
+/* `dark:` utilities follow the app theme attribute, not the OS preference. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+@custom-variant comfortable (&:where([data-density="comfortable"] *));
+
 /*
-  Aurora design tokens — Phase 1
+  Aurora design tokens — Phase 1 + Console v2
   Source of truth: /docs/design-system.md
   Feature code must use semantic token names, never raw hex.
+
+  `data-theme` and `data-density` must be set on <html>: alias tokens below
+  (e.g. --sidebar-active, the *-border mixes) resolve against the element that
+  declares them, so a theme attribute on a descendant would not reach them.
 */
 
 :root {
-  /* —— Neutrals (cool graphite) —— */
-  --ink: #14171f;
-  --ink-secondary: #3d4450;
-  --ink-muted: #6b7280;
-  --ink-subtle: #9aa1ad;
-  --line: #e4e7ec;
-  --line-strong: #cdd3dd;
-  --canvas: #f5f6f8;
-  --surface: #ffffff;
-  --surface-muted: #eef0f3;
+  color-scheme: light;
+
+  /* —— Neutral primitives (mist: slate tinted toward the teal brand hue) —— */
+  --mist-0: #ffffff;
+  --mist-50: #f5f7f7;
+  --mist-100: #edf1f1;
+  --mist-200: #e2e8e8;
+  --mist-300: #c8d2d3;
+  --mist-400: #8d9ea0;
+  --mist-500: #5a6b6e;
+  --mist-600: #45575a;
+  --mist-700: #2f4144;
+  --mist-800: #1c2c2f;
+  --mist-900: #0e1a1c;
+  --mist-950: #061012;
+
+  /* —— Neutral roles —— */
+  --ink: var(--mist-900);
+  --ink-secondary: var(--mist-700);
+  --ink-muted: var(--mist-500);
+  --ink-subtle: var(--mist-400); /* placeholders / disabled only — below AA for text */
+  --line: var(--mist-200);
+  --line-strong: var(--mist-300);
+  --canvas: var(--mist-50);
+  --surface: var(--mist-0);
+  --surface-muted: var(--mist-100);
+  --surface-sunken: var(--mist-50); /* table headers, inset wells */
+  --surface-raised: var(--mist-0); /* menus, popovers, drawers, dialogs */
+  --overlay: rgb(14 26 28 / 0.4);
 
   /* —— Brand / action (Aurora teal) —— */
   --brand: #0e7490;
   --brand-hover: #0a5f75;
+  --brand-active: #164e63;
   --brand-ink: #083344;
-  --brand-soft: #ecfeff;
+  --brand-soft: #e6f4f6;
+  --brand-border: color-mix(in srgb, var(--brand) 40%, var(--surface));
 
-  /* —— Semantic —— */
+  /* —— Semantic (solid = text + dot, soft = bg, border) —— */
   --success: #047857;
   --success-soft: #ecfdf5;
+  --success-border: color-mix(in srgb, var(--success) 28%, var(--surface));
   --warning: #b45309;
   --warning-soft: #fffbeb;
+  --warning-border: color-mix(in srgb, var(--warning) 28%, var(--surface));
   --danger: #b91c1c;
   --danger-soft: #fef2f2;
+  --danger-border: color-mix(in srgb, var(--danger) 28%, var(--surface));
   --info: #1d4ed8;
   --info-soft: #eff6ff;
+  --info-border: color-mix(in srgb, var(--info) 28%, var(--surface));
 
-  /* —— Pipeline stages (ordinal) —— */
+  /* —— Categorical tints (avatars, role badges) — pick via [data-tint] —— */
+  --tint-slate-bg: #f1f5f9;
+  --tint-slate-fg: #334155;
+  --tint-teal-bg: #ccfbf1;
+  --tint-teal-fg: #115e59;
+  --tint-sky-bg: #e0f2fe;
+  --tint-sky-fg: #075985;
+  --tint-indigo-bg: #e0e7ff;
+  --tint-indigo-fg: #3730a3;
+  --tint-violet-bg: #ede9fe;
+  --tint-violet-fg: #5b21b6;
+  --tint-rose-bg: #ffe4e6;
+  --tint-rose-fg: #9f1239;
+  --tint-amber-bg: #fef3c7;
+  --tint-amber-fg: #92400e;
+  --tint-emerald-bg: #d1fae5;
+  --tint-emerald-fg: #065f46;
+
+  /* —— Pipeline stages (ordinal). Base = fills/rails; *-ink = text on white or *-soft (AA). —— */
   --stage-1: #64748b;
+  --stage-1-ink: #475569;
   --stage-1-soft: #f1f5f9;
   --stage-2: #0284c7;
+  --stage-2-ink: #0369a1;
   --stage-2-soft: #e0f2fe;
   --stage-3: #7c3aed;
+  --stage-3-ink: var(--stage-3);
   --stage-3-soft: #f3e8ff;
   --stage-4: #c2410c;
+  --stage-4-ink: var(--stage-4);
   --stage-4-soft: #ffedd5;
   --stage-won: #047857;
+  --stage-won-ink: var(--stage-won);
   --stage-won-soft: #ecfdf5;
   --stage-lost: #9f1239;
+  --stage-lost-ink: var(--stage-lost);
   --stage-lost-soft: #fff1f2;
 
   /* —— Priority —— */
@@ -83,8 +140,8 @@
   /* —— Sidebar —— */
   --sidebar-bg: var(--surface);
   --sidebar-border: var(--line);
-  --sidebar-active: var(--brand-soft);
-  --sidebar-active-text: var(--brand-ink);
+  --sidebar-active: var(--surface-muted);
+  --sidebar-active-text: var(--ink);
   --sidebar-hover: var(--surface-muted);
 
   /* —— Radius (restrained) —— */
@@ -92,9 +149,16 @@
   --radius-md: 0.375rem; /* 6px */
   --radius-lg: 0.5rem; /* 8px */
 
-  /* —— Elevation —— */
-  --shadow-sm: 0 1px 2px rgba(20, 23, 31, 0.05);
-  --shadow-md: 0 4px 12px rgba(20, 23, 31, 0.08);
+  /* —— Elevation: two levels only —— */
+  --shadow-xs: 0 1px 2px 0 rgb(14 26 28 / 0.04); /* cards */
+  --shadow-md: 0 8px 24px -6px rgb(14 26 28 / 0.12), 0 2px 6px -2px rgb(14 26 28 / 0.06); /* menus, popovers, drawers */
+  --shadow-sm: var(--shadow-xs);
+
+  /* —— Motion —— */
+  --motion-fast: 120ms;
+  --motion-base: 180ms;
+  --motion-slow: 240ms;
+  --motion-count: 700ms;
 
   /* —— Layout —— */
   --header-height: 3.25rem;
@@ -105,6 +169,7 @@
   --row-height: 2.25rem; /* 36px compact */
   --control-height: 2rem; /* 32px */
   --section-gap: 0.875rem;
+  --table-row-height: 2.25rem; /* 36px compact — console tables */
 }
 
 /* Comfortable density — detail / admin */
@@ -112,6 +177,127 @@
   --row-height: 2.75rem; /* 44px */
   --control-height: 2.25rem; /* 36px */
   --section-gap: 1.25rem;
+  --table-row-height: 2.75rem; /* 44px */
+}
+
+/* —— Dark theme: same semantic names, remapped values —— */
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --ink: var(--mist-100);
+  --ink-secondary: var(--mist-300);
+  --ink-muted: var(--mist-400);
+  --ink-subtle: var(--mist-500);
+  --line: var(--mist-800);
+  --line-strong: var(--mist-700);
+  --canvas: #081113;
+  --surface: var(--mist-900);
+  --surface-muted: var(--mist-800);
+  --surface-sunken: #122123;
+  --surface-raised: #122123;
+  --overlay: rgb(3 10 12 / 0.64);
+
+  --brand: #22d3ee;
+  --brand-hover: #67e8f9;
+  --brand-active: #a5f3fc;
+  --brand-ink: #a5f3fc;
+  --brand-soft: color-mix(in srgb, #22d3ee 12%, var(--mist-900));
+  --primary-foreground: #083344;
+
+  --success: #34d399;
+  --success-soft: color-mix(in srgb, #34d399 12%, var(--mist-900));
+  --warning: #fbbf24;
+  --warning-soft: color-mix(in srgb, #fbbf24 12%, var(--mist-900));
+  --danger: #f87171;
+  --danger-soft: color-mix(in srgb, #f87171 12%, var(--mist-900));
+  --destructive-foreground: #450a0a;
+  --info: #60a5fa;
+  --info-soft: color-mix(in srgb, #60a5fa 12%, var(--mist-900));
+
+  --stage-1: #94a3b8;
+  --stage-1-ink: var(--stage-1);
+  --stage-1-soft: color-mix(in srgb, #94a3b8 14%, var(--mist-900));
+  --stage-2: #38bdf8;
+  --stage-2-ink: var(--stage-2);
+  --stage-2-soft: color-mix(in srgb, #38bdf8 14%, var(--mist-900));
+  --stage-3: #a78bfa;
+  --stage-3-soft: color-mix(in srgb, #a78bfa 14%, var(--mist-900));
+  --stage-4: #fb923c;
+  --stage-4-soft: color-mix(in srgb, #fb923c 14%, var(--mist-900));
+  --stage-won: #34d399;
+  --stage-won-soft: color-mix(in srgb, #34d399 14%, var(--mist-900));
+  --stage-lost: #fb7185;
+  --stage-lost-soft: color-mix(in srgb, #fb7185 14%, var(--mist-900));
+
+  --priority-low: #94a3b8;
+  --priority-low-soft: color-mix(in srgb, #94a3b8 14%, var(--mist-900));
+  --priority-medium: #60a5fa;
+  --priority-medium-soft: color-mix(in srgb, #60a5fa 14%, var(--mist-900));
+  --priority-high: #fbbf24;
+  --priority-high-soft: color-mix(in srgb, #fbbf24 14%, var(--mist-900));
+  --priority-urgent: #f87171;
+  --priority-urgent-soft: color-mix(in srgb, #f87171 14%, var(--mist-900));
+
+  --health-ok: #34d399;
+  --health-warn: #fbbf24;
+  --health-bad: #f87171;
+
+  --tint-slate-bg: color-mix(in srgb, #cbd5e1 14%, var(--mist-900));
+  --tint-slate-fg: #cbd5e1;
+  --tint-teal-bg: color-mix(in srgb, #5eead4 16%, var(--mist-900));
+  --tint-teal-fg: #5eead4;
+  --tint-sky-bg: color-mix(in srgb, #7dd3fc 16%, var(--mist-900));
+  --tint-sky-fg: #7dd3fc;
+  --tint-indigo-bg: color-mix(in srgb, #a5b4fc 16%, var(--mist-900));
+  --tint-indigo-fg: #a5b4fc;
+  --tint-violet-bg: color-mix(in srgb, #c4b5fd 16%, var(--mist-900));
+  --tint-violet-fg: #c4b5fd;
+  --tint-rose-bg: color-mix(in srgb, #fda4af 16%, var(--mist-900));
+  --tint-rose-fg: #fda4af;
+  --tint-amber-bg: color-mix(in srgb, #fcd34d 16%, var(--mist-900));
+  --tint-amber-fg: #fcd34d;
+  --tint-emerald-bg: color-mix(in srgb, #6ee7b7 16%, var(--mist-900));
+  --tint-emerald-fg: #6ee7b7;
+
+  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.4);
+  --shadow-md: 0 12px 32px -8px rgb(0 0 0 / 0.6), 0 0 0 1px var(--line);
+}
+
+/* A component sets data-tint="violet" and uses bg-tint-bg / text-tint-fg. */
+[data-tint="slate"] { --tint-bg: var(--tint-slate-bg); --tint-fg: var(--tint-slate-fg); }
+[data-tint="teal"] { --tint-bg: var(--tint-teal-bg); --tint-fg: var(--tint-teal-fg); }
+[data-tint="sky"] { --tint-bg: var(--tint-sky-bg); --tint-fg: var(--tint-sky-fg); }
+[data-tint="indigo"] { --tint-bg: var(--tint-indigo-bg); --tint-fg: var(--tint-indigo-fg); }
+[data-tint="violet"] { --tint-bg: var(--tint-violet-bg); --tint-fg: var(--tint-violet-fg); }
+[data-tint="rose"] { --tint-bg: var(--tint-rose-bg); --tint-fg: var(--tint-rose-fg); }
+[data-tint="amber"] { --tint-bg: var(--tint-amber-bg); --tint-fg: var(--tint-amber-fg); }
+[data-tint="emerald"] { --tint-bg: var(--tint-emerald-bg); --tint-fg: var(--tint-emerald-fg); }
+
+/* Static scales (no theme variation): type, radius, easing. */
+@theme {
+  --text-title: 1.5rem;
+  --text-title--line-height: 2rem;
+  --text-title--letter-spacing: -0.02em;
+  --text-title--font-weight: 600;
+  --text-heading: 0.875rem;
+  --text-heading--line-height: 1.25rem;
+  --text-heading--letter-spacing: -0.006em;
+  --text-heading--font-weight: 500;
+  --text-body: 0.875rem;
+  --text-body--line-height: 1.25rem;
+  --text-cell: 0.8125rem;
+  --text-cell--line-height: 1.125rem;
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1rem;
+  --text-overline: 0.75rem;
+  --text-overline--line-height: 1rem;
+  --text-overline--font-weight: 500;
+
+  --radius-control: 0.5rem;
+  --radius-card: 0.75rem;
+
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasis: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @theme inline {
@@ -119,6 +305,9 @@
   --color-canvas: var(--canvas);
   --color-surface: var(--surface);
   --color-surface-muted: var(--surface-muted);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-surface-raised: var(--surface-raised);
+  --color-overlay: var(--overlay);
   --color-foreground: var(--foreground);
   --color-foreground-muted: var(--foreground-muted);
   --color-foreground-subtle: var(--foreground-subtle);
@@ -135,6 +324,8 @@
   --color-brand-ink: var(--brand-ink);
   --color-brand-soft: var(--brand-soft);
   --color-brand-hover: var(--brand-hover);
+  --color-brand-active: var(--brand-active);
+  --color-brand-border: var(--brand-border);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   --color-primary-hover: var(--primary-hover);
@@ -143,23 +334,35 @@
   --color-destructive-soft: var(--destructive-soft);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
+  --color-danger-border: var(--danger-border);
   --color-success: var(--success);
   --color-success-soft: var(--success-soft);
+  --color-success-border: var(--success-border);
   --color-warning: var(--warning);
   --color-warning-soft: var(--warning-soft);
+  --color-warning-border: var(--warning-border);
   --color-info: var(--info);
   --color-info-soft: var(--info-soft);
+  --color-info-border: var(--info-border);
+  --color-tint-bg: var(--tint-bg);
+  --color-tint-fg: var(--tint-fg);
   --color-stage-1: var(--stage-1);
+  --color-stage-1-ink: var(--stage-1-ink);
   --color-stage-1-soft: var(--stage-1-soft);
   --color-stage-2: var(--stage-2);
+  --color-stage-2-ink: var(--stage-2-ink);
   --color-stage-2-soft: var(--stage-2-soft);
   --color-stage-3: var(--stage-3);
+  --color-stage-3-ink: var(--stage-3-ink);
   --color-stage-3-soft: var(--stage-3-soft);
   --color-stage-4: var(--stage-4);
+  --color-stage-4-ink: var(--stage-4-ink);
   --color-stage-4-soft: var(--stage-4-soft);
   --color-stage-won: var(--stage-won);
+  --color-stage-won-ink: var(--stage-won-ink);
   --color-stage-won-soft: var(--stage-won-soft);
   --color-stage-lost: var(--stage-lost);
+  --color-stage-lost-ink: var(--stage-lost-ink);
   --color-stage-lost-soft: var(--stage-lost-soft);
   --color-priority-low: var(--priority-low);
   --color-priority-low-soft: var(--priority-low-soft);
@@ -183,6 +386,7 @@
   --radius-sm: var(--radius-sm);
   --radius-md: var(--radius-md);
   --radius-lg: var(--radius-lg);
+  --shadow-xs: var(--shadow-xs);
   --shadow-sm: var(--shadow-sm);
   --shadow-md: var(--shadow-md);
 }
@@ -211,20 +415,12 @@ body {
   color: var(--brand-ink);
 }
 
-:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-}
-
-/* Dropdowns use a soft ring. This outline is the thick teal edge on the trigger and search row. */
-[role="combobox"]:focus,
-[role="combobox"]:focus-visible,
-[cmdk-input]:focus,
-[cmdk-input]:focus-visible,
-[cmdk-input-wrapper] input:focus,
-[cmdk-input-wrapper] input:focus-visible {
-  outline: none;
-  outline-offset: 0;
+/* Layered so component utilities (outline-none + ring) can replace the default. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
 }
 
 /* —— Type roles —— */
@@ -278,6 +474,50 @@ body {
   line-height: 1.125rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+}
+
+.text-display {
+  font-size: 1.5rem;
+  line-height: 2rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.text-display-sm {
+  font-size: 1.125rem;
+  line-height: 1.625rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+/* Numerals: large, tabular, confident. */
+.text-numeral-xl {
+  font-size: 2.5rem;
+  line-height: 2.75rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.text-numeral {
+  font-size: 1.375rem;
+  line-height: 1.75rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.text-numeral-sm {
+  font-size: 0.9375rem;
+  line-height: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
 }
 
 .tabular-nums {
@@ -339,7 +579,7 @@ body {
 }
 
 .deal-card--drag-overlay {
-  transform: scale(1.02);
+  transform: scale(1.02) rotate(-1deg);
   box-shadow:
     0 8px 24px color-mix(in srgb, var(--ink) 12%, transparent),
     0 0 0 1px var(--line);
@@ -347,6 +587,225 @@ body {
 
 .stage-column--drop-target {
   background: color-mix(in srgb, var(--brand-soft) 65%, var(--canvas));
+}
+
+/* —— Stage Ribbon (signature): segments sized by value, ordinal color —— */
+.stage-ribbon__seg {
+  transition:
+    flex-grow var(--motion-slow) var(--ease-emphasis),
+    background-color var(--motion-base) ease-out,
+    opacity var(--motion-base) ease-out;
+}
+
+/* Won: the card washes green once, the check lands. */
+@keyframes deal-won-wash {
+  0% {
+    background-color: var(--stage-won-soft);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--stage-won) 45%, transparent);
+  }
+  100% {
+    background-color: var(--surface);
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+.deal-card--won {
+  animation: deal-won-wash 900ms var(--ease-emphasis) 1;
+}
+
+@keyframes won-check-land {
+  0% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  45% {
+    transform: scale(1.18);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.won-check--land {
+  animation: won-check-land 420ms var(--ease-emphasis) 1;
+}
+
+/* List items ease in on mount; set --rise-index for a short stagger. */
+@keyframes aurora-rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.animate-rise {
+  animation: aurora-rise var(--motion-slow) var(--ease-emphasis) both;
+  animation-delay: calc(min(var(--rise-index, 0), 8) * 30ms);
+}
+
+/*
+  —— Sign-in Aurora ——
+  Scoped to the light-only /login screen. Re-declares the brand roles so the
+  form's button, links and focus ring follow the lavender direction there
+  without changing the app palette.
+*/
+.auth-aurora {
+  --aurora-canvas: #faf8fe;
+  --aurora-warm: #fffdfb;
+  --aurora-primary: #c5aef8;
+  --aurora-lavender: #efe8fe;
+  --aurora-lavender-ink: #5b49c4;
+  --aurora-indigo: #8e95ef;
+  --aurora-indigo-soft: #e7e8fd;
+  --aurora-indigo-ink: #4a50c2;
+  --aurora-blue: #bcd3f8;
+  --aurora-blue-soft: #e8f0fd;
+  --aurora-blue-ink: #3a67b8;
+  --aurora-cyan: #bfeaf2;
+  --aurora-cyan-soft: #e8f8fb;
+  --aurora-cyan-ink: #2f7a92;
+  --aurora-stage-1: #c5aef8;
+  --aurora-stage-2: #b3a7f5;
+  --aurora-stage-3: #a2abf2;
+  --aurora-stage-4: #a9c3f6;
+  --aurora-stage-5: #b3dcef;
+  --aurora-track: color-mix(in srgb, var(--aurora-primary) 16%, transparent);
+  --aurora-line: color-mix(in srgb, var(--aurora-primary) 30%, transparent);
+
+  --brand: #6b58d3;
+  --brand-hover: #5a47c2;
+  --brand-active: #4b3aa8;
+  --brand-ink: #2e2474;
+  --brand-soft: #f1ecfe;
+  --brand-border: color-mix(in srgb, var(--brand) 40%, var(--surface));
+  --ring: var(--brand);
+}
+
+.aurora-mark {
+  background-image: linear-gradient(140deg, #9c86f0 0%, var(--brand) 55%, #5a63d8 100%);
+}
+
+/* Mostly solid warm white with a lavender cast; the blur only softens the glow behind it. */
+.aurora-card {
+  background: linear-gradient(
+    160deg,
+    rgb(255 253 251 / 0.9) 0%,
+    rgb(249 245 255 / 0.84) 55%,
+    rgb(244 244 255 / 0.82) 100%
+  );
+  border: 1px solid rgb(255 255 255 / 0.75);
+  box-shadow:
+    0 0 0 1px rgb(197 174 248 / 0.22),
+    0 32px 64px -24px rgb(72 56 150 / 0.24),
+    0 12px 24px -12px rgb(72 56 150 / 0.1);
+  backdrop-filter: blur(14px) saturate(1.08);
+  -webkit-backdrop-filter: blur(14px) saturate(1.08);
+}
+
+.aurora-tile {
+  background: rgb(255 255 255 / 0.74);
+  border: 1px solid rgb(197 174 248 / 0.24);
+}
+
+.aurora-float-card {
+  background: rgb(255 254 252 / 0.94);
+  border: 1px solid rgb(255 255 255 / 0.9);
+  box-shadow:
+    0 0 0 1px rgb(197 174 248 / 0.26),
+    0 18px 36px -14px rgb(72 56 150 / 0.28);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+@utility aurora-form-card {
+  background: rgb(255 255 255 / 0.92);
+  border: 1px solid rgb(197 174 248 / 0.28);
+  box-shadow:
+    0 1px 2px 0 rgb(72 56 150 / 0.04),
+    0 24px 48px -28px rgb(72 56 150 / 0.22);
+}
+
+.aurora-glow {
+  position: absolute;
+  border-radius: 9999px;
+  pointer-events: none;
+  will-change: transform;
+}
+
+@keyframes aurora-drift-a {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to { transform: translate3d(3rem, 2rem, 0) scale(1.08); }
+}
+
+@keyframes aurora-drift-b {
+  from { transform: translate3d(0, 0, 0) scale(1.04); }
+  to { transform: translate3d(-2.5rem, -1.5rem, 0) scale(0.96); }
+}
+
+@keyframes aurora-drift-c {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(2rem, -2.5rem, 0); }
+}
+
+.aurora-drift-a { animation: aurora-drift-a 22s ease-in-out infinite alternate; }
+.aurora-drift-b { animation: aurora-drift-b 26s ease-in-out infinite alternate; }
+.aurora-drift-c { animation: aurora-drift-c 30s ease-in-out infinite alternate; }
+
+@keyframes aurora-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.aurora-card-in {
+  animation: aurora-card-in 700ms var(--ease-emphasis) 120ms both;
+}
+
+.aurora-float-in {
+  animation: aurora-card-in 700ms var(--ease-emphasis) 420ms both;
+}
+
+@keyframes aurora-float {
+  from { transform: translateY(0); }
+  to { transform: translateY(-5px); }
+}
+
+.aurora-float {
+  animation: aurora-float 5s ease-in-out 1.2s infinite alternate;
+}
+
+@keyframes aurora-bar-grow {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+.aurora-bar {
+  transform-origin: left center;
+  animation: aurora-bar-grow 900ms var(--ease-emphasis) both;
+  animation-delay: calc(400ms + var(--bar-index, 0) * 70ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aurora-drift-a,
+  .aurora-drift-b,
+  .aurora-drift-c,
+  .aurora-card-in,
+  .aurora-float-in,
+  .aurora-float,
+  .aurora-bar {
+    animation: none !important;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -364,6 +823,19 @@ body {
   }
   .deal-card--drag-overlay {
     transform: none;
+  }
+  .deal-card--won,
+  .won-check--land,
+  .animate-rise {
+    animation: none !important;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 

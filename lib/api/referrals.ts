@@ -94,6 +94,13 @@ export type ReferrerProfile = {
   history: Referral[];
 };
 
+export type ReferrerUser = {
+  id: string;
+  fullName: string;
+  email: string;
+  roleName: string;
+};
+
 export type ReferralPartner = {
   id: string;
   name: string;
@@ -139,6 +146,8 @@ export const referralsApi = {
     api.get<ReferrerProfile>(`/referrers/${type}/${id}`),
   listPartners: (q = "") =>
     api.get<ReferralPartner[]>(`/referral-partners?q=${encodeURIComponent(q)}`),
+  listReferrerUsers: (q = "") =>
+    api.get<ReferrerUser[]>(`/referrals/referrer-users?q=${encodeURIComponent(q)}`),
   createPartner: (body: { name: string; email?: string; phone?: string; company?: string }) =>
     api.post<ReferralPartner>("/referral-partners", body),
 };

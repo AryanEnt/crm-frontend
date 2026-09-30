@@ -4,6 +4,7 @@ import * as React from "react";
 import * as SelectPrimitive from "@radix-ui/react-select";
 import { Check, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { dropdownTriggerClass } from "@/components/ui/dropdown-styles";
 
 export const Select = SelectPrimitive.Root;
 export const SelectGroup = SelectPrimitive.Group;
@@ -16,11 +17,9 @@ export const SelectTrigger = React.forwardRef<
   <SelectPrimitive.Trigger
     ref={ref}
     className={cn(
-      "flex h-8 w-full items-center justify-between gap-2 rounded-md border border-line bg-surface px-2.5 text-sm text-foreground",
-      "hover:border-line data-[placeholder]:text-foreground-subtle",
-      "focus:outline-none focus-visible:border-line focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30 focus-visible:ring-offset-0",
-      "data-[state=open]:border-line data-[state=open]:shadow-none data-[state=open]:ring-0",
-      "disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1",
+      dropdownTriggerClass,
+      "flex h-8 w-full items-center justify-between gap-2 px-2.5 text-foreground",
+      "data-[placeholder]:text-foreground-subtle [&>span]:line-clamp-1",
       className,
     )}
     {...props}
@@ -41,7 +40,7 @@ export const SelectContent = React.forwardRef<
     <SelectPrimitive.Content
       ref={ref}
       className={cn(
-        "relative z-[80] max-h-72 min-w-[8rem] overflow-hidden rounded-md border border-line bg-surface text-foreground shadow-sm",
+        "relative z-[80] max-h-72 min-w-[8rem] overflow-hidden rounded-md border border-line bg-surface text-foreground shadow-md",
         "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
         className,
       )}
@@ -77,7 +76,7 @@ export const SelectItem = React.forwardRef<
     ref={ref}
     className={cn(
       "relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-7 pr-2 text-sm outline-none",
-      "focus:bg-surface-muted focus:text-foreground data-[state=checked]:bg-transparent data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      "hover:bg-surface-muted data-[state=unchecked]:focus:bg-surface-muted data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
       className,
     )}
     {...props}

@@ -13,6 +13,7 @@ import {
   Shield,
   FormInput,
   Activity,
+  ChevronRight,
 } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { MetricCard } from "@/components/ui/metric-card";
@@ -24,6 +25,7 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/features/auth/auth-provider";
 import { adminApi } from "@/lib/api/admin";
 import { crmApi } from "@/lib/api/crm";
+import { canAccessPath } from "@/lib/permissions";
 
 function formatWhen(v?: string | null) {
   if (!v) return "—";
@@ -32,6 +34,8 @@ function formatWhen(v?: string | null) {
 
 export function ControlCenterDashboard() {
   const { user, can } = useAuth();
+  const linkTo = (href: string) =>
+    canAccessPath(user?.permissions, href.split("?")[0]) ? href : undefined;
 
   const usersQuery = useQuery({
     queryKey: ["control-center", "users"],
@@ -114,25 +118,66 @@ export function ControlCenterDashboard() {
       <section className="space-y-3">
         <h2 className="text-section">Organization</h2>
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
-          <MetricCard label="Total users" value={String(users.length)} icon={Users} />
-          <MetricCard label="Active users" value={String(activeUsers)} icon={Users} />
-          <MetricCard label="Inactive users" value={String(inactiveUsers)} icon={Users} />
-          <MetricCard label="Total teams" value={String(teams.length)} icon={UsersRound} />
-          <MetricCard label="Active teams" value={String(activeTeams)} icon={UsersRound} />
+          <MetricCard
+            label="Total users"
+            value={String(users.length)}
+            icon={Users}
+            href={linkTo("/admin/users")}
+          />
+          <MetricCard
+            label="Active users"
+            value={String(activeUsers)}
+            icon={Users}
+            href={linkTo("/admin/users?status=active")}
+          />
+          <MetricCard
+            label="Inactive users"
+            value={String(inactiveUsers)}
+            icon={Users}
+            href={linkTo("/admin/users?status=inactive")}
+          />
+          <MetricCard
+            label="Total teams"
+            value={String(teams.length)}
+            icon={UsersRound}
+            href={linkTo("/admin/teams")}
+          />
+          <MetricCard
+            label="Active teams"
+            value={String(activeTeams)}
+            icon={UsersRound}
+            href={linkTo("/admin/teams")}
+          />
         </div>
       </section>
 
       <section className="space-y-3">
         <h2 className="text-section">Setup</h2>
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-          <MetricCard label="Active pipelines" value={String(activePipelines)} icon={Layers} />
-          <MetricCard label="Stages" value={String(stageCount)} icon={Layers} />
-          <MetricCard label="Active automations" value={String(activeAutomations)} icon={Zap} />
+          <MetricCard
+            label="Active pipelines"
+            value={String(activePipelines)}
+            icon={Layers}
+            href={linkTo("/admin/pipelines")}
+          />
+          <MetricCard
+            label="Stages"
+            value={String(stageCount)}
+            icon={Layers}
+            href={linkTo("/admin/pipelines")}
+          />
+          <MetricCard
+            label="Active automations"
+            value={String(activeAutomations)}
+            icon={Zap}
+            href={linkTo("/admin/automations")}
+          />
           <MetricCard
             label="Custom fields"
             value="—"
             icon={FormInput}
             hint="Configure in Custom Fields"
+            href={linkTo("/admin/custom-fields")}
           />
         </div>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
@@ -149,9 +194,13 @@ export function ControlCenterDashboard() {
               <Link
                 key={c.href}
                 href={c.href}
-                className="rounded-md border border-border bg-surface px-3 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-surface-muted"
+                className="group flex items-center justify-between rounded-md border border-border bg-surface px-3 py-2.5 text-sm font-medium text-foreground transition-[border-color,background-color,color] duration-150 hover:border-brand-border hover:bg-brand-soft hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
                 {c.label}
+                <ChevronRight
+                  aria-hidden
+                  className="size-4 text-foreground-subtle transition-[color,translate] duration-150 group-hover:translate-x-0.5 group-hover:text-brand motion-reduce:group-hover:translate-x-0"
+                />
               </Link>
             ))}
         </div>
@@ -209,14 +258,37 @@ export function ControlCenterDashboard() {
             ) : null}
           </div>
           <ul className="space-y-2">
-            <li className="flex items-center justify-between rounded-md border border-border px-3 py-2">
-              <span className="flex items-center gap-2 text-sm">
-                <AlertTriangle className="size-3.5 text-warning" />
-                Failed automation jobs
-              </span>
-              <StatusBadge tone={jobsQuery.data?.total ? "warning" : "success"}>
-                {jobsQuery.isLoading ? "…" : String(jobsQuery.data?.total ?? 0)}
-              </StatusBadge>
+            <li>
+              {linkTo("/admin/automations") ? (
+                <Link
+                  href="/admin/automations"
+                  className="group flex items-center justify-between rounded-md border border-border px-3 py-2 transition-[border-color,background-color] duration-150 hover:border-brand-border hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                >
+                  <span className="flex items-center gap-2 text-sm">
+                    <AlertTriangle className="size-3.5 text-warning" />
+                    Failed automation jobs
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <StatusBadge tone={jobsQuery.data?.total ? "warning" : "success"}>
+                      {jobsQuery.isLoading ? "…" : String(jobsQuery.data?.total ?? 0)}
+                    </StatusBadge>
+                    <ChevronRight
+                      aria-hidden
+                      className="size-4 text-foreground-subtle transition-[color,translate] duration-150 group-hover:translate-x-0.5 group-hover:text-brand motion-reduce:group-hover:translate-x-0"
+                    />
+                  </span>
+                </Link>
+              ) : (
+                <div className="flex items-center justify-between rounded-md border border-border px-3 py-2">
+                  <span className="flex items-center gap-2 text-sm">
+                    <AlertTriangle className="size-3.5 text-warning" />
+                    Failed automation jobs
+                  </span>
+                  <StatusBadge tone={jobsQuery.data?.total ? "warning" : "success"}>
+                    {jobsQuery.isLoading ? "…" : String(jobsQuery.data?.total ?? 0)}
+                  </StatusBadge>
+                </div>
+              )}
             </li>
             <li className="flex items-center justify-between rounded-md border border-border px-3 py-2">
               <span className="flex items-center gap-2 text-sm">

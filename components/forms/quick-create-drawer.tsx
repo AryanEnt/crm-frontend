@@ -34,15 +34,6 @@ export function QuickCreateDrawer({
   /** Wider drawer for guided create */
   wide?: boolean;
 }) {
-  React.useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onOpenChange(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onOpenChange]);
-
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
       <DrawerContent

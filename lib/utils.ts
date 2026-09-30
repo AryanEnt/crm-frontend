@@ -1,5 +1,16 @@
 import { type ClassValue, clsx } from "clsx";
-import { twMerge } from "tailwind-merge";
+import { extendTailwindMerge } from "tailwind-merge";
+
+// Register custom theme scales so e.g. `text-cell` is merged as a font size, not dropped as a color.
+const twMerge = extendTailwindMerge({
+  extend: {
+    theme: {
+      text: ["title", "heading", "body", "cell", "caption", "overline"],
+      radius: ["control", "card"],
+      ease: ["standard", "emphasis"],
+    },
+  },
+});
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));

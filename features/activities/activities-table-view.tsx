@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Plus } from "lucide-react";
@@ -19,14 +20,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useAuth } from "@/features/auth/auth-provider";
-import { adminApi } from "@/lib/api/admin";
 import { crmApi, type Activity } from "@/lib/api/crm";
 import { ActivityQuickCreateDialog } from "@/features/activities/activity-quick-create";
 import { formatInTimezone } from "@/lib/timezone";
-import {
-  TeamMemberFilterChip,
-  useTeamMemberFilter,
-} from "@/features/teams/team-member-filter";
+import { ScopeFilterControls, useScopeFilters } from "@/features/teams/scope-filters";
+
+const ACTIVITY_STATUSES = ["upcoming", "due", "overdue", "completed", "cancelled"];
 
 const statusTone = (s: string) =>
   s === "overdue"
@@ -42,38 +41,28 @@ export function ActivitiesTableView() {
   const qc = useQueryClient();
   const timezone = user?.timezone || "UTC";
   const [search, setSearch] = React.useState("");
-  const [ownerUserId, setOwnerUserId] = React.useState("all");
   const [typeCode, setTypeCode] = React.useState("all");
-  const [status, setStatus] = React.useState("all");
+  const searchParams = useSearchParams();
+  const [status, setStatus] = React.useState(() => {
+    const fromUrl = searchParams.get("status");
+    return fromUrl && ACTIVITY_STATUSES.includes(fromUrl) ? fromUrl : "all";
+  });
   const [createOpen, setCreateOpen] = React.useState(false);
-  const isTeamLead = user?.roleCode === "sales_manager";
-  const isOwnOnly =
-    user?.roleCode === "sales_executive" || user?.roleCode === "sales_support";
-  const { salesExecutiveId, setSalesExecutiveId } = useTeamMemberFilter(isTeamLead);
+  const scopeFilters = useScopeFilters("activities:view");
+  const scopeParams = scopeFilters.params;
 
   const typesQuery = useQuery({
     queryKey: ["activity-types"],
     queryFn: () => crmApi.listActivityTypes(),
   });
-  const usersQuery = useQuery({
-    queryKey: ["users", "activities"],
-    queryFn: () => adminApi.listUsers(new URLSearchParams({ limit: "100", isActive: "true" })),
-    enabled: !isTeamLead && !isOwnOnly && can("users:view"),
-  });
 
   const params = React.useMemo(() => {
     const p = new URLSearchParams({ limit: "50", offset: "0" });
-    if (isOwnOnly && user?.id) {
-      p.set("ownerUserId", user.id);
-    } else if (isTeamLead) {
-      if (salesExecutiveId !== "all") p.set("salesExecutiveId", salesExecutiveId);
-    } else if (ownerUserId !== "all") {
-      p.set("ownerUserId", ownerUserId);
-    }
+    for (const [key, value] of scopeParams) p.set(key, value);
     if (typeCode !== "all") p.set("type", typeCode);
     if (status !== "all") p.set("status", status);
     return p;
-  }, [ownerUserId, typeCode, status, isTeamLead, isOwnOnly, salesExecutiveId, user?.id]);
+  }, [scopeParams, typeCode, status]);
 
   const activitiesQuery = useQuery({
     queryKey: ["activities", params.toString()],
@@ -187,33 +176,12 @@ export function ActivitiesTableView() {
         searchPlaceholder="Search title or related…"
         onClear={() => {
           setSearch("");
-          setOwnerUserId("all");
-          setSalesExecutiveId("all");
+          scopeFilters.reset();
           setTypeCode("all");
           setStatus("all");
         }}
       >
-        {isOwnOnly ? (
-          <div className="flex h-8 items-center rounded-md border border-border bg-surface-muted/50 px-2.5 text-xs text-foreground-muted">
-            Owner: {user?.fullName ?? "You"}
-          </div>
-        ) : isTeamLead ? (
-          <TeamMemberFilterChip value={salesExecutiveId} onChange={setSalesExecutiveId} />
-        ) : (
-          <Select value={ownerUserId} onValueChange={setOwnerUserId}>
-            <SelectTrigger className="w-[140px]">
-              <SelectValue placeholder="Owner" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All owners</SelectItem>
-              {(usersQuery.data?.data ?? []).map((u) => (
-                <SelectItem key={u.id} value={u.id}>
-                  {u.fullName}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
+        <ScopeFilterControls filters={scopeFilters} />
         <Select value={typeCode} onValueChange={setTypeCode}>
           <SelectTrigger className="w-[150px]">
             <SelectValue placeholder="Type" />
@@ -233,7 +201,7 @@ export function ActivitiesTableView() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All statuses</SelectItem>
-            {["upcoming", "due", "overdue", "completed", "cancelled"].map((s) => (
+            {ACTIVITY_STATUSES.map((s) => (
               <SelectItem key={s} value={s}>
                 {s}
               </SelectItem>

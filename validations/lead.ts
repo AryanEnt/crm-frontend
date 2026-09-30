@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { emailSchema } from "@/validations/common";
+import { messages } from "@/lib/forms/messages";
 
 export const LEAD_SOURCES = [
   "Website",
@@ -11,77 +12,76 @@ export const LEAD_SOURCES = [
   "Other",
 ] as const;
 
+export const LEAD_PRIORITIES = ["low", "medium", "high", "urgent"] as const;
+
+/** Mirrors `ReferralFormState`; "none" marks an unset referrer id. */
 export const leadReferralSchema = z.object({
-  referrerTypeCode: z.string().min(1, "Referrer type is required"),
-  referrerUserId: z.string().optional(),
-  referrerCustomerId: z.string().optional(),
-  referrerPartnerId: z.string().optional(),
-  referrerName: z.string().optional(),
-  relationshipCode: z.string().optional(),
-  referralDate: z.string().min(1, "Referral date is required"),
-  referralSource: z.string().optional(),
-  notes: z.string().optional(),
-  referralCode: z.string().optional(),
+  referrerTypeCode: z.string(),
+  referrerUserId: z.string(),
+  referrerCustomerId: z.string(),
+  referrerPartnerId: z.string(),
+  referrerName: z.string(),
+  relationshipCode: z.string(),
+  referralDate: z.string(),
+  referralSource: z.string(),
+  notes: z.string(),
+  referralCode: z.string(),
 });
 
-/** Shared lead form values for quick / guided / full / edit. */
+export function isReferralSource(source: string | undefined) {
+  return source?.trim().toLowerCase() === "referral";
+}
+
+/** Same rule as the backend's referrals.ValidateRequired: a linked referrer or a typed name. */
+export function hasReferrer(r: z.input<typeof leadReferralSchema>) {
+  const linked = (id: string) => Boolean(id) && id !== "none";
+  return (
+    linked(r.referrerUserId) ||
+    linked(r.referrerCustomerId) ||
+    linked(r.referrerPartnerId) ||
+    Boolean(r.referrerName.trim())
+  );
+}
+
+/**
+ * `referral` is only present on create; the lead update endpoint doesn't accept
+ * referral details, so edit leaves it undefined and skips the referrer rule.
+ */
 export const leadFormSchema = z
   .object({
-    fullName: z.string().trim().min(1, "Full name is required"),
+    fullName: z.string().trim().min(1, messages.enter("the lead's name")),
     email: z
       .string()
       .trim()
-      .refine((v) => !v || emailSchema.safeParse(v).success, "Please enter a valid email address"),
-    phone: z.string().optional(),
-    country: z.string().optional(),
-    nationality: z.string().optional(),
-    location: z.string().optional(),
-    source: z.string().trim().min(1, "Lead source is required"),
-    priority: z.enum(["low", "medium", "high", "urgent"]),
-    ownerUserId: z.string().optional(),
-    teamId: z.string().optional(),
-    pipelineId: z.string().optional(),
-    stageId: z.string().optional(),
-    anzscoId: z.string().nullable().optional(),
-    occupation: z.string().optional(),
-    jobTitle: z.string().optional(),
-    employer: z.string().optional(),
-    potentialValue: z.string().optional(),
-    tags: z.string().optional(),
-    notes: z.string().optional(),
-    nextActivityAt: z.string().optional(),
+      .refine((v) => !v || emailSchema.safeParse(v).success, messages.email),
+    phone: z.string().trim(),
+    country: z.string(),
+    nationality: z.string().trim(),
+    location: z.string().trim(),
+    source: z.string().trim().min(1, messages.choose("where this lead came from")),
+    priority: z.enum(LEAD_PRIORITIES),
+    ownerUserId: z.string(),
+    teamId: z.string(),
+    pipelineId: z.string(),
+    stageId: z.string(),
+    anzscoId: z.string().nullable(),
+    occupation: z.string().trim(),
+    jobTitle: z.string().trim(),
+    employer: z.string().trim(),
+    potentialValue: z
+      .string()
+      .trim()
+      .refine((v) => !v || (Number.isFinite(Number(v)) && Number(v) >= 0), "Enter an amount of 0 or more"),
+    tags: z.string(),
+    notes: z.string(),
+    nextActivityAt: z.string(),
     referral: leadReferralSchema.optional(),
   })
-  .superRefine((data, ctx) => {
-    if (data.source.trim().toLowerCase() === "referral") {
-      if (!data.referral) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Referral details are required",
-          path: ["referral"],
-        });
-        return;
-      }
-      const r = data.referral;
-      const hasLink =
-        (r.referrerUserId && r.referrerUserId !== "none") ||
-        (r.referrerCustomerId && r.referrerCustomerId !== "none") ||
-        (r.referrerPartnerId && r.referrerPartnerId !== "none") ||
-        Boolean(r.referrerName?.trim());
-      if (!hasLink) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Select or enter who referred this lead",
-          path: ["referral", "referrerName"],
-        });
-      }
-    }
+  .refine((d) => !isReferralSource(d.source) || !d.referral || hasReferrer(d.referral), {
+    message: "Choose who referred this lead, or type their name",
+    path: ["referral", "referrerName"],
+    when: () => true,
   });
 
-export type LeadFormValues = z.infer<typeof leadFormSchema>;
-
-export const LEAD_GUIDED_STEPS = [
-  { id: "basic", label: "Basic Information" },
-  { id: "qualification", label: "Qualification" },
-  { id: "sales", label: "Sales Setup" },
-] as const;
+export type LeadFormInput = z.input<typeof leadFormSchema>;
+export type LeadFormValues = z.output<typeof leadFormSchema>;

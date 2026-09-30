@@ -18,7 +18,7 @@ import {
 import { useDraggable } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { CalendarPlus, Plus } from "lucide-react";
+import { CalendarPlus, Check, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
@@ -27,7 +27,10 @@ import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/ui/empty-state";
 import { BoardSkeleton } from "@/components/ui/skeleton";
 import { StageRail, stageSlotFromPipeline, type StageSlot } from "@/components/ui/stage-rail";
-import { priorityFromString, priorityBadgeClass } from "@/lib/design-tokens";
+import { StageRibbon, type RibbonSegment } from "@/components/ui/stage-ribbon";
+import { Kpi } from "@/components/ui/kpi";
+import { NextStepChip } from "@/components/ui/next-step-chip";
+import { priorityFromString } from "@/lib/design-tokens";
 import {
   Select,
   SelectContent,
@@ -43,8 +46,6 @@ import {
   ModalHeader,
   ModalTitle,
 } from "@/components/ui/modal";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { useAuth } from "@/features/auth/auth-provider";
 import {
   crmApi,
@@ -56,16 +57,14 @@ import {
 import { ApiError } from "@/types/api";
 import { cn } from "@/lib/utils";
 import { ActivityQuickCreateDialog } from "@/features/activities/activity-quick-create";
+import { DealQuickCreateDrawer } from "@/features/deals/deal-quick-create";
 import {
   DealOutcomeButtons,
   LostReasonDialog,
   findOutcomeStage,
   type LostReasonState,
 } from "@/features/deals/deal-outcome";
-import {
-  TeamMemberFilterChip,
-  useTeamMemberFilter,
-} from "@/features/teams/team-member-filter";
+import { ScopeFilterControls, useScopeFilters } from "@/features/teams/scope-filters";
 
 const attentionLabel: Record<string, string> = {
   no_next_activity: "No next activity",
@@ -81,11 +80,6 @@ function formatMoney(v?: number | null, currency = "AUD") {
     currency,
     maximumFractionDigits: 0,
   }).format(v);
-}
-
-function formatWhen(v?: string | null) {
-  if (!v) return "—";
-  return new Date(v).toLocaleDateString();
 }
 
 function stageFillPercent(deal: Deal, stage: PipelineStage): number {
@@ -143,7 +137,7 @@ export function PipelineBoardView({
   pipelineId?: string;
   onPipelineIdChange?: (id: string) => void;
 }) {
-  const { user, can } = useAuth();
+  const { can } = useAuth();
   const qc = useQueryClient();
   const [localPipelineId, setLocalPipelineId] = React.useState<string>("");
   const setPipelineId = onPipelineIdChange ?? setLocalPipelineId;
@@ -158,8 +152,8 @@ export function PipelineBoardView({
   const [wonPulseId, setWonPulseId] = React.useState<string | null>(null);
   const [stageFlashId, setStageFlashId] = React.useState<string | null>(null);
   const [announce, setAnnounce] = React.useState("");
-  const isTeamLead = user?.roleCode === "sales_manager";
-  const { salesExecutiveId, setSalesExecutiveId } = useTeamMemberFilter(isTeamLead);
+  const scopeFilters = useScopeFilters("deals:view", { team: false });
+  const ownerId = scopeFilters.ownerId;
   const [blockers, setBlockers] = React.useState<{
     dealId: string;
     stageId: string;
@@ -183,16 +177,13 @@ export function PipelineBoardView({
   const boardKey = [
     "deal-board",
     activePipelineId,
-    isTeamLead ? salesExecutiveId : "self",
+    ownerId,
   ] as const;
 
   const boardQuery = useQuery({
     queryKey: boardKey,
     queryFn: () =>
-      crmApi.getDealBoard(
-        activePipelineId,
-        isTeamLead && salesExecutiveId !== "all" ? salesExecutiveId : undefined,
-      ),
+      crmApi.getDealBoard(activePipelineId, ownerId !== "all" ? ownerId : undefined),
     enabled: !!activePipelineId,
   });
 
@@ -242,8 +233,8 @@ export function PipelineBoardView({
           .find((d) => d.id === vars.dealId)?.title ?? "Deal";
       if (target?.isWon) {
         setWonPulseId(vars.dealId);
-        window.setTimeout(() => setWonPulseId(null), 500);
-        toast.success("Deal marked won");
+        window.setTimeout(() => setWonPulseId(null), 900);
+        toast.success(`Won: ${dealTitle}. Nice work.`);
         setAnnounce(`${dealTitle} marked won`);
       } else {
         toast.success(vars.lostReason ? "Deal marked lost" : "Deal stage updated");
@@ -328,7 +319,7 @@ export function PipelineBoardView({
       })
       .map((col) => {
         const deals = col.deals.filter((d) => {
-          if (isTeamLead && salesExecutiveId !== "all" && d.ownerUserId !== salesExecutiveId) {
+          if (ownerId !== "all" && d.ownerUserId !== ownerId) {
             return false;
           }
           if (statusFilter !== "all" && d.status !== statusFilter) return false;
@@ -349,8 +340,7 @@ export function PipelineBoardView({
   }, [
     boardQuery.data?.columns,
     hideClosed,
-    isTeamLead,
-    salesExecutiveId,
+    ownerId,
     statusFilter,
     noNextOnly,
     closingFilter,
@@ -368,6 +358,15 @@ export function PipelineBoardView({
     return { count: open.length, value, weighted, noNext };
   }, [filteredColumns]);
 
+  const ribbon: RibbonSegment[] = filteredColumns
+    .filter((col) => !col.stage.isWon && !col.stage.isLost)
+    .map((col) => ({
+      id: col.stage.id,
+      label: col.stage.name,
+      value: col.deals.reduce((sum, d) => sum + (d.status === "open" ? d.value ?? 0 : 0), 0),
+      slot: slotForStage(col.stage, openStages),
+    }));
+
   if (pipelinesQuery.isError) {
     return <ErrorState onRetry={() => void pipelinesQuery.refetch()} />;
   }
@@ -378,9 +377,10 @@ export function PipelineBoardView({
         {announce}
       </div>
       <PageHeader
+        display
         breadcrumbs={[{ label: "Workspace", href: "/" }, { label: "Deals" }]}
         title="Deals"
-        description="Pipeline workbench — drag or keyboard-move stages, mark won or lost, and keep a next activity on every open deal."
+        description="Drag or keyboard-move deals between stages. Every open deal should have a next step."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {viewToggle}
@@ -412,12 +412,10 @@ export function PipelineBoardView({
           setClosingFilter("all");
           setNoNextOnly(false);
           setHideClosed(false);
-          setSalesExecutiveId("all");
+          scopeFilters.reset();
         }}
       >
-        {isTeamLead ? (
-          <TeamMemberFilterChip value={salesExecutiveId} onChange={setSalesExecutiveId} />
-        ) : null}
+        <ScopeFilterControls filters={scopeFilters} />
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="h-8 w-[130px] text-xs">
             <SelectValue placeholder="Status" />
@@ -455,31 +453,44 @@ export function PipelineBoardView({
         </Button>
       </FilterBar>
 
-      <div className="grid gap-2 rounded-[var(--radius-lg)] border border-border bg-surface px-3 py-2.5 sm:grid-cols-4">
-        <div>
-          <p className="text-label">Open deals</p>
-          <p className="text-board-total tabular-nums">{boardStats.count}</p>
+      <section aria-label="Board summary" className="space-y-3 pb-1">
+        <div className="flex flex-wrap items-end gap-x-10 gap-y-3">
+          <Kpi label="Pipeline value" value={boardStats.value} format={(n) => formatMoney(n)} />
+          <Kpi label="Weighted forecast" value={boardStats.weighted} format={(n) => formatMoney(n)} />
+          <Kpi label="Open deals" value={boardStats.count} />
+          {boardStats.count > 0 ? (
+            boardStats.noNext > 0 || noNextOnly ? (
+              <button
+                type="button"
+                aria-pressed={noNextOnly}
+                onClick={() => setNoNextOnly((v) => !v)}
+                className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-control bg-warning-soft px-3 text-body text-warning transition-[filter] duration-150 hover:brightness-[0.97]"
+              >
+                {noNextOnly ? (
+                  "Showing deals with no next step · Show all"
+                ) : (
+                  <>
+                    <strong className="font-semibold tabular-nums">{boardStats.noNext}</strong>
+                    {boardStats.noNext === 1 ? "deal has" : "deals have"} no next step · Review
+                  </>
+                )}
+              </button>
+            ) : (
+              <p className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-control bg-success-soft px-3 text-body text-success">
+                <Check className="size-3.5" aria-hidden />
+                Every open deal has a next step
+              </p>
+            )
+          ) : null}
         </div>
-        <div>
-          <p className="text-label">Pipeline value</p>
-          <p className="text-board-total tabular-nums">{formatMoney(boardStats.value)}</p>
-        </div>
-        <div>
-          <p className="text-label">Weighted forecast</p>
-          <p className="text-board-total tabular-nums">{formatMoney(boardStats.weighted)}</p>
-        </div>
-        <div>
-          <p className="text-label">Missing next activity</p>
-          <p
-            className={cn(
-              "text-board-total tabular-nums",
-              boardStats.noNext > 0 && "text-health-warn",
-            )}
-          >
-            {boardStats.noNext}
-          </p>
-        </div>
-      </div>
+        {ribbon.length > 0 ? (
+          <StageRibbon
+            segments={ribbon}
+            label="Open value by stage"
+            formatValue={(v) => formatMoney(v)}
+          />
+        ) : null}
+      </section>
 
       {!activePipelineId || boardQuery.isLoading ? (
         <BoardSkeleton columns={4} />
@@ -487,8 +498,8 @@ export function PipelineBoardView({
         <ErrorState onRetry={() => void boardQuery.refetch()} />
       ) : filteredColumns.every((c) => c.deals.length === 0) ? (
         <EmptyState
-          title="No deals in this view"
-          description="Adjust filters or create a deal to start filling the pipeline."
+          title="No deals match this view"
+          description="Clear a filter, or add a deal to get the pipeline moving."
           actionLabel={can("deals:create") ? "New deal" : undefined}
           onAction={can("deals:create") ? () => setCreateOpen(true) : undefined}
         />
@@ -505,6 +516,13 @@ export function PipelineBoardView({
                 key={col.stage.id}
                 stage={col.stage}
                 slot={slotForStage(col.stage, openStages)}
+                share={
+                  col.stage.isWon || col.stage.isLost || boardStats.value <= 0
+                    ? null
+                    : Math.round(
+                        ((ribbon.find((r) => r.id === col.stage.id)?.value ?? 0) / boardStats.value) * 100,
+                      )
+                }
                 deals={col.deals}
                 canEdit={can("deals:edit")}
                 canCreateActivity={can("activities:create")}
@@ -541,12 +559,14 @@ export function PipelineBoardView({
         </DndContext>
       )}
 
-      <CreateDealDialog
+      <DealQuickCreateDrawer
         open={createOpen}
         onOpenChange={setCreateOpen}
-        pipelineId={activePipelineId}
-        firstStageId={boardQuery.data?.columns[0]?.stage.id}
-        onCreated={() => void qc.invalidateQueries({ queryKey: ["deal-board", activePipelineId] })}
+        defaultPipelineId={activePipelineId}
+        onCreated={() => {
+          void qc.invalidateQueries({ queryKey: ["deal-board", activePipelineId] });
+          void qc.invalidateQueries({ queryKey: ["deals"] });
+        }}
       />
 
       <ActivityQuickCreateDialog
@@ -629,9 +649,19 @@ export function PipelineBoardView({
   );
 }
 
+const SLOT_BG: Record<StageSlot, string> = {
+  "1": "bg-stage-1",
+  "2": "bg-stage-2",
+  "3": "bg-stage-3",
+  "4": "bg-stage-4",
+  won: "bg-stage-won",
+  lost: "bg-stage-lost",
+};
+
 function StageColumn({
   stage,
   slot,
+  share,
   deals,
   canEdit,
   canCreateActivity,
@@ -645,6 +675,8 @@ function StageColumn({
 }: {
   stage: PipelineStage;
   slot: StageSlot;
+  /** Share of open pipeline value (0–100); null for won/lost columns. */
+  share: number | null;
   deals: Deal[];
   canEdit: boolean;
   canCreateActivity: boolean;
@@ -663,37 +695,56 @@ function StageColumn({
     0,
   );
   const muted = stage.isWon || stage.isLost;
+  const emptyCopy = stage.isWon
+    ? "Wins land here."
+    : stage.isLost
+      ? "Nothing lost. Keep it that way."
+      : "Drag a deal here.";
 
   return (
     <section
       ref={setNodeRef}
+      aria-label={`${stage.name}: ${deals.length} deals, ${formatMoney(total)}`}
       className={cn(
-        "relative flex w-[260px] shrink-0 flex-col overflow-hidden rounded-[var(--radius-lg)] border border-border bg-canvas",
-        muted && "opacity-90",
-        stage.isWon && "border-stage-won/25",
-        stage.isLost && "border-stage-lost/25",
-        isOver && "ring-2 ring-brand/35 stage-column--drop-target",
+        "relative flex w-[264px] shrink-0 flex-col overflow-hidden rounded-card bg-surface-muted/60 transition-colors duration-150",
+        isOver && "stage-column--drop-target ring-1 ring-brand/40",
       )}
     >
-      <StageRail slot={slot} />
-      <header className="border-b border-border bg-surface px-3 py-2 pl-3.5">
+      <div
+        aria-hidden
+        title={share != null ? `${share}% of open pipeline value` : undefined}
+        className={cn("relative h-[3px] w-full", share == null && SLOT_BG[slot])}
+      >
+        {share != null ? (
+          <>
+            <span className={cn("absolute inset-0 opacity-20", SLOT_BG[slot])} />
+            <span
+              className={cn("stage-ribbon__seg absolute inset-y-0 left-0", SLOT_BG[slot])}
+              style={{ width: `${Math.max(share, deals.length > 0 ? 3 : 0)}%` }}
+            />
+          </>
+        ) : null}
+      </div>
+      <header className="px-3 pb-2 pt-2.5">
         <div className="flex items-center gap-2">
           <h3 className="text-section truncate">{stage.name}</h3>
           <span className="ml-auto text-meta tabular-nums">{deals.length}</span>
         </div>
-        <p className="mt-0.5 text-board-total tabular-nums text-ink-secondary">
+        <p className={cn("mt-0.5 text-numeral-sm", muted && "text-ink-secondary")}>
           {formatMoney(total)}
           {!muted ? (
-            <span className="font-normal text-meta">
-              {" "}
-              · {formatMoney(weighted)} weighted
+            <span className="ml-1.5 text-meta font-normal">
+              {formatMoney(weighted)} weighted
+              {share != null ? ` · ${share}%` : ""}
             </span>
           ) : null}
         </p>
       </header>
-      <div className="flex max-h-[calc(100vh-280px)] flex-col gap-1.5 overflow-y-auto crm-scroll p-1.5 pl-2">
+      <div className="flex max-h-[calc(100vh-300px)] flex-col gap-1.5 overflow-y-auto crm-scroll px-1.5 pb-1.5">
         {deals.length === 0 ? (
-          <p className="px-2 py-6 text-center text-meta">No deals</p>
+          <p className="rounded-md border border-dashed border-line px-2 py-6 text-center text-meta">
+            {emptyCopy}
+          </p>
         ) : (
           deals.map((deal) => (
             <DraggableDeal
@@ -760,6 +811,7 @@ function DraggableDeal({
       style={style}
       {...listeners}
       {...attributes}
+      className="group/card rounded-md"
       role="button"
       tabIndex={canEdit ? 0 : -1}
       aria-roledescription="draggable deal"
@@ -812,62 +864,69 @@ function DealCard({
   onLost?: () => void;
   onAddActivity?: () => void;
 }) {
-  const missingNext = deal.status === "open" && !deal.nextActivityAt;
   const fill = stage ? stageFillPercent(deal, stage) : 0;
   const priority = priorityFromString(deal.priority);
 
   return (
     <article
       className={cn(
-        "relative overflow-hidden rounded-[var(--radius-md)] border border-border bg-surface pl-2.5 pr-2 py-2",
-        overlay && "deal-card--drag-overlay shadow-md ring-1 ring-border",
+        "relative overflow-hidden rounded-md border border-line bg-surface py-2 pl-3 pr-2.5 transition-[border-color] duration-150 group-hover/card:border-line-strong",
+        overlay && "deal-card--drag-overlay",
         stageFlash && "deal-card--stage-changed",
-        missingNext && "border-health-warn/40",
-        deal.status === "won" && "border-stage-won/35",
-        deal.status === "lost" && "border-stage-lost/30",
+        wonPulse && "deal-card--won",
       )}
     >
       <StageRail slot={slot} fillPercent={fill} wonPulse={wonPulse} />
-      <div className="flex items-start justify-between gap-2">
+      <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <Link
             href={`/deals/${deal.id}`}
-            className="block truncate text-data text-foreground hover:text-brand"
+            className="flex items-center gap-1 truncate text-body font-medium text-ink hover:text-brand"
             onClick={(e) => e.stopPropagation()}
           >
-            {deal.title}
+            {deal.status === "won" ? (
+              <Check
+                aria-label="Won"
+                className={cn("size-3.5 shrink-0 text-stage-won-ink", wonPulse && "won-check--land")}
+                strokeWidth={2.5}
+              />
+            ) : null}
+            <span className="truncate">{deal.title}</span>
           </Link>
           <p className="truncate text-meta">{deal.customerName}</p>
         </div>
-        <span className={cn("shrink-0 capitalize", priorityBadgeClass[priority], "rounded-[var(--radius-sm)] px-1.5 py-0.5 text-[10px] font-medium")}>
-          {deal.priority}
-        </span>
+        <span className="shrink-0 text-numeral-sm">{formatMoney(deal.value, deal.currency)}</span>
       </div>
 
-      <div className="mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-meta">
-        <span className="tabular-nums text-data text-ink">
-          {formatMoney(deal.value, deal.currency)}
-        </span>
-        <span className="tabular-nums">
-          {deal.daysInStage ?? 0}d in stage
-        </span>
-        <span className={cn(missingNext && "font-medium text-health-warn")}>
-          {missingNext ? "No next activity" : `Next ${formatWhen(deal.nextActivityAt)}`}
+      <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-meta">
+        {deal.status === "open" ? <NextStepChip at={deal.nextActivityAt} /> : null}
+        <span className="tabular-nums">{deal.daysInStage ?? 0}d in stage</span>
+        <span className="inline-flex items-center gap-1 capitalize">
+          {priority === "high" || priority === "urgent" ? (
+            <span
+              aria-hidden
+              className={cn(
+                "size-1.5 rounded-full",
+                priority === "urgent" ? "bg-priority-urgent" : "bg-priority-high",
+              )}
+            />
+          ) : null}
+          {priority}
         </span>
       </div>
 
       {deal.status === "lost" && deal.lostReason ? (
-        <p className="mt-1.5 text-[11px] text-stage-lost">Lost: {deal.lostReason}</p>
+        <p className="mt-1.5 text-caption text-stage-lost-ink">Lost: {deal.lostReason}</p>
       ) : null}
       {deal.attention && deal.attention !== "no_next_activity" ? (
-        <p className="mt-1 text-[11px] text-health-warn">
+        <p className="mt-1 text-caption text-warning">
           {attentionLabel[deal.attention] ?? deal.attention}
         </p>
       ) : null}
 
       {!overlay ? (
         <div
-          className="mt-2 flex flex-wrap items-center gap-1"
+          className="mt-2 flex flex-wrap items-center gap-1 transition-opacity duration-150 pointer-fine:opacity-0 pointer-fine:group-hover/card:opacity-100 pointer-fine:group-focus-within/card:opacity-100"
           onPointerDown={(e) => e.stopPropagation()}
         >
           {canCreateActivity && deal.status === "open" ? (
@@ -897,131 +956,5 @@ function DealCard({
         </div>
       ) : null}
     </article>
-  );
-}
-
-function CreateDealDialog({
-  open,
-  onOpenChange,
-  pipelineId,
-  firstStageId,
-  onCreated,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  pipelineId: string;
-  firstStageId?: string;
-  onCreated: () => void;
-}) {
-  const [title, setTitle] = React.useState("");
-  const [customerId, setCustomerId] = React.useState("");
-  const [value, setValue] = React.useState("");
-  const [source, setSource] = React.useState("");
-  const [priority, setPriority] = React.useState("medium");
-  const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-
-  const customersQuery = useQuery({
-    queryKey: ["customers", "deal-create"],
-    queryFn: () => crmApi.listCustomers(new URLSearchParams({ limit: "100" })),
-    enabled: open,
-  });
-
-  return (
-    <Modal open={open} onOpenChange={onOpenChange}>
-      <ModalContent>
-        <ModalHeader>
-          <ModalTitle>Create deal</ModalTitle>
-          <ModalDescription>Deals belong to a customer and a pipeline stage.</ModalDescription>
-        </ModalHeader>
-        <div className="grid gap-3">
-          <div className="space-y-1.5">
-            <Label required>Deal name</Label>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} required aria-required="true" />
-          </div>
-          <div className="space-y-1.5">
-            <Label required>Customer</Label>
-            <Select value={customerId || undefined} onValueChange={setCustomerId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select customer" />
-              </SelectTrigger>
-              <SelectContent>
-                {(customersQuery.data?.data ?? []).map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.fullName}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label>Value</Label>
-              <Input value={value} onChange={(e) => setValue(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Priority</Label>
-              <Select value={priority} onValueChange={setPriority}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {["low", "medium", "high", "urgent"].map((p) => (
-                    <SelectItem key={p} value={p}>
-                      {p}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Source</Label>
-            <Input value={source} onChange={(e) => setSource(e.target.value)} />
-          </div>
-          {error ? <p className="text-xs text-destructive">{error}</p> : null}
-        </div>
-        <ModalFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button
-            loading={loading}
-            onClick={() => {
-              void (async () => {
-                setLoading(true);
-                setError(null);
-                try {
-                  await crmApi.createDeal({
-                    title,
-                    customerId,
-                    pipelineId,
-                    stageId: firstStageId,
-                    value: value ? Number(value) : null,
-                    source,
-                    priority,
-                  });
-                  onOpenChange(false);
-                  setTitle("");
-                  setCustomerId("");
-                  setValue("");
-                  setSource("");
-                  onCreated();
-                  toast.success("Deal created");
-                } catch (err) {
-                  const message = err instanceof Error ? err.message : "Create failed";
-                  setError(message);
-                  toast.error(message);
-                } finally {
-                  setLoading(false);
-                }
-              })();
-            }}
-          >
-            Create
-          </Button>
-        </ModalFooter>
-      </ModalContent>
-    </Modal>
   );
 }
