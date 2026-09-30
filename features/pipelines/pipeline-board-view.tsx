@@ -128,6 +128,48 @@ function moveDealOnBoard(board: DealBoard, dealId: string, toStageId: string): D
   };
 }
 
+/**
+ * Rebuilds columns so every deal appears in exactly one stage: its in-flight move
+ * target if one is pending, otherwise its own stageId. A background refetch that
+ * lands mid-move would otherwise redraw the deal in its old column as well.
+ */
+function placeDealsOnce(columns: DealBoard["columns"], pending: Record<string, string>): DealBoard["columns"] {
+  const stages = new Map(columns.map((col) => [col.stage.id, col.stage]));
+  const latest = new Map<string, Deal>();
+  for (const col of columns) {
+    for (const deal of col.deals) {
+      const seen = latest.get(deal.id);
+      if (!seen || new Date(deal.stageEnteredAt).getTime() > new Date(seen.stageEnteredAt).getTime()) {
+        latest.set(deal.id, { ...deal, stageId: deal.stageId ?? col.stage.id });
+      }
+    }
+  }
+  const byStage = new Map<string, Deal[]>();
+  for (const deal of latest.values()) {
+    const targetId = pending[deal.id] ?? deal.stageId;
+    const stage = targetId ? stages.get(targetId) : undefined;
+    if (!stage || !targetId) continue;
+    const placed =
+      targetId === deal.stageId
+        ? deal
+        : {
+            ...deal,
+            stageId: targetId,
+            stageName: stage.name,
+            status: stage.isWon ? "won" : stage.isLost ? "lost" : "open",
+          };
+    byStage.set(targetId, [...(byStage.get(targetId) ?? []), placed]);
+  }
+  return columns.map((col) => ({
+    ...col,
+    deals: (byStage.get(col.stage.id) ?? []).sort((a, b) => {
+      const ai = col.deals.findIndex((d) => d.id === a.id);
+      const bi = col.deals.findIndex((d) => d.id === b.id);
+      return (ai < 0 ? -1 : ai) - (bi < 0 ? -1 : bi);
+    }),
+  }));
+}
+
 export function PipelineBoardView({
   viewToggle,
   pipelineId: pipelineIdProp,
@@ -146,7 +188,8 @@ export function PipelineBoardView({
   const [activityDeal, setActivityDeal] = React.useState<Deal | null>(null);
   const [lostPending, setLostPending] = React.useState<LostReasonState>(null);
   const [hideClosed, setHideClosed] = React.useState(false);
-  const [statusFilter, setStatusFilter] = React.useState("open");
+  const [statusFilter, setStatusFilter] = React.useState("all");
+  const [pendingMoves, setPendingMoves] = React.useState<Record<string, string>>({});
   const [closingFilter, setClosingFilter] = React.useState("all");
   const [noNextOnly, setNoNextOnly] = React.useState(false);
   const [wonPulseId, setWonPulseId] = React.useState<string | null>(null);
@@ -213,6 +256,7 @@ export function PipelineBoardView({
       }),
     onMutate: async (vars) => {
       if (vars.skipOptimistic) return { previous: undefined };
+      setPendingMoves((prev) => ({ ...prev, [vars.dealId]: vars.stageId }));
       await qc.cancelQueries({ queryKey: boardKey });
       const previous = qc.getQueryData<DealBoard>(boardKey);
       if (previous) {
@@ -246,6 +290,7 @@ export function PipelineBoardView({
       }
     },
     onError: (err, vars, ctx) => {
+      clearPendingMove(vars.dealId);
       if (ctx?.previous) {
         qc.setQueryData(boardKey, ctx.previous);
       }
@@ -263,10 +308,20 @@ export function PipelineBoardView({
       toast.error(err instanceof Error ? err.message : "Couldn't move the deal. Try again.");
       setAnnounce("Deal stage move failed and was reverted.");
     },
-    onSettled: () => {
-      void qc.invalidateQueries({ queryKey: boardKey });
+    onSettled: async (_data, _err, vars) => {
+      await qc.invalidateQueries({ queryKey: boardKey });
+      clearPendingMove(vars.dealId);
     },
   });
+
+  function clearPendingMove(dealId: string) {
+    setPendingMoves((prev) => {
+      if (!(dealId in prev)) return prev;
+      const next = { ...prev };
+      delete next[dealId];
+      return next;
+    });
+  }
 
   const pipeline = boardQuery.data?.pipeline;
   const wonStage = findOutcomeStage(pipeline, "won");
@@ -308,7 +363,7 @@ export function PipelineBoardView({
   };
 
   const filteredColumns = React.useMemo(() => {
-    const cols = boardQuery.data?.columns ?? [];
+    const cols = placeDealsOnce(boardQuery.data?.columns ?? [], pendingMoves);
     const now = new Date();
     const month = now.getMonth();
     const year = now.getFullYear();
@@ -339,6 +394,7 @@ export function PipelineBoardView({
       });
   }, [
     boardQuery.data?.columns,
+    pendingMoves,
     hideClosed,
     ownerId,
     statusFilter,
@@ -408,7 +464,7 @@ export function PipelineBoardView({
 
       <FilterBar
         onClear={() => {
-          setStatusFilter("open");
+          setStatusFilter("all");
           setClosingFilter("all");
           setNoNextOnly(false);
           setHideClosed(false);

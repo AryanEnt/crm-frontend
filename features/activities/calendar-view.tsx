@@ -42,13 +42,16 @@ import { ActivityQuickCreateDialog } from "@/features/activities/activity-quick-
 import {
   addDays,
   addMonths,
+  calendarDayKey,
   commonTimezones,
   dayKeyInTimezone,
   formatDateInTimezone,
   formatInTimezone,
   formatTimeInTimezone,
+  startOfDayInTimezone,
   startOfMonth,
   startOfWeek,
+  todayInTimezone,
 } from "@/lib/timezone";
 import { cn } from "@/lib/utils";
 
@@ -165,7 +168,7 @@ export function CalendarView() {
   const scopeParams = scopeFilters.params;
 
   const [view, setView] = React.useState<ViewMode>("month");
-  const [cursor, setCursor] = React.useState(() => new Date());
+  const [cursor, setCursor] = React.useState(() => todayInTimezone(timezone));
   const [typeCode, setTypeCode] = React.useState("all");
   const [pipelineId, setPipelineId] = React.useState("all");
   const [status, setStatus] = React.useState("all");
@@ -196,8 +199,8 @@ export function CalendarView() {
 
   const params = React.useMemo(() => {
     const p = new URLSearchParams({
-      from: range.from.toISOString(),
-      to: range.to.toISOString(),
+      from: startOfDayInTimezone(range.from, timezone).toISOString(),
+      to: startOfDayInTimezone(range.to, timezone).toISOString(),
       limit: "500",
     });
     for (const [key, value] of scopeParams) p.set(key, value);
@@ -205,7 +208,7 @@ export function CalendarView() {
     if (pipelineId !== "all") p.set("pipelineId", pipelineId);
     if (status !== "all") p.set("status", status);
     return p;
-  }, [range, scopeParams, typeCode, pipelineId, status]);
+  }, [range, timezone, scopeParams, typeCode, pipelineId, status]);
 
   const calendarQuery = useQuery({
     queryKey: ["calendar", params.toString()],
@@ -244,13 +247,12 @@ export function CalendarView() {
 
   const titleLabel = React.useMemo(() => {
     return new Intl.DateTimeFormat(undefined, {
-      timeZone: timezone,
       month: "long",
       year: "numeric",
       ...(view === "day" || view === "week" ? { day: "numeric" } : {}),
       ...(view === "week" ? { weekday: "short" } : {}),
     }).format(cursor);
-  }, [cursor, timezone, view]);
+  }, [cursor, view]);
 
   const filtersActive =
     scopeFilters.active ||
@@ -331,7 +333,7 @@ export function CalendarView() {
             >
               <ChevronLeft className="size-3.5" />
             </Button>
-            <Button size="sm" variant="ghost" className="h-8 px-2.5" onClick={() => setCursor(new Date())}>
+            <Button size="sm" variant="ghost" className="h-8 px-2.5" onClick={() => setCursor(todayInTimezone(timezone))}>
               Today
             </Button>
             <Button
@@ -500,14 +502,14 @@ function MonthGrid({
       </div>
       <div className="grid grid-cols-7 auto-rows-fr">
         {days.map((d) => {
-          const key = dayKeyInTimezone(d, timezone);
+          const key = calendarDayKey(d);
           const items = byDay.get(key) ?? [];
           const inMonth = d.getMonth() === month;
           const isToday = key === todayKey;
           const isWeekend = d.getDay() === 0 || d.getDay() === 6;
           return (
             <div
-              key={key + d.toISOString()}
+              key={key}
               className={cn(
                 "group relative min-h-[96px] border-b border-r border-border p-1.5 transition-colors sm:min-h-[112px]",
                 !inMonth && "bg-surface-muted/40",
@@ -610,7 +612,7 @@ function WeekDayStrip({
   return (
     <div className={cn("grid gap-2.5", mode === "week" ? "md:grid-cols-7" : "grid-cols-1")}>
       {days.map((d) => {
-        const key = dayKeyInTimezone(d, timezone);
+        const key = calendarDayKey(d);
         const items = (byDay.get(key) ?? [])
           .slice()
           .sort((a, b) => +eventInstant(a) - +eventInstant(b));
@@ -631,13 +633,14 @@ function WeekDayStrip({
                     isToday ? "text-brand-dark" : "text-foreground-muted",
                   )}
                 >
-                  {new Intl.DateTimeFormat(undefined, {
-                    timeZone: timezone,
-                    weekday: "short",
-                  }).format(d)}
+                  {new Intl.DateTimeFormat(undefined, { weekday: "short" }).format(d)}
                 </p>
                 <p className="text-sm font-semibold text-foreground">
-                  {formatDateInTimezone(d, timezone)}
+                  {new Intl.DateTimeFormat(undefined, {
+                    year: "numeric",
+                    month: "short",
+                    day: "numeric",
+                  }).format(d)}
                 </p>
               </div>
               {onDayCreate ? (

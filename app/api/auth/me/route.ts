@@ -3,8 +3,8 @@ import {
   applyAuthCookies,
   backendFetch,
   readAccessToken,
+  readEnvelope,
   refreshAccessTokens,
-  type BackendEnvelope,
 } from "@/lib/auth/server";
 import type { SessionUser } from "@/features/auth/types";
 
@@ -23,7 +23,7 @@ export async function GET() {
         method: "GET",
         headers: { Authorization: `Bearer ${access}` },
       });
-      const envelope = (await upstream.json()) as BackendEnvelope<SessionUser>;
+      const envelope = await readEnvelope<SessionUser>(upstream);
       const res = NextResponse.json(envelope, { status: upstream.status });
       return applyAuthCookies(res, {
         accessToken: rotated.accessToken,
@@ -31,12 +31,12 @@ export async function GET() {
       });
     }
     // Middleware treats any refresh cookie as a session, so a dead one would bounce /login back to /.
-    const envelope = (await upstream.json()) as BackendEnvelope<SessionUser>;
+    const envelope = await readEnvelope<SessionUser>(upstream);
     const res = NextResponse.json(envelope, { status: upstream.status });
     return applyAuthCookies(res, { clear: true });
   }
 
-  const envelope = (await upstream.json()) as BackendEnvelope<SessionUser>;
+  const envelope = await readEnvelope<SessionUser>(upstream);
   return NextResponse.json(envelope, { status: upstream.status });
 }
 
@@ -77,7 +77,7 @@ export async function PATCH(req: Request) {
         },
         body: JSON.stringify(body),
       });
-      const envelope = (await upstream.json()) as BackendEnvelope<SessionUser>;
+      const envelope = await readEnvelope<SessionUser>(upstream);
       const res = NextResponse.json(envelope, { status: upstream.status });
       return applyAuthCookies(res, {
         accessToken: rotated.accessToken,
@@ -86,6 +86,6 @@ export async function PATCH(req: Request) {
     }
   }
 
-  const envelope = (await upstream.json()) as BackendEnvelope<SessionUser>;
+  const envelope = await readEnvelope<SessionUser>(upstream);
   return NextResponse.json(envelope, { status: upstream.status });
 }

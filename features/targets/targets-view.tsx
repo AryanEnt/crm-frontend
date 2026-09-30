@@ -30,6 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useAuth } from "@/features/auth/auth-provider";
+import { dataScopeFor } from "@/features/auth/list-scope";
 import { adminApi } from "@/lib/api/admin";
 import { crmApi, type TargetProgress } from "@/lib/api/crm";
 import { formatMoney } from "@/features/analytics/charts";
@@ -64,8 +65,23 @@ function quarterBounds(y: number, q: number): { start: string; end: string } {
 }
 
 export function TargetsView() {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const qc = useQueryClient();
+  const canManage = can("targets:manage");
+  const teamScopedManager = canManage && dataScopeFor(user, "targets:manage") === "team";
+  const orgWideView = dataScopeFor(user, "targets:view") === "organization";
+  const teammatesQuery = useQuery({
+    queryKey: ["users", "targets", "teammates"],
+    queryFn: () => adminApi.listUsers(new URLSearchParams({ limit: "100" })),
+    enabled: teamScopedManager,
+  });
+  const teammateIds = new Set((teammatesQuery.data?.data ?? []).map((u) => u.id));
+  const canManageTarget = (t: TargetProgress["target"]) => {
+    if (!teamScopedManager) return canManage;
+    if (t.scopeType === "team") return !!t.teamId && (user?.teamIds ?? []).includes(t.teamId);
+    if (t.scopeType === "user") return !!t.userId && (t.userId === user?.id || teammateIds.has(t.userId));
+    return false;
+  };
   const [createOpen, setCreateOpen] = React.useState(false);
   const [periodType, setPeriodType] = React.useState("all");
   const [scopeType, setScopeType] = React.useState("all");
@@ -115,7 +131,7 @@ export function TargetsView() {
         title="Targets"
         description="Monthly and quarterly goals for teams and individuals — actuals from live CRM data."
         actions={
-          can("targets:manage") ? (
+          canManage ? (
             <Button size="sm" onClick={() => setCreateOpen(true)}>
               <Plus className="size-3.5" />
               New target
@@ -137,8 +153,8 @@ export function TargetsView() {
           <SelectTrigger className="w-[160px]"><SelectValue placeholder="Scope" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All scopes</SelectItem>
-            <SelectItem value="organization">Organization</SelectItem>
-            <SelectItem value="team">Team</SelectItem>
+            {orgWideView ? <SelectItem value="organization">Organization</SelectItem> : null}
+            <SelectItem value="team">{orgWideView ? "Team" : "My team"}</SelectItem>
             <SelectItem value="user">Individual</SelectItem>
           </SelectContent>
         </Select>
@@ -158,7 +174,7 @@ export function TargetsView() {
               key={row.target.id}
               row={row}
               catalog={catalog}
-              canManage={can("targets:manage")}
+              canManage={canManageTarget(row.target)}
               onDelete={() => {
                 if (window.confirm("Delete this target?")) {
                   deleteMutation.mutate(row.target.id);
@@ -259,6 +275,9 @@ function CreateTargetDialog({
   catalog: Array<{ code: string; label: string }>;
   onDone: () => void;
 }) {
+  const { user } = useAuth();
+  const teamScoped = dataScopeFor(user, "targets:manage") !== "organization";
+  const myTeamIds = user?.teamIds ?? [];
   const now = new Date();
   const [name, setName] = React.useState("");
   const [metric, setMetric] = React.useState("leads");
@@ -268,8 +287,11 @@ function CreateTargetDialog({
   );
   const [year, setYear] = React.useState(String(now.getFullYear()));
   const [quarter, setQuarter] = React.useState(String(Math.floor(now.getMonth() / 3) + 1));
-  const [scopeType, setScopeType] = React.useState("organization");
-  const [teamId, setTeamId] = React.useState("");
+  const [scopeChoice, setScopeType] = React.useState(teamScoped ? "team" : "organization");
+  const scopeType = teamScoped && scopeChoice === "organization" ? "team" : scopeChoice;
+  const [teamChoice, setTeamId] = React.useState("");
+  const teamId = teamScoped ? (myTeamIds.length === 1 ? myTeamIds[0] : "") : teamChoice;
+  const noTeam = teamScoped && myTeamIds.length === 0;
   const [userId, setUserId] = React.useState("");
   const [pipelineId, setPipelineId] = React.useState("none");
   const [targetValue, setTargetValue] = React.useState("10");
@@ -281,10 +303,16 @@ function CreateTargetDialog({
     enabled: open,
   });
   const usersQuery = useQuery({
-    queryKey: ["users", "targets"],
-    queryFn: () => adminApi.listUsers(new URLSearchParams({ limit: "100", isActive: "true" })),
-    enabled: open,
+    queryKey: ["users", "targets", teamScoped ? myTeamIds.join(",") : "all"],
+    queryFn: () => {
+      const p = new URLSearchParams({ limit: "100", isActive: "true" });
+      if (teamScoped && myTeamIds.length === 1) p.set("teamId", myTeamIds[0]);
+      return adminApi.listUsers(p);
+    },
+    enabled: open && !noTeam,
   });
+  const teams = (teamsQuery.data?.data ?? []).filter((t) => !teamScoped || myTeamIds.includes(t.id));
+  const myTeamName = teams.find((t) => t.id === teamId)?.name ?? "Your team";
   const pipelinesQuery = useQuery({
     queryKey: ["pipelines", "targets"],
     queryFn: () => crmApi.listPipelines(),
@@ -349,25 +377,37 @@ function CreateTargetDialog({
               </div>
             </div>
           )}
+          {noTeam ? (
+            <p role="alert" className="rounded-md border border-warning-border bg-warning-soft px-3 py-2 text-xs text-ink">
+              You aren&apos;t assigned to a team yet, so you can&apos;t set targets. Ask an administrator to add you
+              to a team.
+            </p>
+          ) : null}
           <div className="space-y-1.5">
             <Label required>Scope</Label>
             <Select value={scopeType} onValueChange={setScopeType}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="organization">Organization</SelectItem>
-                <SelectItem value="team">Team</SelectItem>
+                {teamScoped ? null : <SelectItem value="organization">Organization</SelectItem>}
+                <SelectItem value="team">{teamScoped ? "My team" : "Team"}</SelectItem>
                 <SelectItem value="user">Individual</SelectItem>
               </SelectContent>
             </Select>
           </div>
-          {scopeType === "team" ? (
+          {scopeType === "team" && teamScoped ? (
+            noTeam ? null : (
+              <p className="text-xs text-foreground-muted">
+                Applies to <span className="font-medium text-ink">{myTeamName}</span>.
+              </p>
+            )
+          ) : scopeType === "team" ? (
             <div className="space-y-1.5">
               <Label required>Team</Label>
               <Select value={teamId || "none"} onValueChange={(v) => setTeamId(v === "none" ? "" : v)}>
                 <SelectTrigger><SelectValue placeholder="Select team" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Select…</SelectItem>
-                  {(teamsQuery.data?.data ?? []).map((t) => (
+                  {teams.map((t) => (
                     <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
                   ))}
                 </SelectContent>
@@ -415,6 +455,7 @@ function CreateTargetDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button
             loading={loading}
+            disabled={noTeam}
             onClick={() => {
               void (async () => {
                 setLoading(true);
@@ -430,7 +471,7 @@ function CreateTargetDialog({
                     periodStart: bounds.start,
                     periodEnd: bounds.end,
                     scopeType,
-                    teamId: scopeType === "team" ? teamId : null,
+                    teamId: scopeType === "team" && teamId ? teamId : null,
                     userId: scopeType === "user" ? userId : null,
                     pipelineId: pipelineId === "none" ? null : pipelineId,
                     targetValue: Number(targetValue) || 0,

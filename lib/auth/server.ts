@@ -22,11 +22,44 @@ export async function backendFetch(path: string, init: RequestInit = {}) {
   if (!headers.has("Accept")) {
     headers.set("Accept", "application/json");
   }
-  return fetch(url, {
-    ...init,
-    headers,
-    cache: "no-store",
-  });
+  try {
+    return await fetch(url, {
+      ...init,
+      headers,
+      cache: "no-store",
+    });
+  } catch (err) {
+    console.error(`[backendFetch] backend unreachable at ${url}`, err);
+    return upstreamUnavailable();
+  }
+}
+
+function upstreamUnavailable() {
+  return Response.json(
+    {
+      success: false,
+      error: { code: "upstream_unavailable", message: "Backend service is unavailable" },
+      timestamp: new Date().toISOString(),
+    },
+    { status: 502 },
+  );
+}
+
+/** Backend replies that are not JSON (e.g. a platform 502 page) become an upstream_unavailable envelope. */
+export async function readEnvelope<T>(upstream: Response): Promise<BackendEnvelope<T>> {
+  const text = await upstream.text();
+  try {
+    return JSON.parse(text) as BackendEnvelope<T>;
+  } catch {
+    console.error(
+      `[backendFetch] non-JSON response (${upstream.status}) from ${upstream.url}: ${text.slice(0, 200)}`,
+    );
+    return {
+      success: false,
+      error: { code: "upstream_unavailable", message: "Backend service is unavailable" },
+      timestamp: new Date().toISOString(),
+    };
+  }
 }
 
 type CookieOptions = {
@@ -122,7 +155,7 @@ export async function refreshAccessTokens(): Promise<RotatedAuth | null> {
         method: "POST",
         headers: { Cookie: `${REFRESH_COOKIE}=${refresh}` },
       });
-      const envelope = (await upstream.json()) as BackendEnvelope<RotatedAuth>;
+      const envelope = await readEnvelope<RotatedAuth>(upstream);
       if (!upstream.ok || !envelope.success || !envelope.data) return null;
       return envelope.data;
     })().finally(() => {

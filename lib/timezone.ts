@@ -46,6 +46,49 @@ export function dayKeyInTimezone(value: Date, timeZone: string): string {
   }
 }
 
+/**
+ * Calendar grid cells are browser-local midnight Dates standing for a calendar date,
+ * so their day key must come from their own fields, not from a timezone conversion.
+ */
+export function calendarDayKey(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** Today's date in the given timezone, as a grid cell Date. */
+export function todayInTimezone(timeZone: string): Date {
+  const [y, m, d] = dayKeyInTimezone(new Date(), timeZone).split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function timezoneOffsetMs(at: Date, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "numeric",
+    second: "numeric",
+  }).formatToParts(at);
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((p) => p.type === type)?.value);
+  const asUtc = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"), get("second"));
+  return asUtc - Math.floor(at.getTime() / 1000) * 1000;
+}
+
+/** The instant a grid cell's calendar date begins in the given timezone. */
+export function startOfDayInTimezone(d: Date, timeZone: string): Date {
+  const utcMidnight = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+  try {
+    const guess = utcMidnight - timezoneOffsetMs(new Date(utcMidnight), timeZone || "UTC");
+    return new Date(utcMidnight - timezoneOffsetMs(new Date(guess), timeZone || "UTC"));
+  } catch {
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  }
+}
+
 export function startOfMonth(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), 1);
 }
