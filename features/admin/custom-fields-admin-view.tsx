@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { FilterBar } from "@/components/ui/filter-bar";
 import { DataTable, SortableHeader } from "@/components/ui/data-table";
+import { codeEchoesName } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { ErrorState } from "@/components/ui/error-state";
 import { LoadingState } from "@/components/ui/loading-state";
@@ -209,12 +210,17 @@ export function CustomFieldsAdminView() {
       {
         accessorKey: "name",
         header: ({ column }) => <SortableHeader column={column} title="Field" />,
-        cell: ({ row }) => (
-          <div>
-            <p className="font-medium">{row.original.name}</p>
-            <p className="text-xs text-foreground-muted">{row.original.internalKey}</p>
-          </div>
-        ),
+        cell: ({ row }) => {
+          const showKey = !codeEchoesName(row.original.name, row.original.internalKey);
+          return (
+            <div className="min-w-0">
+              <p className="truncate font-medium text-ink">{row.original.name}</p>
+              {showKey ? (
+                <p className="truncate font-mono text-caption text-ink-muted">{row.original.internalKey}</p>
+              ) : null}
+            </div>
+          );
+        },
       },
       { accessorKey: "entity", header: "Entity" },
       {

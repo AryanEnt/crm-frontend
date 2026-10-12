@@ -4,12 +4,10 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/features/auth/auth-provider";
-import { LeadCreateDrawer } from "@/features/leads/lead-create-drawer";
-import { CustomerCreateDrawer } from "@/features/customers/customer-create-drawer";
+import { CreateLeadSheet } from "@/features/leads/create/create-lead-sheet";
 import { ActivityQuickCreateDialog } from "@/features/activities/activity-quick-create";
-import { DealQuickCreateDrawer } from "@/features/deals/deal-quick-create";
 
-type Entity = "lead" | "customer" | "deal" | "activity";
+type Entity = "lead" | "activity";
 
 type QuickCreateContextValue = {
   openCreate: (entity: Entity) => void;
@@ -32,18 +30,13 @@ export function QuickCreateProvider({ children }: { children: React.ReactNode })
   const router = useRouter();
   const qc = useQueryClient();
   const [leadOpen, setLeadOpen] = React.useState(false);
-  const [customerOpen, setCustomerOpen] = React.useState(false);
-  const [dealOpen, setDealOpen] = React.useState(false);
   const [activityOpen, setActivityOpen] = React.useState(false);
 
   const openCreate = React.useCallback(
     (entity: Entity) => {
       if (entity === "lead" && can("leads:create")) setLeadOpen(true);
-      else if (entity === "customer" && can("customers:create")) setCustomerOpen(true);
-      else if (entity === "deal" && can("deals:create")) setDealOpen(true);
       else if (entity === "activity" && can("activities:create")) setActivityOpen(true);
       else if (entity === "lead") router.push("/leads");
-      else if (entity === "customer") router.push("/customers");
     },
     [can, router],
   );
@@ -68,24 +61,7 @@ export function QuickCreateProvider({ children }: { children: React.ReactNode })
   return (
     <QuickCreateContext.Provider value={{ openCreate }}>
       {children}
-      <LeadCreateDrawer
-        open={leadOpen}
-        onOpenChange={setLeadOpen}
-        onSaved={() => void qc.invalidateQueries({ queryKey: ["leads"] })}
-      />
-      <CustomerCreateDrawer
-        open={customerOpen}
-        onOpenChange={setCustomerOpen}
-        onSaved={() => void qc.invalidateQueries({ queryKey: ["customers"] })}
-      />
-      <DealQuickCreateDrawer
-        open={dealOpen}
-        onOpenChange={setDealOpen}
-        onCreated={() => {
-          void qc.invalidateQueries({ queryKey: ["deals"] });
-          void qc.invalidateQueries({ queryKey: ["deal-board"] });
-        }}
-      />
+      <CreateLeadSheet open={leadOpen} onOpenChange={setLeadOpen} />
       <ActivityQuickCreateDialog
         open={activityOpen}
         onOpenChange={setActivityOpen}

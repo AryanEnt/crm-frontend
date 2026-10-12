@@ -3,13 +3,33 @@
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Pencil, Plus, Power, PowerOff, Trash2 } from "lucide-react";
+import {
+  CalendarDays,
+  Camera,
+  Globe,
+  MapPin,
+  Megaphone,
+  MessageCircle,
+  Phone,
+  Plus,
+  Pencil,
+  Power,
+  PowerOff,
+  Search,
+  Share2,
+  Store,
+  Trash2,
+  UserRound,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { FilterBar } from "@/components/ui/filter-bar";
 import { DataTable, SortableHeader } from "@/components/ui/data-table";
-import { StatusBadge } from "@/components/ui/status-badge";
+import { StatusIndicator } from "@/components/ui/console/badge";
+import { tintFor } from "@/components/ui/console/tints";
 import { ErrorState } from "@/components/ui/error-state";
 import { LoadingState } from "@/components/ui/loading-state";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -27,7 +47,35 @@ import {
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useAuth } from "@/features/auth/auth-provider";
 import { adminApi, type LeadSource } from "@/lib/api/admin";
-import { cn } from "@/lib/utils";
+import { cn, codeEchoesName } from "@/lib/utils";
+
+const SOURCE_ICONS: Record<string, LucideIcon> = {
+  website: Globe,
+  facebook: Share2,
+  instagram: Camera,
+  google: Search,
+  whatsapp: MessageCircle,
+  walk_in: Store,
+  partner: Users,
+  agent: UserRound,
+  referral: Users,
+  cold_call: Phone,
+  event: CalendarDays,
+  social: Megaphone,
+  other: MapPin,
+};
+
+function SourceMark({ code, name }: { code: string; name: string }) {
+  const Icon = SOURCE_ICONS[code] ?? Megaphone;
+  return (
+    <span
+      data-tint={tintFor(code || name)}
+      className="inline-flex size-7 shrink-0 items-center justify-center rounded-md bg-tint-bg text-tint-fg"
+    >
+      <Icon aria-hidden className="size-3.5" />
+    </span>
+  );
+}
 
 const ROW_ACTION = "h-7 gap-1.5 px-2.5 text-xs font-medium text-ink-secondary shadow-xs [&_svg]:size-3.5";
 
@@ -135,18 +183,26 @@ export function LeadSourcesAdminView() {
       {
         accessorKey: "name",
         header: ({ column }) => <SortableHeader column={column} title="Name" />,
-        cell: ({ row }) => (
-          <div>
-            <p className="font-medium">{row.original.name}</p>
-            <p className="text-xs text-foreground-muted">{row.original.code}</p>
-          </div>
-        ),
+        cell: ({ row }) => {
+          const showCode = !codeEchoesName(row.original.name, row.original.code);
+          return (
+            <div className="flex min-w-0 items-center gap-2.5">
+              <SourceMark code={row.original.code} name={row.original.name} />
+              <div className="min-w-0">
+                <p className="truncate font-medium text-ink">{row.original.name}</p>
+                {showCode ? (
+                  <p className="truncate font-mono text-caption text-ink-muted">{row.original.code}</p>
+                ) : null}
+              </div>
+            </div>
+          );
+        },
       },
       {
         accessorKey: "description",
         header: "Description",
         cell: ({ row }) => (
-          <span className="text-sm text-foreground-muted line-clamp-2">
+          <span className="line-clamp-2 text-caption text-ink-secondary">
             {row.original.description || "—"}
           </span>
         ),
@@ -154,20 +210,33 @@ export function LeadSourcesAdminView() {
       {
         accessorKey: "position",
         header: "Order",
-        cell: ({ row }) => row.original.position,
+        meta: { align: "right" },
+        cell: ({ row }) => (
+          <span className="tabular-nums text-ink-secondary">{row.original.position}</span>
+        ),
       },
       {
         accessorKey: "usageCount",
         header: "Usage",
-        cell: ({ row }) => row.original.usageCount,
+        meta: { align: "right" },
+        cell: ({ row }) => (
+          <span
+            className={cn(
+              "inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-caption font-medium tabular-nums",
+              row.original.usageCount > 0 ? "bg-brand-soft text-brand-ink" : "bg-surface-muted text-ink-muted",
+            )}
+          >
+            {row.original.usageCount}
+          </span>
+        ),
       },
       {
         accessorKey: "isActive",
         header: "Status",
         cell: ({ row }) => (
-          <StatusBadge tone={row.original.isActive ? "success" : "neutral"}>
+          <StatusIndicator tone={row.original.isActive ? "success" : "neutral"}>
             {row.original.isActive ? "Active" : "Inactive"}
-          </StatusBadge>
+          </StatusIndicator>
         ),
       },
       {

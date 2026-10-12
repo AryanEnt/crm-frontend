@@ -30,7 +30,7 @@ type Values = {
 
 type FieldKey = keyof Values;
 
-const FIELD_ORDER: FieldKey[] = ["firstName", "roleId", "teamId", "password", "email"];
+const FIELD_ORDER: FieldKey[] = ["email", "password", "firstName", "roleId", "teamId"];
 
 function initialValuesFor(initial: AdminUser | null | undefined): Values {
   const parts = (initial?.fullName ?? "").trim().split(/\s+/);
@@ -75,12 +75,12 @@ export function UserFormDrawer({
   } | null>(null);
 
   const formRef = React.useRef<HTMLFormElement>(null);
-  const firstNameRef = React.useRef<HTMLInputElement>(null);
+  const emailRef = React.useRef<HTMLInputElement>(null);
   const roleRef = React.useRef<HTMLSelectElement>(null);
   const teamRef = React.useRef<HTMLSelectElement>(null);
   const passwordRef = React.useRef<HTMLInputElement>(null);
   const initialFocusRef =
-    focusField === "role" ? roleRef : focusField === "team" ? teamRef : focusField === "password" ? passwordRef : firstNameRef;
+    focusField === "role" ? roleRef : focusField === "team" ? teamRef : focusField === "password" ? passwordRef : emailRef;
 
   const teamsQuery = useQuery({
     queryKey: ["teams", "user-form"],
@@ -230,11 +230,40 @@ export function UserFormDrawer({
         ) : null}
 
         <fieldset disabled={loading} className="min-w-0">
+          <DrawerSection title="Sign-in">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Email" required error={errors.email} helper="Used to sign in.">
+                <Input
+                  ref={emailRef}
+                  name="email"
+                  type="email"
+                  autoComplete="off"
+                  value={email}
+                  onChange={(e) => set("email", e.target.value)}
+                />
+              </Field>
+              <Field
+                label={initial ? "New password" : "Password"}
+                required={!initial}
+                error={errors.password}
+                helper={initial ? "Leave blank to keep the current password." : "At least 8 characters."}
+              >
+                <Input
+                  ref={passwordRef}
+                  name="password"
+                  type="password"
+                  autoComplete="new-password"
+                  value={password}
+                  onChange={(e) => set("password", e.target.value)}
+                />
+              </Field>
+            </div>
+          </DrawerSection>
+
           <DrawerSection title="Profile">
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="First name" required error={errors.firstName}>
                 <Input
-                  ref={firstNameRef}
                   name="firstName"
                   autoComplete="off"
                   value={firstName}
@@ -250,6 +279,16 @@ export function UserFormDrawer({
                 />
               </Field>
             </div>
+            <Field label="Phone">
+              <Input
+                name="phone"
+                type="tel"
+                autoComplete="off"
+                className="tabular-nums"
+                value={phone}
+                onChange={(e) => set("phone", e.target.value)}
+              />
+            </Field>
           </DrawerSection>
 
           <DrawerSection title="Access" description="What this person can see and do in the CRM.">
@@ -328,44 +367,6 @@ export function UserFormDrawer({
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
               </Select>
-            </Field>
-
-            <Field
-              label={initial ? "New password" : "Password"}
-              required={!initial}
-              error={errors.password}
-              helper={initial ? "Leave blank to keep the current password." : "At least 8 characters."}
-            >
-              <Input
-                ref={passwordRef}
-                name="password"
-                type="password"
-                autoComplete="new-password"
-                value={password}
-                onChange={(e) => set("password", e.target.value)}
-              />
-            </Field>
-          </DrawerSection>
-
-          <DrawerSection title="Contact">
-            <Field label="Email" required error={errors.email} helper="Used to sign in.">
-              <Input
-                name="email"
-                type="email"
-                autoComplete="off"
-                value={email}
-                onChange={(e) => set("email", e.target.value)}
-              />
-            </Field>
-            <Field label="Phone">
-              <Input
-                name="phone"
-                type="tel"
-                autoComplete="off"
-                className="tabular-nums"
-                value={phone}
-                onChange={(e) => set("phone", e.target.value)}
-              />
             </Field>
           </DrawerSection>
         </fieldset>

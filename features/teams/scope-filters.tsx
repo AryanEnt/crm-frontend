@@ -68,11 +68,14 @@ export function useScopeFilters(
 
 export type ScopeFilters = ReturnType<typeof useScopeFilters>;
 
-/** Active users for org-wide owner pickers; shared cache with bulk-assign menus. */
+/** Active sales executives for owner pickers. Team leads are not assignable owners. */
 export function useOwnerOptions(enabled: boolean) {
   return useQuery({
-    queryKey: ["users", "scope-filter"],
-    queryFn: () => adminApi.listUsers(new URLSearchParams({ limit: "100", isActive: "true" })),
+    queryKey: ["users", "assignable-owners"],
+    queryFn: () =>
+      adminApi.listUsers(
+        new URLSearchParams({ limit: "100", isActive: "true", roleCode: "sales_executive" }),
+      ),
     enabled,
   });
 }

@@ -21,10 +21,18 @@ export function AnzscoCombobox({
   value,
   onChange,
   className,
+  selectedLabel,
+  placeholder = "Search ANZSCO…",
+  ...aria
 }: {
   value?: string | null;
   onChange: (id: string | null, occupation?: AnzscoOccupation | null) => void;
   className?: string;
+  /** Shown for a set value that isn't in the current search results. */
+  selectedLabel?: string | null;
+  placeholder?: string;
+  "aria-labelledby"?: string;
+  "aria-describedby"?: string;
 }) {
   const [open, setOpen] = React.useState(false);
   const [q, setQ] = React.useState("");
@@ -42,6 +50,8 @@ export function AnzscoCombobox({
         <Button
           variant="outline"
           role="combobox"
+          aria-expanded={open}
+          {...aria}
           className={cn(
             dropdownTriggerClass,
             "h-8 w-full justify-between px-2.5",
@@ -53,8 +63,8 @@ export function AnzscoCombobox({
             {selected
               ? `${selected.code} — ${selected.title}`
               : value
-                ? "Selected occupation"
-                : "Search ANZSCO…"}
+                ? (selectedLabel ?? "Selected occupation")
+                : placeholder}
           </span>
           <ChevronsUpDown className="size-3.5 opacity-50" />
         </Button>

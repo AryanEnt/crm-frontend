@@ -24,6 +24,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { LoadingState } from "@/components/ui/loading-state";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { LeadCombobox } from "@/components/forms/entity-pickers";
+import { leadHref } from "@/features/activities/activity-href";
 import { emailApi, type EmailAccount, type EmailThread } from "@/lib/api/email";
 import { EmailComposer, type ComposerContext } from "@/features/email/email-composer";
 import { useAuth } from "@/features/auth/auth-provider";
@@ -59,8 +61,6 @@ export function EmailWorkspace() {
   const [direction, setDirection] = React.useState("");
   const [compose, setCompose] = React.useState<ComposerContext | null>(null);
   const [assocLead, setAssocLead] = React.useState("");
-  const [assocCustomer, setAssocCustomer] = React.useState("");
-
   const accountsQ = useQuery({
     queryKey: ["email-accounts"],
     queryFn: () => emailApi.listAccounts(),
@@ -95,10 +95,7 @@ export function EmailWorkspace() {
 
   const associate = useMutation({
     mutationFn: () =>
-      emailApi.associate(selectedId, {
-        leadId: assocLead || undefined,
-        customerId: assocCustomer || undefined,
-      }),
+      emailApi.associate(selectedId, { leadId: assocLead || undefined }),
     onSuccess: () => {
       toast.success("Associated");
       void qc.invalidateQueries({ queryKey: ["email-threads"] });
@@ -227,7 +224,7 @@ export function EmailWorkspace() {
               className="m-4"
               icon={Mail}
               title={folder === "unmatched" ? "No unmatched email" : "No emails yet"}
-              description="Emails associated with your CRM Leads and Customers will appear here."
+              description="Emails associated with your leads will appear here."
               actionLabel="Compose email"
               onAction={() => setCompose({ mode: "compose" })}
             />
@@ -274,12 +271,12 @@ export function EmailWorkspace() {
                       </StatusBadge>
                     ) : (
                       <p className="text-xs text-foreground-muted">
-                        {thread.customerName || thread.leadName}
+                        {thread.leadName || thread.customerName}
                       </p>
                     )}
-                    {thread.customerId ? (
-                      <Link className="text-xs text-primary hover:underline" href={`/customers/${thread.customerId}`}>
-                        Open customer
+                    {thread.leadId ? (
+                      <Link className="text-xs text-primary hover:underline" href={leadHref(thread.leadId)}>
+                        Open lead
                       </Link>
                     ) : null}
                   </div>
@@ -289,19 +286,18 @@ export function EmailWorkspace() {
                 </div>
                 {thread.matchStatus !== "matched" ? (
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <Input
-                      className="h-8 max-w-[160px]"
-                      placeholder="Lead ID"
-                      value={assocLead}
-                      onChange={(e) => setAssocLead(e.target.value)}
+                    <LeadCombobox
+                      className="w-full max-w-[260px]"
+                      triggerClassName="h-8"
+                      value={assocLead || null}
+                      onChange={(id) => setAssocLead(id ?? "")}
+                      placeholder="Link to a lead…"
                     />
-                    <Input
-                      className="h-8 max-w-[160px]"
-                      placeholder="Customer ID"
-                      value={assocCustomer}
-                      onChange={(e) => setAssocCustomer(e.target.value)}
-                    />
-                    <Button size="sm" onClick={() => associate.mutate()} disabled={associate.isPending}>
+                    <Button
+                      size="sm"
+                      onClick={() => associate.mutate()}
+                      disabled={associate.isPending || !assocLead}
+                    >
                       Associate
                     </Button>
                   </div>
@@ -414,7 +410,7 @@ function ThreadRow({
             {thread.lastMessagePreview}
           </span>
           <span className="mt-0.5 flex items-center gap-2 text-[11px] text-foreground-subtle">
-            {thread.customerName || thread.leadName || "Unmatched"}
+            {thread.leadName || thread.customerName || "Unmatched"}
             {thread.hasAttachments ? <Paperclip className="size-3" /> : null}
           </span>
         </span>

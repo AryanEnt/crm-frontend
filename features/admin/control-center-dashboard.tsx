@@ -146,7 +146,7 @@ export function ControlCenterDashboard() {
             label="Active teams"
             value={String(activeTeams)}
             icon={UsersRound}
-            href={linkTo("/admin/teams")}
+            href={linkTo("/admin/teams?status=active")}
           />
         </div>
       </section>

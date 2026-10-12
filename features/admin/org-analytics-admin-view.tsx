@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { FilterBar } from "@/components/ui/filter-bar";
 import { ErrorState } from "@/components/ui/error-state";
 import { LoadingState } from "@/components/ui/loading-state";
-import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import {
   Select,
   SelectContent,
@@ -20,6 +20,7 @@ import { adminApi } from "@/lib/api/admin";
 import { crmApi } from "@/lib/api/crm";
 import { cn } from "@/lib/utils";
 import { ChartCard, SoftIndigoLineChart } from "@/features/analytics/charts";
+import { formatLeadMoney } from "@/features/leads/lead-format";
 
 function defaultFrom() {
   return format(subDays(new Date(), 30), "yyyy-MM-dd");
@@ -55,6 +56,20 @@ export function OrgAnalyticsAdminView() {
     placeholderData: keepPreviousData,
   });
 
+  const insightParams = React.useMemo(() => {
+    const p = new URLSearchParams({ from, to, owner: ownerUserId || "all" });
+    if (teamId) p.set("teamId", teamId);
+    if (pipelineId) p.set("pipelineId", pipelineId);
+    return p;
+  }, [from, to, teamId, pipelineId, ownerUserId]);
+
+  const overviewQuery = useQuery({
+    queryKey: ["lead-insights", "overview", insightParams.toString()],
+    queryFn: () => crmApi.leadOverview(insightParams),
+    enabled: canView && can("leads:view"),
+    placeholderData: keepPreviousData,
+  });
+
   const teamsQuery = useQuery({
     queryKey: ["teams", "org-analytics"],
     queryFn: () =>
@@ -64,7 +79,7 @@ export function OrgAnalyticsAdminView() {
 
   const pipelinesQuery = useQuery({
     queryKey: ["pipelines", "org-analytics"],
-    queryFn: () => crmApi.listPipelines(undefined, true),
+    queryFn: () => crmApi.listPipelines("leads", true),
     enabled: canView,
   });
 
@@ -86,20 +101,18 @@ export function OrgAnalyticsAdminView() {
 
   const data = analyticsQuery.data;
   const metrics = data?.topMetrics;
+  const lead = overviewQuery.data;
 
-  const metricCards = metrics
+  const metricCards: Array<{ label: string; value: string }> = metrics
     ? [
-        { label: "Active users", value: metrics.activeUsers },
-        { label: "Teams", value: metrics.totalTeams },
-        { label: "Leads", value: metrics.totalLeads },
-        { label: "Customers", value: metrics.totalCustomers },
-        { label: "Open deals", value: metrics.activeDeals },
-        {
-          label: "Pipeline value",
-          value: metrics.pipelineValue,
-          format: "currency" as const,
-        },
-        { label: "Completed activities", value: metrics.completedActivities },
+        { label: "Active users", value: metrics.activeUsers.toLocaleString() },
+        { label: "Teams", value: metrics.totalTeams.toLocaleString() },
+        { label: "Leads", value: metrics.totalLeads.toLocaleString() },
+        { label: "Open leads", value: lead ? lead.openLeads.toLocaleString() : "—" },
+        { label: "Open pipeline value", value: lead ? formatLeadMoney(lead.openValue, lead.currency) : "—" },
+        { label: "Won leads (range)", value: lead ? lead.wonLeads.toLocaleString() : "—" },
+        { label: "Win rate (range)", value: lead?.winRate != null ? `${lead.winRate.toFixed(1)}%` : "—" },
+        { label: "Completed activities", value: metrics.completedActivities.toLocaleString() },
       ]
     : [];
 
@@ -114,7 +127,7 @@ export function OrgAnalyticsAdminView() {
           { label: "Organization Analytics" },
         ]}
         title="Organization Analytics"
-        description="Cross-team adoption, growth, and pipeline health for the whole CRM."
+        description="Cross-team adoption, lead growth, and pipeline health for the whole CRM."
       />
 
       <FilterBar
@@ -127,18 +140,8 @@ export function OrgAnalyticsAdminView() {
           setOwnerUserId("");
         }}
       >
-        <Input
-          type="date"
-          value={from}
-          onChange={(e) => setFrom(e.target.value)}
-          className="w-[150px]"
-        />
-        <Input
-          type="date"
-          value={to}
-          onChange={(e) => setTo(e.target.value)}
-          className="w-[150px]"
-        />
+        <DatePicker aria-label="From" value={from} max={to} onChange={setFrom} uiSize="md" className="w-[150px]" />
+        <DatePicker aria-label="To" value={to} min={from} onChange={setTo} uiSize="md" className="w-[150px]" />
         <Select value={period} onValueChange={setPeriod}>
           <SelectTrigger className="w-[120px]">
             <SelectValue />
@@ -225,24 +228,13 @@ export function OrgAnalyticsAdminView() {
           </p>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {metricCards.map((m) => (
-              <MetricCard
-                key={m.label}
-                label={m.label}
-                value={m.value}
-                format={m.format}
-              />
+              <MetricCard key={m.label} label={m.label} value={m.value} />
             ))}
           </div>
 
           <div className="grid gap-3 lg:grid-cols-2">
             <ChartCard title="Lead growth" empty={!data?.growth.leads?.length}>
               <SoftIndigoLineChart data={toChart(data?.growth.leads)} xKey="name" />
-            </ChartCard>
-            <ChartCard title="Customer growth" empty={!data?.growth.customers?.length}>
-              <SoftIndigoLineChart data={toChart(data?.growth.customers)} xKey="name" />
-            </ChartCard>
-            <ChartCard title="Deal creation" empty={!data?.growth.deals?.length}>
-              <SoftIndigoLineChart data={toChart(data?.growth.deals)} xKey="name" />
             </ChartCard>
             <ChartCard title="Activities logged" empty={!data?.growth.activities?.length}>
               <SoftIndigoLineChart data={toChart(data?.growth.activities)} xKey="name" />
@@ -263,12 +255,12 @@ export function OrgAnalyticsAdminView() {
                 </ul>
               </div>
               <div>
-                <h3 className="text-sm font-semibold">Conversion</h3>
+                <h3 className="text-sm font-semibold">Lead outcomes</h3>
                 <ul className="mt-2 space-y-1 text-sm text-foreground-muted">
-                  <li>Leads: {data.conversionOverview.leads}</li>
-                  <li>Qualified: {data.conversionOverview.qualifiedLeads}</li>
-                  <li>Deals: {data.conversionOverview.deals}</li>
-                  <li>Rate: {data.conversionOverview.conversionRate}%</li>
+                  <li>Leads created: {data.conversionOverview.leads}</li>
+                  <li>Won: {lead?.wonLeads ?? "—"}</li>
+                  <li>Lost: {lead?.lostLeads ?? "—"}</li>
+                  <li>Needing attention: {lead?.needingAttention ?? "—"}</li>
                 </ul>
               </div>
               <div>
@@ -290,23 +282,11 @@ export function OrgAnalyticsAdminView() {
   );
 }
 
-function MetricCard({
-  label,
-  value,
-  format,
-}: {
-  label: string;
-  value: number;
-  format?: "currency";
-}) {
-  const display =
-    format === "currency"
-      ? value.toLocaleString(undefined, { maximumFractionDigits: 0 })
-      : value.toLocaleString();
+function MetricCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border border-border bg-surface p-4">
       <p className="text-xs text-foreground-muted">{label}</p>
-      <p className="mt-1 text-2xl font-semibold text-brand-dark">{display}</p>
+      <p className="mt-1 text-2xl font-semibold text-brand-dark">{value}</p>
     </div>
   );
 }

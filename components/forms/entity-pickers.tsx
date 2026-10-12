@@ -20,7 +20,8 @@ import { SearchableSelect } from "@/components/forms/searchable-select";
 import { FormFieldSlot } from "@/components/forms/form-field";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { adminApi } from "@/lib/api/admin";
-import type { Pipeline } from "@/lib/api/crm";
+import { useOwnerOptions } from "@/features/teams/scope-filters";
+import { crmApi, type Pipeline } from "@/lib/api/crm";
 import type { EntityPickerOption } from "@/components/forms/types";
 import { cn } from "@/lib/utils";
 
@@ -88,10 +89,7 @@ export function UserPicker({
   placeholder?: string;
   triggerClassName?: string;
 }) {
-  const usersQuery = useQuery({
-    queryKey: ["users", "entity-picker"],
-    queryFn: () => adminApi.listUsers(new URLSearchParams({ limit: "100", isActive: "true" })),
-  });
+  const usersQuery = useOwnerOptions(true);
 
   const options: ComboboxOption[] = (usersQuery.data?.data ?? []).map((u) => ({
     value: u.id,
@@ -118,7 +116,66 @@ export function UserPicker({
   );
 }
 
-function UserAvatar({ name }: { name: string }) {
+export type LeadOption = ComboboxOption & { stageName?: string | null; contact?: string };
+
+/** Async lead search across every status the caller can see, with avatar, stage and contact in each option. */
+export function LeadCombobox({
+  value,
+  onChange,
+  selected,
+  placeholder = "Search leads…",
+  className,
+  triggerClassName,
+  ...aria
+}: {
+  value?: string | null;
+  onChange: (id: string | null, option: LeadOption | null) => void;
+  /** The lead currently picked, so the trigger can name it before any search runs. */
+  selected?: LeadOption | null;
+  placeholder?: string;
+  className?: string;
+  triggerClassName?: string;
+  id?: string;
+  "aria-describedby"?: string;
+  "aria-invalid"?: React.AriaAttributes["aria-invalid"];
+  "aria-required"?: React.AriaAttributes["aria-required"];
+}) {
+  const results = React.useRef(new Map<string, LeadOption>());
+  const search = React.useCallback(async (q: string) => {
+    const res = await crmApi.listLeads(new URLSearchParams({ q, status: "all", limit: "20" }));
+    return (res.data ?? []).map((l) => {
+      const contact = l.employer || l.email || l.phone || undefined;
+      const option: LeadOption = {
+        value: l.id,
+        label: l.fullName,
+        description: [l.stageName, contact].filter(Boolean).join(" · ") || undefined,
+        visual: <UserAvatar name={l.fullName} />,
+        stageName: l.stageName,
+        contact,
+      };
+      results.current.set(l.id, option);
+      return option;
+    });
+  }, []);
+
+  return (
+    <Combobox
+      {...aria}
+      aria-label={aria.id ? undefined : "Lead"}
+      value={value || null}
+      onChange={(id) => onChange(id, id ? (results.current.get(id) ?? null) : null)}
+      onSearch={search}
+      selectedOption={selected}
+      placeholder={placeholder}
+      searchPlaceholder="Type a name, phone or email…"
+      emptyText="No matching leads found."
+      className={className}
+      triggerClassName={triggerClassName}
+    />
+  );
+}
+
+export function UserAvatar({ name }: { name: string }) {
   const initial = name.trim().slice(0, 1).toUpperCase() || "?";
   return (
     <span className="flex size-5 shrink-0 items-center justify-center overflow-hidden rounded-full bg-surface-muted text-[10px] font-medium text-ink-secondary">

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Bell, LogOut, Monitor, Moon, Search, Sun, User } from "lucide-react";
+import { LogOut, Monitor, Moon, Search, Sun, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/features/auth/auth-provider";
 import { useQuickCreateOptional } from "@/components/forms/quick-create-provider";
@@ -23,6 +23,8 @@ import {
 } from "@/components/ui/console/dropdown-menu";
 import { MobileMenuButton } from "@/components/layout/sidebar";
 import { CommandMenu, useModKey } from "@/components/layout/command-menu";
+import { NotificationsMenu } from "@/features/notifications/notifications-menu";
+import { MyActivitiesMenu } from "@/features/activities/my-activities-menu";
 
 type TopBarProps = {
   onMenuClick: () => void;
@@ -34,12 +36,6 @@ const THEMES = [
   { value: "dark", label: "Dark", icon: Moon },
   { value: "system", label: "System", icon: Monitor },
 ] as const;
-
-const NOTIFICATIONS = [
-  "New lead assigned: Meridian Labs",
-  "Deal moved to Negotiation",
-  "Follow-up due in 30 minutes",
-];
 
 export function TopBar({ onMenuClick, className }: TopBarProps) {
   const [command, setCommand] = React.useState({ open: false, session: 0 });
@@ -98,28 +94,8 @@ export function TopBar({ onMenuClick, className }: TopBarProps) {
         </IconButton>
 
         <div className="ml-auto flex items-center gap-1">
-          <DropdownMenu>
-            <DropdownMenuTrigger>
-              <IconButton label="Notifications" tooltip={false} className="relative">
-                <Bell />
-                <span aria-hidden className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-brand" />
-              </IconButton>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" aria-label="Notifications" className="w-72">
-              <div className="flex items-center justify-between px-2 pb-1 pt-1.5">
-                <span className="text-overline text-ink-muted">Notifications</span>
-                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-soft px-1.5 text-caption font-medium tabular-nums text-brand-ink">
-                  {NOTIFICATIONS.length}
-                </span>
-              </div>
-              <DropdownMenuSeparator />
-              {NOTIFICATIONS.map((text) => (
-                <DropdownMenuItem key={text} className="h-auto py-1.5 text-ink-secondary">
-                  {text}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <MyActivitiesMenu />
+          <NotificationsMenu />
 
           <DropdownMenu>
             <DropdownMenuTrigger>

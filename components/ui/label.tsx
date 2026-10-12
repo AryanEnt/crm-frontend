@@ -5,7 +5,7 @@ import * as LabelPrimitive from "@radix-ui/react-label";
 import { cn } from "@/lib/utils";
 
 export type LabelProps = React.ComponentPropsWithoutRef<typeof LabelPrimitive.Root> & {
-  /** Shows a red asterisk for required fields. */
+  /** Shows a muted danger-toned asterisk for required fields. */
   required?: boolean;
 };
 
@@ -23,7 +23,7 @@ export const Label = React.forwardRef<
   >
     {children}
     {required ? (
-      <span className="ml-0.5 text-destructive" aria-hidden="true">
+      <span className="ml-0.5 font-normal text-danger/70" aria-hidden="true">
         *
       </span>
     ) : null}

@@ -4,6 +4,7 @@ import * as React from "react";
 import { FormFieldSlot } from "@/components/forms";
 import { SearchableSelect } from "@/components/forms/searchable-select";
 import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -215,10 +216,11 @@ export function SmartReferralFields({
         </div>
         <div className="space-y-1.5">
           <Label required>Referral date</Label>
-          <Input
-            type="date"
+          <DatePicker
+            aria-label="Referral date"
+            aria-required
             value={value.referralDate || todayISODate()}
-            onChange={(e) => set("referralDate", e.target.value)}
+            onChange={(d) => set("referralDate", d)}
           />
         </div>
       </div>

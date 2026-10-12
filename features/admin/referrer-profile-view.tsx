@@ -8,6 +8,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { ErrorState } from "@/components/ui/error-state";
 import { LoadingState } from "@/components/ui/loading-state";
 import { EmptyState } from "@/components/ui/empty-state";
+import { leadHref } from "@/features/activities/activity-href";
 import { referralsApi } from "@/lib/api/referrals";
 
 export function ReferrerProfileView({
@@ -56,8 +57,8 @@ export function ReferrerProfileView({
               <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5">
                 <div>
                   <p className="text-sm font-medium">
-                    {r.customerId ? (
-                      <Link href={`/customers/${r.customerId}`} className="text-brand hover:underline">
+                    {r.leadId ? (
+                      <Link href={leadHref(r.leadId)} className="text-brand hover:underline">
                         {r.referredName ?? "Referred party"}
                       </Link>
                     ) : (

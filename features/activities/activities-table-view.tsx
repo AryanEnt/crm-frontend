@@ -5,11 +5,19 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Plus } from "lucide-react";
+import { Check, Plus, X } from "lucide-react";
+import { toast } from "sonner";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
+import { Button as ConsoleButton } from "@/components/ui/console/button";
 import { FilterBar } from "@/components/ui/filter-bar";
-import { DataTable, SortableHeader } from "@/components/ui/data-table";
+import {
+  DataTable,
+  SortableHeader,
+  createSelectColumn,
+} from "@/components/ui/data-table";
+import { BulkActionBar } from "@/components/ui/console/data-table";
+import { ColumnsMenu } from "@/components/ui/console/toolbar";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { ErrorState } from "@/components/ui/error-state";
 import {
@@ -22,8 +30,12 @@ import {
 import { useAuth } from "@/features/auth/auth-provider";
 import { crmApi, type Activity } from "@/lib/api/crm";
 import { ActivityQuickCreateDialog } from "@/features/activities/activity-quick-create";
+import { leadHref } from "@/features/activities/activity-href";
+import { bulkLeadMovedMessage, invalidateLeadViews } from "@/features/activities/lead-moved";
 import { formatInTimezone } from "@/lib/timezone";
 import { ScopeFilterControls, useScopeFilters } from "@/features/teams/scope-filters";
+import { useColumnVisibility } from "@/lib/column-visibility";
+import { bulkMessage, runBulk } from "@/lib/bulk";
 
 const ACTIVITY_STATUSES = ["upcoming", "due", "overdue", "completed", "cancelled"];
 
@@ -48,8 +60,13 @@ export function ActivitiesTableView() {
     return fromUrl && ACTIVITY_STATUSES.includes(fromUrl) ? fromUrl : "all";
   });
   const [createOpen, setCreateOpen] = React.useState(false);
+  const [selected, setSelected] = React.useState<Activity[]>([]);
+  const [selectionResetKey, setSelectionResetKey] = React.useState(0);
+  const [bulkPending, setBulkPending] = React.useState<"completed" | "cancelled" | null>(null);
   const scopeFilters = useScopeFilters("activities:view");
   const scopeParams = scopeFilters.params;
+
+  const canEdit = can("activities:edit");
 
   const typesQuery = useQuery({
     queryKey: ["activity-types"],
@@ -83,9 +100,11 @@ export function ActivitiesTableView() {
 
   const columns = React.useMemo<ColumnDef<Activity>[]>(
     () => [
+      createSelectColumn<Activity>(),
       {
         accessorKey: "title",
         header: ({ column }) => <SortableHeader column={column} title="Title" />,
+        enableHiding: false,
         cell: ({ row }) => <span className="font-medium">{row.original.title}</span>,
       },
       {
@@ -98,21 +117,14 @@ export function ActivitiesTableView() {
         header: "Related",
         cell: ({ row }) => {
           const a = row.original;
-          if (a.customerId) {
+          if (a.leadId) {
             return (
-              <Link href={`/customers/${a.customerId}`} className="text-xs hover:text-brand-dark">
-                {a.customerName}
+              <Link href={leadHref(a.leadId)} className="text-xs hover:text-brand-dark">
+                {a.leadName ?? "Open lead"}
               </Link>
             );
           }
-          if (a.dealId) {
-            return (
-              <Link href={`/deals/${a.dealId}`} className="text-xs hover:text-brand-dark">
-                {a.dealTitle}
-              </Link>
-            );
-          }
-          return a.leadName ?? "—";
+          return <span className="text-xs text-ink-muted">{a.customerName || a.dealTitle || "—"}</span>;
         },
       },
       {
@@ -144,6 +156,26 @@ export function ActivitiesTableView() {
     ],
     [timezone],
   );
+
+  const columnPrefs = useColumnVisibility("activities", columns);
+
+  const setStatusForSelected = async (next: "completed" | "cancelled") => {
+    setBulkPending(next);
+    const updated: Activity[] = [];
+    const result = await runBulk(selected, async (activity) => {
+      updated.push(await crmApi.updateActivity(activity.id, { status: next }));
+    });
+    setBulkPending(null);
+    if (result.ok > 0) {
+      await qc.invalidateQueries({ queryKey: ["activities"] });
+      setSelectionResetKey((k) => k + 1);
+    }
+    const moved = bulkLeadMovedMessage(updated);
+    if (moved) invalidateLeadViews(qc);
+    const message = bulkMessage(result, "activity", next === "completed" ? "completed" : "cancelled");
+    if (result.failed > 0) toast.error(message, { description: moved });
+    else toast.success(message, { description: moved });
+  };
 
   if (activitiesQuery.isError) {
     return <ErrorState onRetry={() => void activitiesQuery.refetch()} />;
@@ -180,6 +212,7 @@ export function ActivitiesTableView() {
           setTypeCode("all");
           setStatus("all");
         }}
+        trailing={<ColumnsMenu {...columnPrefs.menu} />}
       >
         <ScopeFilterControls filters={scopeFilters} />
         <Select value={typeCode} onValueChange={setTypeCode}>
@@ -210,11 +243,40 @@ export function ActivitiesTableView() {
         </Select>
       </FilterBar>
 
+      {canEdit ? (
+        <BulkActionBar count={selected.length} onClear={() => setSelectionResetKey((k) => k + 1)}>
+          <ConsoleButton
+            size="sm"
+            variant="secondary"
+            loading={bulkPending === "completed"}
+            disabled={bulkPending !== null}
+            onClick={() => void setStatusForSelected("completed")}
+          >
+            <Check aria-hidden />
+            Mark complete
+          </ConsoleButton>
+          <ConsoleButton
+            size="sm"
+            variant="secondary"
+            loading={bulkPending === "cancelled"}
+            disabled={bulkPending !== null}
+            onClick={() => void setStatusForSelected("cancelled")}
+          >
+            <X aria-hidden />
+            Cancel
+          </ConsoleButton>
+        </BulkActionBar>
+      ) : null}
+
       <DataTable
         columns={columns}
+        columnVisibility={columnPrefs.columnVisibility}
         data={filtered}
         loading={activitiesQuery.isLoading}
         searchValue={search}
+        onRowSelectionChange={setSelected}
+        selectionResetKey={selectionResetKey}
+        itemLabel="activities"
         pageSize={10}
         emptyTitle={search || status !== "all" || typeCode !== "all" ? "No activities match" : "No activities yet"}
         emptyDescription={

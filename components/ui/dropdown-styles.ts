@@ -10,6 +10,9 @@ export const dropdownTriggerClass = [
   "disabled:cursor-not-allowed disabled:opacity-50",
 ].join(" ");
 
+/** Added to a trigger inside a form so it matches the lg text inputs (radius, shadow, focus border). */
+export const formTriggerClass = "rounded-control shadow-xs hover:border-line-strong focus-visible:border-brand";
+
 /** Menu shell. Pair with `sideOffset={4}` and `align="start"` on PopoverContent. */
 export const dropdownMenuClass =
   "w-[var(--radix-popover-trigger-width)] min-w-[16rem] overflow-hidden p-0";

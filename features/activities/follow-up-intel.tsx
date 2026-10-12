@@ -42,7 +42,7 @@ export function FollowUpIntelPanel({
   const hasOverdue = (d.overdueCount ?? 0) > 0;
   const nextTone = !d.nextActivityAt
     ? "text-health-warn"
-    : new Date(d.nextActivityAt).getTime() < Date.now()
+    : new Date(d.nextActivityAt).getTime() < query.dataUpdatedAt
       ? "text-health-bad"
       : "text-foreground";
 

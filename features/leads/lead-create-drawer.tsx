@@ -23,6 +23,7 @@ import {
   SubmitButton,
   TextareaField,
   TextField,
+  DateTimeField,
   useFormDraft,
   useZodForm,
 } from "@/components/forms";
@@ -35,12 +36,10 @@ import {
 } from "@/components/forms/entity-pickers";
 import { CustomFieldsSection } from "@/components/forms/custom-fields-section";
 import { Button } from "@/components/ui/console/button";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { LoadingState } from "@/components/ui/loading-state";
 import { AnzscoCombobox } from "@/components/shared/anzsco-combobox";
 import { DuplicateReviewDialog } from "@/components/shared/duplicate-review-dialog";
 import { useAuth } from "@/features/auth/auth-provider";
-import { UnifiedTimeline } from "@/features/timeline/unified-timeline";
 import {
   emptyReferralForm,
   SmartReferralFields,
@@ -59,6 +58,7 @@ import { localToIso, toDateTimeLocal } from "@/lib/forms/datetime";
 import { messages } from "@/lib/forms/messages";
 import { applyServerError, type ServerErrorRule } from "@/lib/forms/server-errors";
 import { cn } from "@/lib/utils";
+import { LeadScreenshotField } from "@/features/leads/lead-screenshot-field";
 import {
   isReferralSource,
   LEAD_PRIORITIES,
@@ -71,11 +71,9 @@ const FORM_ID = "lead-form";
 
 /** Fields that live under "More details" on create; revealed when one of them fails validation. */
 const MORE_DETAIL_FIELDS = new Set<string>([
-  "ownerUserId",
   "priority",
   "pipelineId",
   "stageId",
-  "potentialValue",
   "nextActivityAt",
   "country",
   "nationality",
@@ -103,7 +101,10 @@ type Settings = Record<string, string>;
 function defaultValues(userId?: string, pipelines?: Pipeline[], settings?: Settings): LeadFormInput {
   const defaultPipelineId = settings?.["crm.default_pipeline_id"]?.trim();
   const pipeline =
-    (defaultPipelineId ? pipelines?.find((p) => p.id === defaultPipelineId) : undefined) ?? pipelines?.[0];
+    pipelines?.find((p) => p.isDefault) ??
+    (defaultPipelineId ? pipelines?.find((p) => p.id === defaultPipelineId) : undefined) ??
+    pipelines?.[0];
+  const firstOpenStage = pipeline?.stages.find((s) => s.isActive && !s.isWon && !s.isLost);
   const priority = settings?.["crm.default_lead_priority"] as LeadFormInput["priority"] | undefined;
   return {
     fullName: "",
@@ -117,7 +118,7 @@ function defaultValues(userId?: string, pipelines?: Pipeline[], settings?: Setti
     ownerUserId: userId ?? "",
     teamId: "",
     pipelineId: pipeline?.id ?? "",
-    stageId: pipeline?.stages[0]?.id ?? "",
+    stageId: firstOpenStage?.id ?? "",
     anzscoId: null,
     occupation: "",
     jobTitle: "",
@@ -165,9 +166,11 @@ function toPayload(
     customFields: Record<string, unknown>;
     canAssignOwner: boolean;
     currentUserId?: string;
+    hadValue?: boolean;
   },
 ) {
   const { isUpdate } = opts;
+  const potentialValue = values.potentialValue ? Number(values.potentialValue) : null;
   // The update endpoint treats null as "leave unchanged" and "" as "clear".
   const empty = isUpdate ? "" : null;
   const payload: Record<string, unknown> = {
@@ -185,14 +188,21 @@ function toPayload(
       .map((t) => t.trim())
       .filter(Boolean),
     anzscoId: values.anzscoId || empty,
-    pipelineId: values.pipelineId && values.pipelineId !== "none" ? values.pipelineId : null,
-    stageId: values.stageId && values.stageId !== "none" ? values.stageId : null,
     notes: values.notes,
     occupation: values.occupation,
     jobTitle: values.jobTitle,
     employer: values.employer,
-    potentialValue: values.potentialValue ? Number(values.potentialValue) : null,
+    potentialValue,
     nextActivityAt: localToIso(values.nextActivityAt) ?? empty,
+    // Stage changes go through the board or the lead panel, which handle requirements and Won/Lost.
+    ...(isUpdate
+      ? potentialValue == null && opts.hadValue
+        ? { clearValue: true }
+        : {}
+      : {
+          pipelineId: values.pipelineId && values.pipelineId !== "none" ? values.pipelineId : null,
+          stageId: values.stageId && values.stageId !== "none" ? values.stageId : null,
+        }),
     // Create accepts forceCreate, update accepts forceUpdate; the API rejects unknown fields.
     ...(isUpdate ? { forceUpdate: opts.force } : { forceCreate: opts.force }),
     ...(Object.keys(opts.customFields).length ? { customFields: opts.customFields } : {}),
@@ -271,9 +281,9 @@ function LeadFormBody({
 }) {
   const router = useRouter();
   const { can, user } = useAuth();
-  const canAssignOwner = user?.roleCode === "sales_manager";
+  // Sales executives always own what they create; the API enforces the assign scope for everyone else.
+  const canAssignOwner = can("leads:assign") && user?.roleCode !== "sales_executive";
   const isEdit = Boolean(initial);
-  const canConvert = Boolean(initial && !initial.convertedCustomerId && can("customers:create"));
 
   const bodyRef = React.useRef<HTMLDivElement>(null);
   const [moreDetails, setMoreDetails] = React.useState(isEdit);
@@ -282,8 +292,9 @@ function LeadFormBody({
   const [andAnotherPending, setAndAnotherPending] = React.useState(false);
   const [formError, setFormError] = React.useState<string | null>(null);
   const [customFields, setCustomFields] = React.useState<Record<string, unknown>>({});
-  const [convertOpen, setConvertOpen] = React.useState(false);
-  const [converting, setConverting] = React.useState(false);
+  const [screenshot, setScreenshot] = React.useState<File | null>(null);
+  const [screenshotAttached, setScreenshotAttached] = React.useState(false);
+  const canAttachScreenshot = !isEdit && can("documents:create");
 
   const leadSourcesQuery = useQuery({
     queryKey: ["lead-sources", "form"],
@@ -317,6 +328,8 @@ function LeadFormBody({
     form.reset({ ...defaultValues(userId, pipelines, settings), ...keep });
     setCustomFields({});
     setCreated(null);
+    setScreenshot(null);
+    setScreenshotAttached(false);
     setMoreDetails(false);
     setFormError(null);
     requestAnimationFrame(() => form.setFocus("fullName"));
@@ -336,6 +349,7 @@ function LeadFormBody({
         customFields,
         canAssignOwner,
         currentUserId: userId,
+        hadValue: initial?.potentialValue != null,
       });
       setDuplicates([]);
       if (initial) {
@@ -347,12 +361,36 @@ function LeadFormBody({
       }
       const lead = await crmApi.createLead(payload);
       clearDraft();
+      let attached = false;
+      if (screenshot && canAttachScreenshot) {
+        try {
+          const body = new FormData();
+          body.append("file", screenshot);
+          body.append("name", screenshot.name || "Screenshot");
+          body.append("type", "screenshot");
+          body.append("category", "screenshot");
+          body.append("leadId", lead.id);
+          await crmApi.uploadDocument(body);
+          attached = true;
+        } catch (uploadErr) {
+          toast.error(
+            uploadErr instanceof Error && uploadErr.message
+              ? `Lead created, but the screenshot didn't upload. ${uploadErr.message}`
+              : "Lead created, but the screenshot didn't upload. Add it later from Documents.",
+          );
+        }
+      }
       onSaved(lead);
       if (andAnother) {
         resetForAnother(values);
-        toast.success(`${lead.fullName} created. Ready for the next one.`);
+        toast.success(
+          attached
+            ? `${lead.fullName} created with a screenshot. Ready for the next one.`
+            : `${lead.fullName} created. Ready for the next one.`,
+        );
       } else {
-        toast.success("Lead created");
+        toast.success(attached ? "Lead created with screenshot" : "Lead created");
+        setScreenshotAttached(attached);
         setCreated(lead);
       }
     } catch (err) {
@@ -372,23 +410,6 @@ function LeadFormBody({
   const submit = (options?: { force?: boolean; andAnother?: boolean }) =>
     form.handleSubmit((values) => save(values, options), onInvalid)();
 
-  const convert = async () => {
-    if (!initial) return;
-    setConverting(true);
-    try {
-      const customer = await crmApi.convertLead(initial.id);
-      setConvertOpen(false);
-      onOpenChange(false);
-      onSaved();
-      toast.success("Lead converted to customer");
-      router.push(`/customers/${customer.id}`);
-    } catch (err) {
-      toast.error(err instanceof Error && err.message ? err.message : "Couldn't convert this lead. Try again.");
-    } finally {
-      setConverting(false);
-    }
-  };
-
   const pipeline = pipelines.find((p) => p.id === pipelineId);
 
   const footer = created ? null : (
@@ -399,11 +420,6 @@ function LeadFormBody({
         </p>
       ) : null}
       <div className="flex w-full flex-wrap items-center justify-end gap-2">
-        {canConvert ? (
-          <Button variant="ghost" className="mr-auto" disabled={isSubmitting} onClick={() => setConvertOpen(true)}>
-            Convert to customer
-          </Button>
-        ) : null}
         <Button variant="ghost" disabled={isSubmitting} onClick={() => onOpenChange(false)}>
           Cancel
         </Button>
@@ -427,7 +443,7 @@ function LeadFormBody({
         wide={moreDetails}
         className={cn(
           "shadow-[-6px_0_24px_rgba(42,40,56,0.06)]",
-          !moreDetails && "sm:max-w-[460px]",
+          moreDetails ? "sm:max-w-2xl md:max-w-2xl lg:max-w-3xl" : "sm:max-w-[560px]",
         )}
         footer={footer}
       >
@@ -435,13 +451,20 @@ function LeadFormBody({
           <FormSummary
             title="Lead created successfully"
             headline={created.fullName}
-            details={[pipeline?.name ?? created.pipelineName, created.stageName, created.source].filter(Boolean) as string[]}
+            details={
+              [
+                pipeline?.name ?? created.pipelineName,
+                created.stageName,
+                created.source,
+                screenshotAttached ? "Screenshot attached" : null,
+              ].filter(Boolean) as string[]
+            }
             actions={[
               {
                 label: "View Lead",
                 onClick: () => {
                   onOpenChange(false);
-                  router.push(`/leads`);
+                  router.push(`/leads?leadId=${encodeURIComponent(created.id)}`);
                 },
                 variant: "default",
               },
@@ -468,6 +491,19 @@ function LeadFormBody({
                   <TextField name="phone" label="Phone" type="tel" inputMode="tel" autoComplete="off" />
                   <TextField name="email" label="Email" type="email" autoComplete="off" />
                 </div>
+                {!isEdit ? (
+                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                    <TextField
+                      name="potentialValue"
+                      label="Value (optional)"
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      step="0.01"
+                    />
+                    {canAssignOwner ? <OwnerField control={form.control} /> : null}
+                  </div>
+                ) : null}
               </CrmFormSection>
 
               <CrmFormSection title="Source" divided>
@@ -481,15 +517,25 @@ function LeadFormBody({
                 ) : null}
               </CrmFormSection>
 
+              {canAttachScreenshot ? (
+                <CrmFormSection title="Screenshot" divided>
+                  <LeadScreenshotField file={screenshot} onChange={setScreenshot} formId={FORM_ID} />
+                </CrmFormSection>
+              ) : null}
+
               {moreDetails ? (
                 <>
                   <CrmFormSection title="Sales" divided>
-                    {canAssignOwner ? <OwnerField control={form.control} /> : null}
+                    {isEdit && canAssignOwner ? <OwnerField control={form.control} /> : null}
                     <PriorityField control={form.control} />
-                    <PipelineStageField control={form.control} pipelines={pipelines} />
+                    {!isEdit && pipelines.length > 1 ? (
+                      <PipelineStageField control={form.control} pipelines={pipelines} />
+                    ) : null}
                     <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                      <TextField name="potentialValue" label="Potential value" type="number" inputMode="decimal" min={0} step="0.01" />
-                      <TextField name="nextActivityAt" label="Next follow-up" type="datetime-local" />
+                      {isEdit ? (
+                        <TextField name="potentialValue" label="Value" type="number" inputMode="decimal" min={0} step="0.01" />
+                      ) : null}
+                      <DateTimeField name="nextActivityAt" label="Next follow-up" placeholder="No follow-up set" />
                     </div>
                   </CrmFormSection>
 
@@ -528,17 +574,10 @@ function LeadFormBody({
                 >
                   <ChevronDown className="size-3.5" aria-hidden />
                   More details
-                  <span className="font-normal text-ink-muted">· owner, pipeline, value, follow-up, profile, notes</span>
+                  <span className="font-normal text-ink-muted">· priority, follow-up, company, profile, notes</span>
                 </button>
               )}
             </Form>
-            {initial ? (
-              <div className="mt-5 space-y-5">
-                <CrmFormSection title="Timeline" divided>
-                  <UnifiedTimeline leadId={initial.id} />
-                </CrmFormSection>
-              </div>
-            ) : null}
           </div>
         )}
       </QuickCreateDrawer>
@@ -549,15 +588,6 @@ function LeadFormBody({
         duplicates={duplicates}
         loading={isSubmitting}
         onConfirm={() => void submit({ force: true, andAnother: andAnotherPending })}
-      />
-      <ConfirmDialog
-        open={convertOpen}
-        onOpenChange={setConvertOpen}
-        title={`Convert ${initial?.fullName ?? "this lead"} to a customer?`}
-        description="This creates a customer from the lead and opens it. Unsaved changes in this form aren't included."
-        confirmLabel="Convert"
-        loading={converting}
-        onConfirm={convert}
       />
       {restorePrompt}
     </FormScope>

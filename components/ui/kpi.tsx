@@ -45,14 +45,8 @@ export function Kpi({
         ) : null}
       </p>
       <p className={cn("mt-1 truncate", size === "xl" ? "text-numeral-xl" : "text-numeral")}>
-        {known ? (
-          <>
-            <span aria-hidden>{format(shown)}</span>
-            <span className="sr-only">{format(value)}</span>
-          </>
-        ) : (
-          "—"
-        )}
+        {/* One text node: a visible copy plus an sr-only copy concatenates ("11", "A$0A$0") when text is read or copied. */}
+        {known ? format(shown) : "—"}
       </p>
       {hint ? <div className="mt-1 text-meta">{hint}</div> : null}
     </>

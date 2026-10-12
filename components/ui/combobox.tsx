@@ -25,10 +25,14 @@ export interface ComboboxOption {
   disabled?: boolean;
 }
 
-interface ComboboxProps {
-  options: ComboboxOption[];
+export interface ComboboxProps {
+  options?: ComboboxOption[];
   value?: string | null;
   onChange: (value: string | null) => void;
+  /** Server-side search; replaces `options` as the list source while the menu is open. */
+  onSearch?: (query: string) => Promise<ComboboxOption[]>;
+  /** Trigger content when `value` isn't in the loaded options, e.g. a record picked from an earlier search. */
+  selectedOption?: ComboboxOption | null;
   placeholder?: string;
   searchPlaceholder?: string;
   emptyText?: string;
@@ -42,17 +46,25 @@ interface ComboboxProps {
   triggerClassName?: string;
   /** Replaces the input-style trigger, e.g. to edit a table cell in place. Must render a single focusable element. */
   renderTrigger?: (state: { selected: ComboboxOption | null; open: boolean }) => React.ReactElement;
+  id?: string;
   "aria-label"?: string;
+  "aria-describedby"?: string;
+  "aria-invalid"?: React.AriaAttributes["aria-invalid"];
+  "aria-required"?: React.AriaAttributes["aria-required"];
 }
 
+const SEARCH_DEBOUNCE_MS = 250;
+
 export function Combobox({
-  options,
+  options = [],
   value,
   onChange,
+  onSearch,
+  selectedOption,
   placeholder = "Select…",
   searchPlaceholder = "Search…",
   emptyText = "No results found.",
-  loading = false,
+  loading: loadingProp = false,
   disabled = false,
   clearable = false,
   searchThreshold = 7,
@@ -66,16 +78,50 @@ export function Combobox({
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
   const [creating, setCreating] = React.useState(false);
+  const [found, setFound] = React.useState<ComboboxOption[]>([]);
+  const [searching, setSearching] = React.useState(false);
+  const [searchFailed, setSearchFailed] = React.useState(false);
   const searchRef = React.useRef<HTMLInputElement>(null);
 
+  React.useEffect(() => {
+    if (!open || !onSearch) return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      setSearching(true);
+      onSearch(query.trim())
+        .then((results) => {
+          if (cancelled) return;
+          setFound(results);
+          setSearchFailed(false);
+        })
+        .catch(() => {
+          if (!cancelled) setSearchFailed(true);
+        })
+        .finally(() => {
+          if (!cancelled) setSearching(false);
+        });
+    }, SEARCH_DEBOUNCE_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [open, query, onSearch]);
+
+  const source = onSearch ? found : options;
+  const loading = loadingProp || searching;
+
   const selected = React.useMemo(
-    () => options.find((o) => o.value === value) ?? null,
-    [options, value],
+    () =>
+      source.find((o) => o.value === value) ??
+      options.find((o) => o.value === value) ??
+      (selectedOption && selectedOption.value === value ? selectedOption : null),
+    [source, options, selectedOption, value],
   );
 
-  const showSearch = options.length > searchThreshold || Boolean(onCreate);
+  const showSearch = Boolean(onSearch) || options.length > searchThreshold || Boolean(onCreate);
 
   const filtered = React.useMemo(() => {
+    if (onSearch) return found;
     if (!query) return options;
     const q = query.toLowerCase();
     return options.filter(
@@ -83,7 +129,7 @@ export function Combobox({
         o.label.toLowerCase().includes(q) ||
         (o.description?.toLowerCase().includes(q) ?? false),
     );
-  }, [options, query]);
+  }, [onSearch, found, options, query]);
 
   const groups = React.useMemo(() => {
     const map = new Map<string | undefined, ComboboxOption[]>();
@@ -126,6 +172,7 @@ export function Combobox({
 
   return (
     <Popover
+      modal
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
@@ -139,11 +186,11 @@ export function Combobox({
             variant="outline"
             role="combobox"
             aria-expanded={open}
-            aria-label={aria["aria-label"]}
+            {...aria}
             disabled={disabled}
             className={cn(
               dropdownTriggerClass,
-              "h-9 w-full justify-between px-3",
+              "h-9 w-full justify-between px-3 aria-[invalid=true]:border-danger aria-[invalid=true]:focus-visible:ring-danger/25",
               !selected && "text-foreground-muted",
               clearable && selected && "pr-14",
               triggerClassName,
@@ -200,7 +247,7 @@ export function Combobox({
             ) : (
               <>
                 {filtered.length === 0 && !canOfferCreate ? (
-                  <CommandEmpty>{emptyText}</CommandEmpty>
+                  <CommandEmpty>{searchFailed ? "Couldn't load results. Try again." : emptyText}</CommandEmpty>
                 ) : null}
 
                 {groups.map(([group, opts]) => (

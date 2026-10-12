@@ -8,6 +8,10 @@ import { Field } from "@/components/ui/console/field";
 import { Input, type InputProps } from "@/components/ui/console/input";
 import { Select } from "@/components/ui/console/select";
 import { Textarea, type TextareaProps } from "@/components/ui/console/textarea";
+import { Combobox, type ComboboxProps } from "@/components/ui/combobox";
+import { DatePicker } from "@/components/ui/date-picker";
+import { DateTimePicker } from "@/components/ui/date-time-picker";
+import { formTriggerClass } from "@/components/ui/dropdown-styles";
 import { useFieldRequired } from "./form";
 
 type BaseFieldProps = {
@@ -124,6 +128,99 @@ export function TextareaField({
         onChange={onChange}
         onBlur={field.onBlur}
         disabled={disabled || field.disabled}
+      />
+    </Field>
+  );
+}
+
+function useControlledField(name: string, deps?: string[]) {
+  const { control, getFieldState, trigger } = useFormContext();
+  const { field, fieldState } = useController({ name, control });
+  const required = useFieldRequired(name);
+  const setValue = (value: string) => {
+    field.onChange(value);
+    field.onBlur();
+    const touched = (deps ?? []).filter((dep) => getFieldState(dep).isTouched);
+    if (touched.length > 0) void trigger(touched);
+  };
+  return { field, setValue, error: fieldState.error?.message, required };
+}
+
+/** Shared Combobox bound to a form field; options carry an optional `visual` (dot, avatar). */
+export function ComboboxField({
+  name,
+  label,
+  helper,
+  className,
+  disabled,
+  deps,
+  triggerClassName,
+  ...comboboxProps
+}: BaseFieldProps &
+  Omit<ComboboxProps, "value" | "onChange" | "disabled" | "className" | "id" | `aria-${string}`>) {
+  const { field, setValue, error, required } = useControlledField(name, deps);
+  return (
+    <Field label={label} helper={helper} error={error} required={required} className={className}>
+      <Combobox
+        {...comboboxProps}
+        value={(field.value as string) || null}
+        onChange={(v) => setValue(v ?? "")}
+        disabled={disabled || field.disabled}
+        triggerClassName={cn(formTriggerClass, triggerClassName)}
+      />
+    </Field>
+  );
+}
+
+/** Shared DateTimePicker bound to a `YYYY-MM-DDTHH:mm` form field; optional fields get a clear button. */
+export function DateTimeField({
+  name,
+  label,
+  helper,
+  className,
+  disabled,
+  deps,
+  placeholder,
+}: BaseFieldProps & { placeholder?: string }) {
+  const { field, setValue, error, required } = useControlledField(name, deps);
+  return (
+    <Field label={label} helper={helper} error={error} required={required} className={className}>
+      <DateTimePicker
+        value={(field.value as string) ?? ""}
+        onChange={setValue}
+        onBlur={field.onBlur}
+        placeholder={placeholder}
+        clearable={!required}
+        disabled={disabled || field.disabled}
+      />
+    </Field>
+  );
+}
+
+/** Shared DatePicker bound to a `YYYY-MM-DD` form field; optional fields get a clear button. */
+export function DateField({
+  name,
+  label,
+  helper,
+  className,
+  disabled,
+  deps,
+  placeholder,
+  min,
+  max,
+}: BaseFieldProps & { placeholder?: string; min?: string; max?: string }) {
+  const { field, setValue, error, required } = useControlledField(name, deps);
+  return (
+    <Field label={label} helper={helper} error={error} required={required} className={className}>
+      <DatePicker
+        value={(field.value as string) ?? ""}
+        onChange={setValue}
+        onBlur={field.onBlur}
+        placeholder={placeholder}
+        clearable={!required}
+        disabled={disabled || field.disabled}
+        min={min}
+        max={max}
       />
     </Field>
   );

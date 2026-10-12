@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import {
   Select,
   SelectContent,
@@ -52,18 +53,32 @@ export function filtersToParams(f: AnalyticsFiltersState): URLSearchParams {
   return p;
 }
 
+/** Params for the /leads/insights endpoints (owner instead of ownerUserId; no ANZSCO). */
+export function filtersToInsightParams(f: AnalyticsFiltersState): URLSearchParams {
+  const p = new URLSearchParams({ owner: f.ownerUserId && f.ownerUserId !== "all" ? f.ownerUserId : "all" });
+  if (f.from) p.set("from", f.from);
+  if (f.to) p.set("to", f.to);
+  if (f.pipelineId && f.pipelineId !== "all") p.set("pipelineId", f.pipelineId);
+  if (f.teamId && f.teamId !== "all") p.set("teamId", f.teamId);
+  if (f.source.trim()) p.set("source", f.source.trim());
+  return p;
+}
+
 export function AnalyticsFilterBar({
   value,
   onChange,
   showPipeline = true,
+  showAnzsco = true,
 }: {
   value: AnalyticsFiltersState;
   onChange: (next: AnalyticsFiltersState) => void;
   showPipeline?: boolean;
+  showAnzsco?: boolean;
 }) {
   const pipelinesQuery = useQuery({
-    queryKey: ["pipelines", "analytics"],
-    queryFn: () => crmApi.listPipelines(),
+    queryKey: ["pipelines", "leads"],
+    queryFn: () => crmApi.listPipelines("leads"),
+    enabled: showPipeline,
   });
   const { teamMemberFilter, ownerFilter, teamFilter } = useListFilterScope("analytics:view");
   const teamsQuery = useQuery({
@@ -79,6 +94,7 @@ export function AnalyticsFilterBar({
   const anzscoQuery = useQuery({
     queryKey: ["anzsco", "analytics"],
     queryFn: () => crmApi.searchAnzsco("engineer"),
+    enabled: showAnzsco,
   });
 
   const set = (patch: Partial<AnalyticsFiltersState>) => onChange({ ...value, ...patch });
@@ -87,11 +103,11 @@ export function AnalyticsFilterBar({
     <div className="grid gap-3 rounded-lg border border-border bg-surface p-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
       <div className="space-y-1">
         <Label className="text-[11px]">From</Label>
-        <Input type="date" value={value.from} onChange={(e) => set({ from: e.target.value })} />
+        <DatePicker aria-label="From" value={value.from} max={value.to} onChange={(from) => set({ from })} uiSize="md" />
       </div>
       <div className="space-y-1">
         <Label className="text-[11px]">To</Label>
-        <Input type="date" value={value.to} onChange={(e) => set({ to: e.target.value })} />
+        <DatePicker aria-label="To" value={value.to} min={value.from} onChange={(to) => set({ to })} uiSize="md" />
       </div>
       {showPipeline ? (
         <div className="space-y-1">
@@ -99,7 +115,7 @@ export function AnalyticsFilterBar({
           <Select value={value.pipelineId} onValueChange={(v) => set({ pipelineId: v })}>
             <SelectTrigger><SelectValue placeholder="Pipeline" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All / default</SelectItem>
+              <SelectItem value="all">All lead pipelines</SelectItem>
               {(pipelinesQuery.data ?? []).map((p) => (
                 <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
               ))}
@@ -152,18 +168,20 @@ export function AnalyticsFilterBar({
           placeholder="e.g. website"
         />
       </div>
-      <div className="space-y-1">
-        <Label className="text-[11px]">ANZSCO</Label>
-        <Select value={value.anzscoId} onValueChange={(v) => set({ anzscoId: v })}>
-          <SelectTrigger><SelectValue placeholder="ANZSCO" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All occupations</SelectItem>
-            {(anzscoQuery.data ?? []).map((a) => (
-              <SelectItem key={a.id} value={a.id}>{a.code} — {a.title}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      {showAnzsco ? (
+        <div className="space-y-1">
+          <Label className="text-[11px]">ANZSCO</Label>
+          <Select value={value.anzscoId} onValueChange={(v) => set({ anzscoId: v })}>
+            <SelectTrigger><SelectValue placeholder="ANZSCO" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All occupations</SelectItem>
+              {(anzscoQuery.data ?? []).map((a) => (
+                <SelectItem key={a.id} value={a.id}>{a.code} — {a.title}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      ) : null}
     </div>
   );
 }

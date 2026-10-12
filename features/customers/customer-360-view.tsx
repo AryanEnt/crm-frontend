@@ -32,7 +32,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useAuth } from "@/features/auth/auth-provider";
-import { adminApi } from "@/lib/api/admin";
+import { useOwnerOptions } from "@/features/teams/scope-filters";
 import { crmApi, type Customer } from "@/lib/api/crm";
 import { CustomerFormDialog } from "@/features/customers/customer-form-dialog";
 import { CustomerDealsPanel } from "@/features/customers/customer-deals-panel";
@@ -77,10 +77,7 @@ export function Customer360View({ customerId }: { customerId: string }) {
     queryFn: () => crmApi.getCustomerProfile(customerId),
   });
 
-  const usersQuery = useQuery({
-    queryKey: ["users", "customer-360"],
-    queryFn: () => adminApi.listUsers(new URLSearchParams({ limit: "100", isActive: "true" })),
-  });
+  const usersQuery = useOwnerOptions(true);
   const pipelinesQuery = useQuery({
     queryKey: ["pipelines", "sales"],
     queryFn: () => crmApi.listPipelines("sales"),

@@ -11,4 +11,8 @@ export const env = {
   apiProxyBaseUrl: "/api/proxy",
   isDevelopment:
     (process.env.NEXT_PUBLIC_APP_ENV ?? "development") === "development",
+  features: {
+    /** Read name, phone and email from a pasted screenshot. Needs POST /leads/extract-from-image. */
+    leadScreenshotExtract: process.env.NEXT_PUBLIC_FEATURE_LEAD_SCREENSHOT_EXTRACT === "true",
+  },
 } as const;

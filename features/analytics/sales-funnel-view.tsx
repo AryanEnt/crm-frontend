@@ -10,27 +10,20 @@ import { crmApi } from "@/lib/api/crm";
 import {
   AnalyticsFilterBar,
   defaultAnalyticsFilters,
-  filtersToParams,
+  filtersToInsightParams,
   type AnalyticsFiltersState,
 } from "@/features/analytics/filter-bar";
-import {
-  ChartCard,
-  SoftIndigoFunnelChart,
-  SoftIndigoBarChart,
-  formatDuration,
-  formatMoney,
-  formatPct,
-} from "@/features/analytics/charts";
+import { ChartCard, SoftIndigoFunnelChart, formatPct } from "@/features/analytics/charts";
+import { MixedCurrencyNote } from "@/features/analytics/analytics-view";
+import { formatLeadMoney } from "@/features/leads/lead-format";
 
 export function SalesFunnelView() {
-  const [filters, setFilters] = React.useState<AnalyticsFiltersState>(() =>
-    defaultAnalyticsFilters(),
-  );
-  const params = React.useMemo(() => filtersToParams(filters), [filters]);
+  const [filters, setFilters] = React.useState<AnalyticsFiltersState>(() => defaultAnalyticsFilters());
+  const params = React.useMemo(() => filtersToInsightParams(filters), [filters]);
 
   const query = useQuery({
-    queryKey: ["analytics-funnel", params.toString()],
-    queryFn: () => crmApi.analyticsFunnel(params),
+    queryKey: ["lead-insights", "overview", params.toString()],
+    queryFn: () => crmApi.leadOverview(params),
   });
 
   if (query.isError) {
@@ -38,116 +31,92 @@ export function SalesFunnelView() {
   }
 
   const data = query.data;
-  const stages = data?.stages ?? [];
-  const funnelData = stages
-    .filter((s) => !s.isLost)
-    .map((s) => ({ name: s.stageName, value: s.entered }));
+  const funnel = data?.funnel ?? [];
+  const stripBy = new Map((data?.stages ?? []).map((s) => [s.id, s]));
+  const progress = funnel.filter((f) => !f.isLost);
+  const entered = progress[0]?.reached ?? 0;
+  const won = funnel.find((f) => f.isWon)?.reached ?? 0;
+  const lost = funnel.find((f) => f.isLost)?.reached ?? 0;
+  const money = (v: number) => formatLeadMoney(v, data?.currency);
 
   return (
     <div className="space-y-4">
       <PageHeader
         breadcrumbs={[{ label: "Workspace", href: "/" }, { label: "Sales Funnel" }]}
-        title="Sales Funnel"
+        title="Lead funnel"
         description={
-          data
-            ? `${data.pipelineName} · ${data.from.slice(0, 10)} → ${data.to.slice(0, 10)}`
-            : "Stage conversion from live pipeline data"
+          data?.pipeline
+            ? `${data.pipeline.name} · ${filters.from} → ${filters.to}`
+            : "Stage progression from recorded lead moves"
         }
       />
 
-      <AnalyticsFilterBar value={filters} onChange={setFilters} />
+      <AnalyticsFilterBar value={filters} onChange={setFilters} showAnzsco={false} />
+      <MixedCurrencyNote overview={data} />
 
       <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <MetricCard label="Entered the funnel" value={query.isLoading ? "—" : String(entered)} hint="Reached the first stage" />
+        <MetricCard label="Reached Won" value={query.isLoading ? "—" : String(won)} />
+        <MetricCard label="Reached Lost" value={query.isLoading ? "—" : String(lost)} />
         <MetricCard
-          label="Entered first stage"
-          value={String(data?.totals.entered ?? "—")}
-        />
-        <MetricCard
-          label="Open pipeline value"
-          value={data ? formatMoney(data.totals.totalPipelineValue) : "—"}
-        />
-        <MetricCard
-          label="Avg deal value"
-          value={data ? formatMoney(data.totals.averageDealValue) : "—"}
-        />
-        <MetricCard
-          label="Win rate (closed)"
-          value={data ? formatPct(data.totals.overallConversionRate) : "—"}
+          label="Win rate"
+          value={data?.winRate != null ? formatPct(data.winRate) : "—"}
+          hint="Won ÷ (won + lost), by close date"
         />
       </section>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <ChartCard
-          title="Stage funnel"
-          question="How many records enter each stage of the selected pipeline?"
-          loading={query.isLoading}
-          empty={!query.isLoading && funnelData.every((d) => d.value === 0)}
-        >
-          <SoftIndigoFunnelChart data={funnelData} />
-        </ChartCard>
-
-        <ChartCard
-          title="Conversion vs drop-off"
-          question="What share of entrants progress to the next stage versus drop off?"
-          loading={query.isLoading}
-          empty={!query.isLoading && stages.length === 0}
-        >
-          <SoftIndigoBarChart
-            data={stages
-              .filter((s) => !s.isWon && !s.isLost)
-              .map((s) => ({
-                label: s.stageName,
-                value: s.conversionRate,
-                dropOff: s.dropOffRate,
-              }))}
-            valueFormatter={(v) => formatPct(v)}
-          />
-        </ChartCard>
-      </div>
+      <ChartCard
+        title="Stage funnel"
+        question="How many leads reached each stage in the range?"
+        loading={query.isLoading}
+        empty={!query.isLoading && progress.every((f) => f.reached === 0)}
+        emptyDescription="Stage history starts when leads are created or moved in this pipeline."
+      >
+        <SoftIndigoFunnelChart data={progress.map((f) => ({ name: f.name, value: f.reached }))} />
+      </ChartCard>
 
       <ChartCard
         title="Stage detail"
-        question="Entered, left, time-in-stage, and open value for each pipeline stage."
+        question="Reached counts leads that got at least this far. In stage counts open leads now, and leads won or lost in the range."
         loading={query.isLoading}
-        empty={!query.isLoading && stages.length === 0}
+        empty={!query.isLoading && funnel.length === 0}
       >
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="text-[11px] uppercase tracking-wide text-foreground-subtle">
               <tr className="border-b border-border">
                 <th className="py-2 pr-3 font-medium">Stage</th>
-                <th className="py-2 pr-3 font-medium">Entered</th>
-                <th className="py-2 pr-3 font-medium">Left</th>
-                <th className="py-2 pr-3 font-medium">Conversion</th>
-                <th className="py-2 pr-3 font-medium">Drop-off</th>
-                <th className="py-2 pr-3 font-medium">Avg time</th>
-                <th className="py-2 pr-3 font-medium">Open value</th>
-                <th className="py-2 font-medium">Avg deal</th>
+                <th className="py-2 pr-3 text-right font-medium">Reached</th>
+                <th className="py-2 pr-3 text-right font-medium">Of entered</th>
+                <th className="py-2 pr-3 text-right font-medium">From previous</th>
+                <th className="py-2 pr-3 text-right font-medium">In stage</th>
+                <th className="py-2 text-right font-medium">Value</th>
               </tr>
             </thead>
-            <tbody>
-              {stages.map((s) => (
-                <tr key={s.stageId} className="border-b border-border/70">
-                  <td className="py-2.5 pr-3">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{s.stageName}</span>
-                      {s.isWon ? <StatusBadge tone="success">won</StatusBadge> : null}
-                      {s.isLost ? <StatusBadge tone="danger">lost</StatusBadge> : null}
-                    </div>
-                  </td>
-                  <td className="py-2.5 pr-3">{s.entered}</td>
-                  <td className="py-2.5 pr-3">{s.left}</td>
-                  <td className="py-2.5 pr-3">
-                    {s.isWon || s.isLost ? "—" : formatPct(s.conversionRate)}
-                  </td>
-                  <td className="py-2.5 pr-3">
-                    {s.isWon || s.isLost ? "—" : formatPct(s.dropOffRate)}
-                  </td>
-                  <td className="py-2.5 pr-3">{formatDuration(s.avgTimeInStageSeconds)}</td>
-                  <td className="py-2.5 pr-3">{formatMoney(s.totalPipelineValue)}</td>
-                  <td className="py-2.5">{formatMoney(s.averageDealValue)}</td>
-                </tr>
-              ))}
+            <tbody className="tabular-nums">
+              {funnel.map((f) => {
+                const i = progress.findIndex((p) => p.stageId === f.stageId);
+                const prev = i > 0 ? progress[i - 1].reached : 0;
+                const strip = stripBy.get(f.stageId);
+                return (
+                  <tr key={f.stageId} className="border-b border-border/70">
+                    <td className="py-2.5 pr-3">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{f.name}</span>
+                        {f.isWon ? <StatusBadge tone="success">won</StatusBadge> : null}
+                        {f.isLost ? <StatusBadge tone="danger">lost</StatusBadge> : null}
+                      </div>
+                    </td>
+                    <td className="py-2.5 pr-3 text-right">{f.reached}</td>
+                    <td className="py-2.5 pr-3 text-right">{entered > 0 ? formatPct(f.rate) : "—"}</td>
+                    <td className="py-2.5 pr-3 text-right">
+                      {f.isLost || i <= 0 || prev === 0 ? "—" : formatPct((f.reached / prev) * 100)}
+                    </td>
+                    <td className="py-2.5 pr-3 text-right">{strip?.count ?? 0}</td>
+                    <td className="py-2.5 text-right">{money(strip?.value ?? 0)}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

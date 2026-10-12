@@ -149,10 +149,35 @@
   --radius-md: 0.375rem; /* 6px */
   --radius-lg: 0.5rem; /* 8px */
 
+  --radius-dialog: 0.5rem;
+
   /* —— Elevation: two levels only —— */
   --shadow-xs: 0 1px 2px 0 rgb(14 26 28 / 0.04); /* cards */
   --shadow-md: 0 8px 24px -6px rgb(14 26 28 / 0.12), 0 2px 6px -2px rgb(14 26 28 / 0.06); /* menus, popovers, drawers */
   --shadow-sm: var(--shadow-xs);
+  /* Board cards at rest, and lifted on hover / while dragging. */
+  --shadow-card: var(--shadow-xs);
+  --shadow-lift: var(--shadow-md);
+  --button-primary-shadow: none;
+
+  /* —— Surface extensions —— */
+  --column-tint: var(--surface-muted);
+  --orchid: #7c3aed;
+  --orchid-soft: #f3e8ff;
+  --orchid-ink: #6d28d9;
+  /* Open-stage accents in pipeline order (dots, column top borders). */
+  --stage-accent-1: #94a3b8;
+  --stage-accent-2: #64748b;
+  --stage-accent-3: #0284c7;
+  --stage-accent-4: #7c3aed;
+  --stage-accent-5: #c2410c;
+  /* Avatar backgrounds and the initials drawn on them. */
+  --avatar-ink: var(--ink);
+  --avatar-1: var(--tint-rose-bg);
+  --avatar-2: var(--tint-violet-bg);
+  --avatar-3: var(--tint-sky-bg);
+  --avatar-4: var(--tint-emerald-bg);
+  --avatar-5: var(--tint-amber-bg);
 
   /* —— Motion —— */
   --motion-fast: 120ms;
@@ -261,6 +286,17 @@
 
   --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.4);
   --shadow-md: 0 12px 32px -8px rgb(0 0 0 / 0.6), 0 0 0 1px var(--line);
+  --shadow-card: var(--shadow-xs);
+  --shadow-lift: var(--shadow-md);
+
+  --orchid: #a78bfa;
+  --orchid-soft: color-mix(in srgb, #a78bfa 14%, var(--mist-900));
+  --orchid-ink: #c4b5fd;
+  --stage-accent-1: #94a3b8;
+  --stage-accent-2: #cbd5e1;
+  --stage-accent-3: #38bdf8;
+  --stage-accent-4: #a78bfa;
+  --stage-accent-5: #fb923c;
 }
 
 /* A component sets data-tint="violet" and uses bg-tint-bg / text-tint-fg. */
@@ -295,6 +331,7 @@
 
   --radius-control: 0.5rem;
   --radius-card: 0.75rem;
+  --radius-column: 1rem;
 
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
   --ease-emphasis: cubic-bezier(0.22, 1, 0.36, 1);
@@ -381,14 +418,32 @@
   --color-sidebar-active: var(--sidebar-active);
   --color-sidebar-active-text: var(--sidebar-active-text);
   --color-sidebar-hover: var(--sidebar-hover);
+  --color-column-tint: var(--column-tint);
+  --color-orchid: var(--orchid);
+  --color-orchid-soft: var(--orchid-soft);
+  --color-orchid-ink: var(--orchid-ink);
+  --color-stage-accent-1: var(--stage-accent-1);
+  --color-stage-accent-2: var(--stage-accent-2);
+  --color-stage-accent-3: var(--stage-accent-3);
+  --color-stage-accent-4: var(--stage-accent-4);
+  --color-stage-accent-5: var(--stage-accent-5);
+  --color-avatar-ink: var(--avatar-ink);
+  --color-avatar-1: var(--avatar-1);
+  --color-avatar-2: var(--avatar-2);
+  --color-avatar-3: var(--avatar-3);
+  --color-avatar-4: var(--avatar-4);
+  --color-avatar-5: var(--avatar-5);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --radius-sm: var(--radius-sm);
   --radius-md: var(--radius-md);
   --radius-lg: var(--radius-lg);
+  --radius-dialog: var(--radius-dialog);
   --shadow-xs: var(--shadow-xs);
   --shadow-sm: var(--shadow-sm);
   --shadow-md: var(--shadow-md);
+  --shadow-card: var(--shadow-card);
+  --shadow-lift: var(--shadow-lift);
 }
 
 * {
@@ -630,6 +685,28 @@ body {
 
 .won-check--land {
   animation: won-check-land 420ms var(--ease-emphasis) 1;
+}
+
+/* Won/Lost dock: rises in from the bottom while a lead card is dragged. */
+@keyframes outcome-dock-in {
+  from {
+    transform: translateY(16px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.outcome-dock {
+  animation: outcome-dock-in 200ms var(--ease-emphasis) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .outcome-dock {
+    animation: none;
+  }
 }
 
 /* List items ease in on mount; set --rise-index for a short stagger. */

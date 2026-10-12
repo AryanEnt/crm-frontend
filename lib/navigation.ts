@@ -1,8 +1,6 @@
 import {
   LayoutDashboard,
   UserPlus,
-  Users,
-  Handshake,
   Calendar,
   ListChecks,
   FileText,
@@ -11,7 +9,6 @@ import {
   Target,
   TrendingUp,
   PieChart,
-  Sparkles,
   UserCog,
   UsersRound,
   Layers,
@@ -26,6 +23,7 @@ import {
   ListTree,
   Mail,
   Phone,
+  Columns3,
   type LucideIcon,
 } from "lucide-react";
 import type { RoleCode } from "@/features/auth/types";
@@ -45,11 +43,13 @@ export type NavSection = {
 export const crmNav: NavSection[] = [
   {
     title: "Workspace",
+    items: [{ label: "Dashboard", href: "/", icon: LayoutDashboard }],
+  },
+  {
+    title: "Sales",
     items: [
-      { label: "Dashboard", href: "/", icon: LayoutDashboard },
       { label: "Leads", href: "/leads", icon: UserPlus },
-      { label: "Customers", href: "/customers", icon: Users },
-      { label: "Deals", href: "/deals", icon: Handshake },
+      { label: "Pipeline", href: "/pipeline", icon: Columns3 },
     ],
   },
   {
@@ -74,7 +74,6 @@ export const crmNav: NavSection[] = [
       { label: "Analytics", href: "/analytics", icon: BarChart3 },
       { label: "Targets", href: "/targets", icon: Target },
       { label: "Forecasts", href: "/forecasts", icon: TrendingUp },
-      { label: "Insights", href: "/insights", icon: Sparkles },
       { label: "Reports", href: "/reports", icon: PieChart },
     ],
   },

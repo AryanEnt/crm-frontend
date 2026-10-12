@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { FilterBar } from "@/components/ui/filter-bar";
 import { DataTable, SortableHeader } from "@/components/ui/data-table";
+import { codeEchoesName } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { ErrorState } from "@/components/ui/error-state";
 import { TableSkeleton } from "@/components/ui/skeleton";
@@ -150,18 +151,26 @@ export function ActivityTypesAdminView() {
       {
         accessorKey: "name",
         header: ({ column }) => <SortableHeader column={column} title="Type" />,
-        cell: ({ row }) => (
-          <div className="flex items-center gap-2">
-            <span
-              className="size-2.5 rounded-full"
-              style={{ backgroundColor: row.original.color || "#0E7490" }}
-            />
-            <div>
-              <p className="font-medium">{row.original.name}</p>
-              <p className="text-xs text-foreground-muted">{row.original.code}</p>
+        cell: ({ row }) => {
+          const color = row.original.color || "#0E7490";
+          const showCode = !codeEchoesName(row.original.name, row.original.code);
+          return (
+            <div className="flex min-w-0 items-center gap-2.5">
+              <span
+                className="inline-flex size-7 shrink-0 items-center justify-center rounded-md"
+                style={{ backgroundColor: `color-mix(in srgb, ${color} 16%, transparent)` }}
+              >
+                <span className="size-2.5 rounded-full" style={{ backgroundColor: color }} />
+              </span>
+              <div className="min-w-0">
+                <p className="truncate font-medium text-ink">{row.original.name}</p>
+                {showCode ? (
+                  <p className="truncate font-mono text-caption text-ink-muted">{row.original.code}</p>
+                ) : null}
+              </div>
             </div>
-          </div>
-        ),
+          );
+        },
       },
       {
         id: "requirements",

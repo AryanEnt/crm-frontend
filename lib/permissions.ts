@@ -69,6 +69,7 @@ export const routePermissions: Record<string, PermissionCode[]> = {
     "audit:view",
   ],
   "/leads": ["leads:view"],
+  "/pipeline": ["leads:view"],
   "/customers": ["customers:view"],
   "/deals": ["deals:view"],
   "/pipelines": ["deals:view", "pipelines:view"],

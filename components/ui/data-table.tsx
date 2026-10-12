@@ -36,6 +36,8 @@ declare module "@tanstack/react-table" {
   interface ColumnMeta<TData extends RowData, TValue> {
     /** Plain-text column name for menus when `header` renders a component. */
     label?: string;
+    /** Right-align counts, currency, and dates. */
+    align?: "left" | "right";
   }
 }
 
@@ -54,12 +56,25 @@ export type DataTableProps<TData, TValue> = {
   pageSize?: number;
   className?: string;
   onRowSelectionChange?: (rows: TData[]) => void;
+  /** Change this after a bulk action to drop the checked rows along with the action bar. */
+  selectionResetKey?: unknown;
   /** Row click / Enter. Clicks on links, buttons and checkboxes inside the row are ignored. */
   onRowClick?: (row: TData) => void;
   /** Noun for the footer, e.g. "customers" -> "Showing 1–10 of 42 customers". */
   itemLabel?: string;
   /** Hidden columns from `useColumnVisibility`; omit to show every column. */
   columnVisibility?: VisibilityState;
+  /** Server-side paging: `data` is one page and `total` counts every match. */
+  pagination?: {
+    page: number;
+    pageSize: number;
+    total: number;
+    onPageChange: (page: number) => void;
+    onPageSizeChange: (size: number) => void;
+  };
+  /** Server-side sorting; headers update this instead of sorting the loaded page. */
+  sorting?: SortingState;
+  onSortingChange?: (sorting: SortingState) => void;
 };
 
 const SELECT_COLUMN_ID = "select";
@@ -78,13 +93,19 @@ export function DataTable<TData, TValue>({
   pageSize = 10,
   className,
   onRowSelectionChange,
+  selectionResetKey,
   onRowClick,
   itemLabel,
   columnVisibility = ALL_VISIBLE,
+  pagination: serverPagination,
+  sorting: serverSorting,
+  onSortingChange: onServerSortingChange,
 }: DataTableProps<TData, TValue>) {
-  const [sorting, setSorting] = React.useState<SortingState>([]);
+  const [localSorting, setLocalSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
   const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({});
+  const manualSorting = serverSorting !== undefined && onServerSortingChange !== undefined;
+  const sorting = manualSorting ? serverSorting : localSorting;
 
   const table = useReactTable({
     data,
@@ -95,9 +116,21 @@ export function DataTable<TData, TValue>({
       rowSelection,
       columnVisibility,
       globalFilter: searchValue,
+      ...(serverPagination
+        ? { pagination: { pageIndex: serverPagination.page - 1, pageSize: serverPagination.pageSize } }
+        : {}),
     },
     enableRowSelection: true,
-    onSortingChange: setSorting,
+    manualSorting,
+    manualPagination: !!serverPagination,
+    pageCount: serverPagination
+      ? Math.max(1, Math.ceil(serverPagination.total / serverPagination.pageSize))
+      : undefined,
+    onSortingChange: (updater) => {
+      const next = typeof updater === "function" ? updater(sorting) : updater;
+      if (manualSorting) onServerSortingChange(next);
+      else setLocalSorting(next);
+    },
     onColumnFiltersChange: setColumnFilters,
     onRowSelectionChange: setRowSelection,
     onGlobalFilterChange: undefined,
@@ -116,6 +149,12 @@ export function DataTable<TData, TValue>({
     onRowSelectionChange(selected);
   }, [rowSelection, onRowSelectionChange, table]);
 
+  const [syncedResetKey, setSyncedResetKey] = React.useState(selectionResetKey);
+  if (syncedResetKey !== selectionResetKey) {
+    setSyncedResetKey(selectionResetKey);
+    setRowSelection({});
+  }
+
   const headerGroups = table.getHeaderGroups();
   const visibleColumns = table.getVisibleLeafColumns();
   const rows = table.getRowModel().rows;
@@ -129,6 +168,7 @@ export function DataTable<TData, TValue>({
           {headerGroup.headers.map((header) => (
             <TableHead
               key={header.id}
+              align={header.column.columnDef.meta?.align}
               className={cn(header.column.id === SELECT_COLUMN_ID && "w-10 pr-0")}
             >
               {header.isPlaceholder
@@ -204,6 +244,7 @@ export function DataTable<TData, TValue>({
               {row.getVisibleCells().map((cell) => (
                 <TableCell
                   key={cell.id}
+                  align={cell.column.columnDef.meta?.align}
                   className={cn(cell.column.id === SELECT_COLUMN_ID && "w-10 pr-0")}
                   data-row-ignore={cell.column.id === SELECT_COLUMN_ID ? true : undefined}
                 >
@@ -222,7 +263,18 @@ export function DataTable<TData, TValue>({
       className={className}
       scrollClassName="max-h-[calc(100dvh-17rem)]"
       footer={
-        !loading && filteredCount > 0 ? (
+        serverPagination ? (
+          !loading && serverPagination.total > 0 ? (
+            <TablePagination
+              page={serverPagination.page}
+              pageSize={serverPagination.pageSize}
+              total={serverPagination.total}
+              itemLabel={itemLabel}
+              onPageChange={serverPagination.onPageChange}
+              onPageSizeChange={serverPagination.onPageSizeChange}
+            />
+          ) : null
+        ) : !loading && filteredCount > 0 ? (
           <TablePagination
             page={pageIndex + 1}
             pageSize={currentPageSize}

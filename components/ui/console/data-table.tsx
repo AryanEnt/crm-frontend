@@ -23,7 +23,7 @@ export function TableCard({
   return (
     <div
       className={cn(
-        "flex min-h-0 flex-col overflow-hidden rounded-card border border-line bg-surface",
+        "flex min-h-0 flex-col overflow-hidden rounded-card border border-line bg-surface shadow-xs",
         className,
       )}
     >
@@ -57,7 +57,7 @@ export function TableHead({
   align?: "left" | "right";
 }) {
   const base = cn(
-    "sticky top-0 z-10 h-9 whitespace-nowrap border-b border-line bg-surface px-3 text-overline text-ink-muted first:pl-4 last:pr-4",
+    "sticky top-0 z-10 h-9 whitespace-nowrap border-b border-line-strong bg-surface-sunken px-3 text-overline uppercase tracking-[0.06em] text-ink-muted first:pl-4 last:pr-4",
     align === "right" ? "text-right" : "text-left",
     className,
   );
@@ -146,9 +146,12 @@ export function TableRow({
         }
       }}
       className={cn(
-        "group/row outline-none transition-colors duration-100 [&>td]:border-b [&>td]:border-line last:[&>td]:border-b-0",
-        "hover:bg-surface-sunken focus-visible:bg-surface-sunken focus-visible:shadow-[inset_2px_0_0_0_var(--brand)]",
-        selected && "bg-brand-soft/60 hover:bg-brand-soft",
+        "group/row bg-surface outline-none transition-colors duration-150 ease-standard",
+        "[&>td]:border-b [&>td]:border-line last:[&>td]:border-b-0",
+        !selected && "even:bg-[color-mix(in_srgb,var(--surface-sunken)_70%,var(--surface))] hover:bg-surface-muted even:hover:bg-surface-muted",
+        "hover:[&>td:first-child]:shadow-[inset_2px_0_0_0_var(--brand)]",
+        "focus-visible:bg-surface-muted focus-visible:[&>td:first-child]:shadow-[inset_2px_0_0_0_var(--brand)]",
+        selected && "bg-brand-soft hover:bg-brand-soft",
         clickable && "cursor-pointer",
         className,
       )}
@@ -201,7 +204,7 @@ export function TablePagination({
   const sizeId = React.useId();
 
   return (
-    <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-line bg-surface px-4 py-2 text-caption text-ink-muted">
+    <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-line bg-[color-mix(in_srgb,var(--surface-sunken)_55%,var(--surface))] px-4 py-2 text-caption text-ink-muted">
       <p aria-live="polite">
         Showing <span className="tabular-nums text-ink">{from}</span>–
         <span className="tabular-nums text-ink">{to}</span> of{" "}
@@ -215,7 +218,7 @@ export function TablePagination({
             id={sizeId}
             value={pageSize}
             onChange={(event) => onPageSizeChange(Number(event.target.value))}
-            className="h-7 cursor-pointer rounded-md border border-line bg-surface px-1.5 text-caption text-ink hover:border-line-strong"
+            className="h-7 cursor-pointer rounded-md border border-line bg-surface px-1.5 text-caption text-ink shadow-xs hover:border-line-strong focus-visible:border-brand focus-visible:outline-none"
           >
             {pageSizes.map((size) => (
               <option key={size} value={size}>

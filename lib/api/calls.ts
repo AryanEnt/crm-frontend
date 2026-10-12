@@ -14,6 +14,16 @@ export type CallContact = {
   priority: string;
   ownerName?: string | null;
   updatedAt: string;
+  pinned: boolean;
+};
+
+export type CallPriority = "low" | "medium" | "high" | "urgent";
+
+export type CallContactParams = {
+  q?: string;
+  type?: CallEntityType;
+  priority?: CallPriority;
+  pinned?: boolean;
 };
 
 export type CallPerson = {
@@ -104,12 +114,18 @@ function entityParams(type: CallEntityType, id: string) {
 }
 
 export const callsApi = {
-  contacts: (params: { q?: string; type?: CallEntityType }, signal?: AbortSignal) => {
+  contacts: (params: CallContactParams, signal?: AbortSignal) => {
     const p = new URLSearchParams();
     if (params.q) p.set("q", params.q);
     if (params.type) p.set("type", params.type);
+    if (params.priority) p.set("priority", params.priority);
+    if (params.pinned) p.set("pinned", "true");
     return api.get<CallContact[]>(`/calls/contacts?${p}`, { signal });
   },
+  pin: (type: CallEntityType, id: string) =>
+    api.post<{ pinned: boolean }>("/calls/pins", { entityType: type, entityId: id }),
+  unpin: (type: CallEntityType, id: string) =>
+    api.delete<{ pinned: boolean }>(`/calls/pins/${type}/${encodeURIComponent(id)}`),
   context: (type: CallEntityType, id: string) =>
     api.get<CallContext>(`/calls/context?${entityParams(type, id)}`),
   history: (type: CallEntityType, id: string) =>

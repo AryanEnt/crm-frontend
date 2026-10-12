@@ -1,14 +1,22 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
-import { FileUp, Plus } from "lucide-react";
+import { BadgeCheck, Download, Eye, FileUp, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
+import { Button as ConsoleButton } from "@/components/ui/console/button";
 import { FilterBar } from "@/components/ui/filter-bar";
-import { DataTable, SortableHeader } from "@/components/ui/data-table";
+import {
+  DataTable,
+  SortableHeader,
+  createSelectColumn,
+} from "@/components/ui/data-table";
+import { BulkActionBar } from "@/components/ui/console/data-table";
+import { ColumnsMenu } from "@/components/ui/console/toolbar";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { ErrorState } from "@/components/ui/error-state";
 import { Input } from "@/components/ui/input";
@@ -16,7 +24,6 @@ import { Label } from "@/components/ui/label";
 import {
   Modal,
   ModalContent,
-  ModalDescription,
   ModalFooter,
   ModalHeader,
   ModalTitle,
@@ -33,10 +40,16 @@ import {
   FormFieldSlot,
   CrmFormSection,
   CRM_FIELD_INPUT_CLASS,
-  SearchableSelect,
 } from "@/components/forms";
+import { LeadCombobox } from "@/components/forms/entity-pickers";
+import { DatePicker } from "@/components/ui/date-picker";
+import { formTriggerClass } from "@/components/ui/dropdown-styles";
+import { leadHref } from "@/features/activities/activity-href";
 import { useAuth } from "@/features/auth/auth-provider";
 import { crmApi, type CrmDocument } from "@/lib/api/crm";
+import { useColumnVisibility } from "@/lib/column-visibility";
+import { DocumentViewer } from "./document-viewer";
+import { bulkMessage, runBulk } from "@/lib/bulk";
 
 const DOC_STATUSES = [
   "requested",
@@ -69,30 +82,35 @@ function formatWhen(v?: string | null) {
   return new Date(v).toLocaleString();
 }
 
+type DocumentLink = { leadId?: string; customerId?: string; dealId?: string };
+
 export function DocumentsTableView({
+  leadId,
   customerId,
   dealId,
   compact,
-}: {
-  customerId?: string;
-  dealId?: string;
-  compact?: boolean;
-} = {}) {
+}: DocumentLink & { compact?: boolean } = {}) {
+  const fixedLink: DocumentLink = { leadId, customerId, dealId };
   const { can } = useAuth();
   const qc = useQueryClient();
   const [status, setStatus] = React.useState("all");
   const [search, setSearch] = React.useState("");
   const [requestOpen, setRequestOpen] = React.useState(false);
   const [uploadOpen, setUploadOpen] = React.useState(false);
+  const [selected, setSelected] = React.useState<CrmDocument[]>([]);
+  const [selectionResetKey, setSelectionResetKey] = React.useState(0);
+  const [bulkPending, setBulkPending] = React.useState<"verify" | "delete" | null>(null);
+  const [viewing, setViewing] = React.useState<CrmDocument | null>(null);
 
   const params = React.useMemo(() => {
     const p = new URLSearchParams({ limit: "50", offset: "0" });
     if (status !== "all") p.set("status", status);
+    if (leadId) p.set("leadId", leadId);
     if (customerId) p.set("customerId", customerId);
     if (dealId) p.set("dealId", dealId);
     if (search) p.set("q", search);
     return p;
-  }, [status, customerId, dealId, search]);
+  }, [status, leadId, customerId, dealId, search]);
 
   const query = useQuery({
     queryKey: ["documents", params.toString()],
@@ -121,12 +139,24 @@ export function DocumentsTableView({
 
   const columns = React.useMemo<ColumnDef<CrmDocument>[]>(
     () => [
+      createSelectColumn<CrmDocument>(),
       {
         accessorKey: "name",
         header: ({ column }) => <SortableHeader column={column} title="Name" />,
+        enableHiding: false,
         cell: ({ row }) => (
           <div>
-            <p className="font-medium">{row.original.name}</p>
+            {row.original.fileKey ? (
+              <button
+                type="button"
+                onClick={() => setViewing(row.original)}
+                className="rounded-sm text-left font-medium hover:text-brand hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {row.original.name}
+              </button>
+            ) : (
+              <p className="font-medium">{row.original.name}</p>
+            )}
             <p className="text-[11px] text-foreground-muted">
               {row.original.type || row.original.category || "—"}
             </p>
@@ -134,14 +164,19 @@ export function DocumentsTableView({
         ),
       },
       {
-        accessorKey: "customerName",
-        header: "Customer",
-        cell: ({ row }) => row.original.customerName ?? "—",
-      },
-      {
-        accessorKey: "dealTitle",
-        header: "Deal",
-        cell: ({ row }) => row.original.dealTitle ?? "—",
+        id: "lead",
+        header: "Lead",
+        cell: ({ row }) => {
+          const d = row.original;
+          if (d.leadId) {
+            return (
+              <Link href={leadHref(d.leadId)} className="hover:text-brand">
+                {d.leadName ?? "Open lead"}
+              </Link>
+            );
+          }
+          return <span className="text-foreground-muted">{d.customerName || d.dealTitle || "—"}</span>;
+        },
       },
       {
         accessorKey: "status",
@@ -181,11 +216,17 @@ export function DocumentsTableView({
           return (
             <div className="flex flex-wrap justify-end gap-1">
               {d.fileKey ? (
-                <Button size="sm" variant="ghost" asChild>
-                  <a href={crmApi.downloadDocumentUrl(d.id)} target="_blank" rel="noreferrer">
-                    Download
-                  </a>
-                </Button>
+                <>
+                  <Button size="sm" variant="ghost" onClick={() => setViewing(d)}>
+                    <Eye className="size-3.5" aria-hidden />
+                    View
+                  </Button>
+                  <Button size="sm" variant="ghost" asChild>
+                    <a href={crmApi.downloadDocumentUrl(d.id)} download={d.name} aria-label={`Download ${d.name}`}>
+                      <Download className="size-3.5" aria-hidden />
+                    </a>
+                  </Button>
+                </>
               ) : null}
               {can("documents:edit") && (d.status === "uploaded" || d.status === "rejected") ? (
                 <Button
@@ -219,6 +260,37 @@ export function DocumentsTableView({
     [can, verifyMutation, rejectMutation],
   );
 
+  const columnPrefs = useColumnVisibility("documents", columns);
+
+  /** Only uploaded or rejected documents can move to verified; skip the rest. */
+  const verifiable = selected.filter((d) => d.status === "uploaded" || d.status === "rejected");
+
+  const verifySelected = async () => {
+    setBulkPending("verify");
+    const result = await runBulk(verifiable, (d) => crmApi.verifyDocument(d.id));
+    setBulkPending(null);
+    if (result.ok > 0) {
+      invalidate();
+      setSelectionResetKey((k) => k + 1);
+    }
+    const message = bulkMessage(result, "document", "verified");
+    if (result.failed > 0) toast.error(message);
+    else toast.success(message);
+  };
+
+  const deleteSelected = async () => {
+    setBulkPending("delete");
+    const result = await runBulk(selected, (d) => crmApi.deleteDocument(d.id));
+    setBulkPending(null);
+    if (result.ok > 0) {
+      invalidate();
+      setSelectionResetKey((k) => k + 1);
+    }
+    const message = bulkMessage(result, "document", "deleted");
+    if (result.failed > 0) toast.error(message);
+    else toast.success(message);
+  };
+
   if (query.isError) {
     return <ErrorState onRetry={() => void query.refetch()} />;
   }
@@ -229,7 +301,7 @@ export function DocumentsTableView({
         <PageHeader
           breadcrumbs={[{ label: "Workspace", href: "/" }, { label: "Documents" }]}
           title="Documents"
-          description="Request, upload, and verify files against CRM records."
+          description="Request, upload, and verify files for your leads."
           actions={
             <div className="flex gap-2">
               {can("documents:create") ? (
@@ -262,6 +334,7 @@ export function DocumentsTableView({
         search={search}
         onSearchChange={setSearch}
         searchPlaceholder="Search documents…"
+        trailing={<ColumnsMenu {...columnPrefs.menu} />}
       >
         <Select value={status} onValueChange={setStatus}>
           <SelectTrigger className="w-[140px]">
@@ -278,59 +351,99 @@ export function DocumentsTableView({
         </Select>
       </FilterBar>
 
+      {can("documents:edit") || can("documents:delete") ? (
+        <BulkActionBar count={selected.length} onClear={() => setSelectionResetKey((k) => k + 1)}>
+          {can("documents:edit") ? (
+            <ConsoleButton
+              size="sm"
+              variant="secondary"
+              loading={bulkPending === "verify"}
+              disabled={bulkPending !== null || verifiable.length === 0}
+              onClick={() => void verifySelected()}
+            >
+              <BadgeCheck aria-hidden />
+              {verifiable.length === selected.length
+                ? "Verify"
+                : `Verify ${verifiable.length} of ${selected.length}`}
+            </ConsoleButton>
+          ) : null}
+          {can("documents:delete") ? (
+            <ConsoleButton
+              size="sm"
+              variant="secondary"
+              loading={bulkPending === "delete"}
+              disabled={bulkPending !== null}
+              onClick={() => void deleteSelected()}
+            >
+              <Trash2 aria-hidden />
+              Delete
+            </ConsoleButton>
+          ) : null}
+        </BulkActionBar>
+      ) : null}
+
       <DataTable
         columns={columns}
+        columnVisibility={columnPrefs.columnVisibility}
         data={query.data?.data ?? []}
         loading={query.isLoading}
+        searchValue={search}
+        onRowSelectionChange={setSelected}
+        selectionResetKey={selectionResetKey}
+        itemLabel="documents"
       />
 
+      <DocumentViewer doc={viewing} onClose={() => setViewing(null)} />
       <RequestDocumentDialog
         open={requestOpen}
         onOpenChange={setRequestOpen}
-        defaultCustomerId={customerId}
-        defaultDealId={dealId}
+        fixedLink={fixedLink}
         onDone={invalidate}
       />
       <UploadDocumentDialog
         open={uploadOpen}
         onOpenChange={setUploadOpen}
-        defaultCustomerId={customerId}
-        defaultDealId={dealId}
+        fixedLink={fixedLink}
         onDone={invalidate}
       />
     </div>
   );
 }
 
+const hasFixedLink = (l: DocumentLink) => Boolean(l.leadId || l.customerId || l.dealId);
+
+/** The fixed record when the view is embedded on one, otherwise the picked lead. */
+function linkBody(fixed: DocumentLink, pickedLeadId: string): DocumentLink {
+  return hasFixedLink(fixed) ? fixed : { leadId: pickedLeadId || undefined };
+}
+
 function RequestDocumentDialog({
   open,
   onOpenChange,
-  defaultCustomerId,
-  defaultDealId,
+  fixedLink,
   onDone,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  defaultCustomerId?: string;
-  defaultDealId?: string;
+  fixedLink: DocumentLink;
   onDone: () => void;
 }) {
   const [name, setName] = React.useState("");
   const [type, setType] = React.useState("");
-  const [customerId, setCustomerId] = React.useState(defaultCustomerId ?? "");
-  const [dealId, setDealId] = React.useState(defaultDealId ?? "");
+  const [leadId, setLeadId] = React.useState("");
   const [expiryDate, setExpiryDate] = React.useState("");
   const [loading, setLoading] = React.useState(false);
+  const [openedAt, setOpenedAt] = React.useState(open);
 
-  React.useEffect(() => {
+  if (open !== openedAt) {
+    setOpenedAt(open);
     if (open) {
-      setCustomerId(defaultCustomerId ?? "");
-      setDealId(defaultDealId ?? "");
+      setLeadId("");
       setName("");
       setType("");
       setExpiryDate("");
     }
-  }, [open, defaultCustomerId, defaultDealId]);
+  }
 
   return (
     <QuickCreateDrawer
@@ -360,13 +473,19 @@ function RequestDocumentDialog({
                   toast.error("Name and type are required");
                   return;
                 }
+                const link = linkBody(fixedLink, leadId);
+                if (!hasFixedLink(link)) {
+                  toast.error("Choose the lead this document is for");
+                  return;
+                }
                 setLoading(true);
                 try {
                   await crmApi.requestDocument({
                     name: name.trim(),
                     type: type.trim(),
-                    customerId: customerId || null,
-                    dealId: dealId || null,
+                    leadId: link.leadId ?? null,
+                    customerId: link.customerId ?? null,
+                    dealId: link.dealId ?? null,
                     expiryDate: expiryDate || null,
                   });
                   onOpenChange(false);
@@ -406,43 +525,22 @@ function RequestDocumentDialog({
           </FormFieldSlot>
         </CrmFormSection>
         <CrmFormSection title="Link to" divided>
-          {!defaultCustomerId ? (
-            <FormFieldSlot label="Customer">
-              <SearchableSelect
-                value={customerId || null}
-                onChange={(v) => setCustomerId(v ?? "")}
-                onSearch={async (q) => {
-                  const res = await crmApi.listCustomers(
-                    new URLSearchParams({ limit: "20", q: q || "" }),
-                  );
-                  return (res.data ?? []).map((c) => ({
-                    value: c.id,
-                    label: c.fullName,
-                    meta: c.email ?? undefined,
-                  }));
-                }}
-                placeholder="Search customer…"
-                emptyText="No matching customers found."
-                className={CRM_FIELD_INPUT_CLASS}
-              />
-            </FormFieldSlot>
-          ) : null}
-          {!defaultDealId ? (
-            <FormFieldSlot label="Deal ID (optional)">
-              <Input
-                value={dealId}
-                onChange={(e) => setDealId(e.target.value)}
-                className={CRM_FIELD_INPUT_CLASS}
-                placeholder="Deal UUID"
+          {!hasFixedLink(fixedLink) ? (
+            <FormFieldSlot label="Lead" required>
+              <LeadCombobox
+                value={leadId || null}
+                onChange={(v) => setLeadId(v ?? "")}
+                triggerClassName={formTriggerClass}
               />
             </FormFieldSlot>
           ) : null}
           <FormFieldSlot label="Expiry date">
-            <Input
-              type="date"
+            <DatePicker
+              aria-label="Expiry date"
               value={expiryDate}
-              onChange={(e) => setExpiryDate(e.target.value)}
-              className={CRM_FIELD_INPUT_CLASS}
+              onChange={setExpiryDate}
+              placeholder="No expiry"
+              clearable
             />
           </FormFieldSlot>
         </CrmFormSection>
@@ -454,29 +552,26 @@ function RequestDocumentDialog({
 function UploadDocumentDialog({
   open,
   onOpenChange,
-  defaultCustomerId,
-  defaultDealId,
+  fixedLink,
   onDone,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  defaultCustomerId?: string;
-  defaultDealId?: string;
+  fixedLink: DocumentLink;
   onDone: () => void;
 }) {
   const [name, setName] = React.useState("");
   const [type, setType] = React.useState("");
-  const [customerId, setCustomerId] = React.useState(defaultCustomerId ?? "");
-  const [dealId, setDealId] = React.useState(defaultDealId ?? "");
+  const [leadId, setLeadId] = React.useState("");
   const [file, setFile] = React.useState<File | null>(null);
   const [loading, setLoading] = React.useState(false);
+  const [openedAt, setOpenedAt] = React.useState(open);
 
-  React.useEffect(() => {
-    if (open) {
-      setCustomerId(defaultCustomerId ?? "");
-      setDealId(defaultDealId ?? "");
-    }
-  }, [open, defaultCustomerId, defaultDealId]);
+  if (open !== openedAt) {
+    setOpenedAt(open);
+    if (open) setLeadId("");
+  }
+  const link = linkBody(fixedLink, leadId);
 
   return (
     <Modal open={open} onOpenChange={onOpenChange}>
@@ -506,16 +601,10 @@ function UploadDocumentDialog({
             <Label>Type</Label>
             <Input value={type} onChange={(e) => setType(e.target.value)} />
           </div>
-          {!defaultCustomerId ? (
+          {!hasFixedLink(fixedLink) ? (
             <div className="space-y-1.5">
-              <Label>Customer ID</Label>
-              <Input value={customerId} onChange={(e) => setCustomerId(e.target.value)} />
-            </div>
-          ) : null}
-          {!defaultDealId ? (
-            <div className="space-y-1.5">
-              <Label>Deal ID (optional)</Label>
-              <Input value={dealId} onChange={(e) => setDealId(e.target.value)} />
+              <Label required>Lead</Label>
+              <LeadCombobox value={leadId || null} onChange={(v) => setLeadId(v ?? "")} />
             </div>
           ) : null}
         </div>
@@ -525,7 +614,7 @@ function UploadDocumentDialog({
           </Button>
           <Button
             loading={loading}
-            disabled={!file || (!customerId && !dealId && !defaultCustomerId && !defaultDealId)}
+            disabled={!file || !hasFixedLink(link)}
             onClick={() => {
               void (async () => {
                 if (!file) return;
@@ -535,12 +624,9 @@ function UploadDocumentDialog({
                   form.append("file", file);
                   form.append("name", name || file.name);
                   form.append("type", type);
-                  if (customerId || defaultCustomerId) {
-                    form.append("customerId", customerId || defaultCustomerId!);
-                  }
-                  if (dealId || defaultDealId) {
-                    form.append("dealId", dealId || defaultDealId!);
-                  }
+                  if (link.leadId) form.append("leadId", link.leadId);
+                  if (link.customerId) form.append("customerId", link.customerId);
+                  if (link.dealId) form.append("dealId", link.dealId);
                   await crmApi.uploadDocument(form);
                   onOpenChange(false);
                   setFile(null);

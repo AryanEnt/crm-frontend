@@ -29,6 +29,43 @@ import {
 import { useAuth } from "@/features/auth/auth-provider";
 import { crmApi, type Pipeline, type PipelineStage } from "@/lib/api/crm";
 
+type StageOutcome = "open" | "won" | "lost";
+
+const outcomeOf = (stage: Pick<PipelineStage, "isWon" | "isLost">): StageOutcome =>
+  stage.isWon ? "won" : stage.isLost ? "lost" : "open";
+
+const outcomeFlags = (outcome: StageOutcome) => ({
+  isWon: outcome === "won",
+  isLost: outcome === "lost",
+});
+
+function StageOutcomeField({
+  value,
+  onChange,
+}: {
+  value: StageOutcome;
+  onChange: (value: StageOutcome) => void;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label>Outcome</Label>
+      <Select value={value} onValueChange={(v) => onChange(v as StageOutcome)}>
+        <SelectTrigger>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="open">Open: deal is still in progress</SelectItem>
+          <SelectItem value="won">Won: the Won button moves deals here</SelectItem>
+          <SelectItem value="lost">Lost: the Lost button moves deals here</SelectItem>
+        </SelectContent>
+      </Select>
+      <p className="text-[11px] text-foreground-muted">
+        Each pipeline has one Won and one Lost stage. Choosing one here replaces the current one.
+      </p>
+    </div>
+  );
+}
+
 export function PipelinesAdminView() {
   const { can } = useAuth();
   const qc = useQueryClient();
@@ -229,8 +266,10 @@ function PipelineEditor({
           .map((s) => (
             <li key={s.id} className="flex items-center justify-between gap-3 px-3 py-2">
               <div className="min-w-0">
-                <p className="text-sm font-medium">
+                <p className="flex items-center gap-2 text-sm font-medium">
                   {s.position}. {s.name}
+                  {s.isWon ? <StatusBadge tone="success">Won</StatusBadge> : null}
+                  {s.isLost ? <StatusBadge tone="danger">Lost</StatusBadge> : null}
                   {!s.isActive ? (
                     <span className="ml-2 text-[11px] text-foreground-subtle">inactive</span>
                   ) : null}
@@ -344,7 +383,13 @@ function CreateStageDialog({
   const [probability, setProbability] = React.useState("0");
   const [accent, setAccent] = React.useState("neutral");
   const [slaHours, setSlaHours] = React.useState("");
+  const [outcome, setOutcome] = React.useState<StageOutcome>("open");
   const [loading, setLoading] = React.useState(false);
+  const changeOutcome = (next: StageOutcome) => {
+    setOutcome(next);
+    if (next === "won") setProbability("100");
+    if (next === "lost") setProbability("0");
+  };
   return (
     <Modal open={open} onOpenChange={onOpenChange}>
       <ModalContent>
@@ -356,6 +401,7 @@ function CreateStageDialog({
             <Label required>Name</Label>
             <Input value={name} onChange={(e) => setName(e.target.value)} required aria-required="true" />
           </div>
+          <StageOutcomeField value={outcome} onChange={changeOutcome} />
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Probability</Label>
@@ -399,9 +445,11 @@ function CreateStageDialog({
                     probability: Number(probability) || 0,
                     visualAccent: accent,
                     slaHours: slaHours ? Number(slaHours) : null,
+                    ...outcomeFlags(outcome),
                   });
                   onOpenChange(false);
                   setName("");
+                  setOutcome("open");
                   onCreated();
                   toast.success("Stage added");
                 } catch (err) {
@@ -439,7 +487,13 @@ function EditStageDialog({
   const [activities, setActivities] = React.useState(stage.requiredActivities.join(", "));
   const [documents, setDocuments] = React.useState(stage.requiredDocuments.join(", "));
   const [active, setActive] = React.useState(stage.isActive);
+  const [outcome, setOutcome] = React.useState<StageOutcome>(() => outcomeOf(stage));
   const [loading, setLoading] = React.useState(false);
+  const changeOutcome = (next: StageOutcome) => {
+    setOutcome(next);
+    if (next === "won") setProbability("100");
+    if (next === "lost") setProbability("0");
+  };
 
   const split = (v: string) =>
     v
@@ -458,6 +512,7 @@ function EditStageDialog({
             <Label required>Name</Label>
             <Input value={name} onChange={(e) => setName(e.target.value)} required aria-required="true" />
           </div>
+          <StageOutcomeField value={outcome} onChange={changeOutcome} />
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Probability</Label>
@@ -522,6 +577,7 @@ function EditStageDialog({
                     slaHours: slaHours ? Number(slaHours) : null,
                     clearSla: !slaHours,
                     isActive: active,
+                    ...outcomeFlags(outcome),
                   });
                   onSaved();
                   toast.success("Stage saved");

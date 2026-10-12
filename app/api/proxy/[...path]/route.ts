@@ -148,6 +148,8 @@ async function proxyResponse(upstream: Response) {
   const body = isBinary ? await upstream.arrayBuffer() : await upstream.text();
   const headers: Record<string, string> = { "Content-Type": contentType };
   if (disposition) headers["Content-Disposition"] = disposition;
+  const nosniff = upstream.headers.get("X-Content-Type-Options");
+  if (nosniff) headers["X-Content-Type-Options"] = nosniff;
 
   return new NextResponse(body, {
     status: upstream.status,

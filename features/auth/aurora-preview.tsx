@@ -7,17 +7,17 @@ import { cn } from "@/lib/utils";
 type Metric = { label: string; value: number; icon: LucideIcon; tone: string };
 
 const METRICS: Metric[] = [
-  { label: "Leads", value: 128, icon: UserPlus, tone: "bg-(--aurora-lavender) text-(--aurora-lavender-ink)" },
-  { label: "Customers", value: 84, icon: Users, tone: "bg-(--aurora-blue-soft) text-(--aurora-blue-ink)" },
-  { label: "Deals", value: 36, icon: Handshake, tone: "bg-(--aurora-cyan-soft) text-(--aurora-cyan-ink)" },
+  { label: "Open leads", value: 128, icon: UserPlus, tone: "bg-(--aurora-lavender) text-(--aurora-lavender-ink)" },
+  { label: "Contacted", value: 84, icon: Users, tone: "bg-(--aurora-blue-soft) text-(--aurora-blue-ink)" },
+  { label: "Won", value: 36, icon: Handshake, tone: "bg-(--aurora-cyan-soft) text-(--aurora-cyan-ink)" },
 ];
 
 const STAGES = [
-  { label: "Cold Lead", count: 42, width: 92, fill: "bg-(--aurora-stage-1)" },
-  { label: "New Potential", count: 31, width: 72, fill: "bg-(--aurora-stage-2)" },
-  { label: "Contact Made", count: 24, width: 56, fill: "bg-(--aurora-stage-3)" },
-  { label: "Submitted", count: 15, width: 38, fill: "bg-(--aurora-stage-4)" },
-  { label: "Waiting Outcome", count: 9, width: 24, fill: "bg-(--aurora-stage-5)" },
+  { label: "Created", count: 42, width: 92, fill: "bg-(--aurora-stage-1)" },
+  { label: "Contacted", count: 31, width: 72, fill: "bg-(--aurora-stage-2)" },
+  { label: "Qualified", count: 24, width: 56, fill: "bg-(--aurora-stage-3)" },
+  { label: "Proposal", count: 15, width: 38, fill: "bg-(--aurora-stage-4)" },
+  { label: "Negotiation", count: 9, width: 24, fill: "bg-(--aurora-stage-5)" },
 ] as const;
 
 const TREND_LINE = "M4 50 C 34 49, 52 44, 80 43 S 126 38, 152 33 S 204 30, 228 22 S 276 10, 316 7";

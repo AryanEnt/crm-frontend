@@ -7,6 +7,7 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { TopBar } from "@/components/layout/top-bar";
 import { DensityProvider } from "@/lib/density";
 import { QuickCreateProvider } from "@/components/forms/quick-create-provider";
+import { DuePrompt } from "@/features/activities/due-prompt";
 
 const COLLAPSE_KEY = "crm.sidebar.collapsed";
 const COLLAPSE_EVENT = "crm-sidebar-collapse";
@@ -64,6 +65,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <TopBar onMenuClick={() => setMobileOpen(true)} />
             <main className="flex-1 px-3 py-4 sm:px-4 lg:px-5">{children}</main>
           </div>
+          <DuePrompt />
         </div>
       </QuickCreateProvider>
     </DensityProvider>

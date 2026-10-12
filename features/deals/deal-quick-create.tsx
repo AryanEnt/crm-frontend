@@ -17,6 +17,7 @@ import {
   SubmitButton,
   TextareaField,
   TextField,
+  DateField,
   useZodForm,
 } from "@/components/forms";
 import { PipelineStagePickers, PriorityToggle, UserPicker } from "@/components/forms/entity-pickers";
@@ -261,7 +262,7 @@ function DealCreateBody({
                     <span className="pr-1.5 text-caption text-ink-muted">{currency || "AUD"}</span>
                   }
                 />
-                <TextField name="expectedCloseAt" label="Expected close" type="date" />
+                <DateField name="expectedCloseAt" label="Expected close" placeholder="No close date" />
               </div>
             </CrmFormSection>
 

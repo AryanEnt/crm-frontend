@@ -5,6 +5,8 @@ import { useQuery } from "@tanstack/react-query";
 import { FormFieldSlot } from "@/components/forms";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
+import { DatePicker } from "@/components/ui/date-picker";
+import { DateTimePicker } from "@/components/ui/date-time-picker";
 import {
   Select,
   SelectContent,
@@ -184,22 +186,22 @@ function FieldInput({
     case "date":
       return (
         <FormFieldSlot label={label} help={field.helpText}>
-          <Input
-            type="date"
-            className={CRM_FIELD_INPUT_CLASS}
+          <DatePicker
+            aria-label={label}
             value={String(value ?? "").slice(0, 10)}
-            onChange={(e) => onChange(e.target.value || null)}
+            onChange={(v) => onChange(v || null)}
+            clearable
           />
         </FormFieldSlot>
       );
     case "datetime":
       return (
         <FormFieldSlot label={label} help={field.helpText}>
-          <Input
-            type="datetime-local"
-            className={CRM_FIELD_INPUT_CLASS}
-            value={String(value ?? "")}
-            onChange={(e) => onChange(e.target.value || null)}
+          <DateTimePicker
+            aria-label={label}
+            value={String(value ?? "").slice(0, 16)}
+            onChange={(v) => onChange(v || null)}
+            clearable
           />
         </FormFieldSlot>
       );

@@ -153,6 +153,17 @@ export type Lead = {
   qualification: string;
   skills: string[];
   potentialValue?: number | null;
+  currency?: string;
+  /** Lead override or the stage default, 0–100. */
+  probability?: number | null;
+  /** YYYY-MM-DD */
+  expectedCloseAt?: string | null;
+  stageAccent?: string | null;
+  stageEnteredAt?: string | null;
+  daysInStage?: number;
+  wonAt?: string | null;
+  lostAt?: string | null;
+  lostReason?: string;
   expectedOutcome: string;
   lastActivityAt?: string | null;
   nextActivityAt?: string | null;
@@ -163,6 +174,192 @@ export type Lead = {
   isArchived: boolean;
   createdAt: string;
   updatedAt: string;
+};
+
+export type LeadBoardCard = {
+  id: string;
+  fullName: string;
+  employer: string;
+  phone: string | null;
+  email: string | null;
+  potentialValue: number | null;
+  currency: string;
+  stageId: string | null;
+  status: string;
+  ownerUserId: string | null;
+  ownerName: string | null;
+  priority: string;
+  tags: string[];
+  lastActivityAt: string | null;
+  nextActivityAt: string | null;
+  nextActivityTitle: string | null;
+  nextActivityType: string | null;
+  expectedCloseAt: string | null;
+  stageEnteredAt: string;
+  wonAt: string | null;
+  lostAt: string | null;
+  lostReason: string;
+};
+
+export type LeadBoardStage = {
+  id: string;
+  name: string;
+  position: number;
+  isWon: boolean;
+  isLost: boolean;
+  probability: number;
+  visualAccent: string;
+  requiredFields: string[];
+  requiredActivities: string[];
+  requiredDocuments: string[];
+  count: number;
+  totalValue: number;
+  hasMore: boolean;
+  leads: LeadBoardCard[];
+};
+
+export type LeadBoard = {
+  pipeline: { id: string; name: string; kind: string; isDefault: boolean };
+  stages: LeadBoardStage[];
+};
+
+export type LeadMoveInput = {
+  stageId: string;
+  pipelineId?: string;
+  force?: boolean;
+  reopen?: boolean;
+  lostReason?: string;
+  nextActivity?: { title?: string; dueAt: string; typeCode?: string };
+};
+
+export type LeadMoveResult = {
+  lead: Lead;
+  changed: boolean;
+  needsNextActivity: boolean;
+  nextActivityId?: string;
+};
+
+/** 400 details when a closed lead is moved without `reopen`. */
+export type LeadClosedError = { reason: "lead_closed"; status: string };
+
+export type LeadDayItem = {
+  id: string;
+  fullName: string;
+  employer: string;
+  stageName: string | null;
+  stageAccent: string | null;
+  potentialValue: number | null;
+  currency: string;
+  ownerName: string | null;
+  nextActivityAt: string | null;
+  nextActivityTitle: string | null;
+  lastActivityAt: string | null;
+  wonAt: string | null;
+  createdAt: string;
+};
+
+export type LeadStageStrip = {
+  id: string;
+  name: string;
+  position: number;
+  isWon: boolean;
+  isLost: boolean;
+  probability: number;
+  visualAccent: string;
+  count: number;
+  value: number;
+};
+
+export type LeadOverview = {
+  pipeline: { id: string; name: string } | null;
+  range: { from: string; to: string };
+  /** Currency of the value fields: the one most open leads use. */
+  currency: string;
+  mixedCurrency: boolean;
+  openLeads: number;
+  openValue: number;
+  weightedValue: number;
+  wonLeads: number;
+  wonValue: number;
+  lostLeads: number;
+  lostValue: number;
+  /** 0–100; null with no closed leads in range. */
+  winRate: number | null;
+  needingAttention: number;
+  noNextActivity: number;
+  overdue: number;
+  stale: number;
+  byCurrency: Array<{
+    currency: string;
+    openCount: number;
+    openValue: number;
+    weightedValue: number;
+    wonCount: number;
+    wonValue: number;
+    lostCount: number;
+    lostValue: number;
+  }>;
+  stages: LeadStageStrip[];
+  funnel: Array<{
+    stageId: string;
+    name: string;
+    position: number;
+    isWon: boolean;
+    isLost: boolean;
+    reached: number;
+    /** Share of leads that reached the first stage, 0–100. */
+    rate: number;
+  }>;
+};
+
+export const LEAD_DAY_BUCKETS = [
+  "overdue",
+  "today",
+  "noNextAction",
+  "stale",
+  "recentlyWon",
+  "recentlyCreated",
+] as const;
+export type LeadDayBucket = (typeof LEAD_DAY_BUCKETS)[number];
+
+export type LeadMyDay = { counts: Record<LeadDayBucket, number> } & Record<LeadDayBucket, LeadDayItem[]>;
+
+export type LeadOwnerRow = {
+  ownerUserId: string | null;
+  ownerName: string | null;
+  openLeads: number;
+  openValue: number;
+  wonLeads: number;
+  wonValue: number;
+  lostLeads: number;
+  /** 0–100; null with no closed leads in range. */
+  winRate: number | null;
+  activities: number;
+};
+
+export type LeadOwnerBreakdown = {
+  range: { from: string; to: string };
+  currency: string;
+  mixedCurrency: boolean;
+  rows: LeadOwnerRow[];
+};
+
+export type LeadForecast = {
+  currency: string;
+  mixedCurrency: boolean;
+  months: number;
+  /** key: overdue | YYYY-MM | later | no_date */
+  buckets: Array<{ key: string; count: number; value: number; weighted: number; noValue: number }>;
+  totals: { count: number; value: number; weighted: number; historicalAdjusted: number | null };
+  historicalWinRate: number | null;
+  closedSample: number;
+  limitations: string[];
+};
+
+export type LeadImageExtract = {
+  fullName?: string | null;
+  phone?: string | null;
+  email?: string | null;
 };
 
 export type DuplicateMatch = {
@@ -347,6 +544,16 @@ export const crmApi = {
   listLeads: (params: URLSearchParams) => listWithMeta<Lead>(`/leads?${params}`),
   getLead: (id: string) => api.get<Lead>(`/leads/${id}`),
   createLead: (body: unknown) => mutateWithDuplicateCheck<Lead>("POST", "/leads", body),
+  checkLeadDuplicates: (
+    body: { email?: string; phone?: string; name?: string },
+    signal?: AbortSignal,
+    excludeId?: string,
+  ) =>
+    api.post<DuplicateMatch[]>(
+      `/leads/check-duplicates${excludeId ? `?excludeId=${encodeURIComponent(excludeId)}` : ""}`,
+      body,
+      { signal },
+    ),
   updateLead: (id: string, body: unknown) =>
     mutateWithDuplicateCheck<Lead>("PATCH", `/leads/${id}`, body),
   qualifyLead: (id: string) => api.post<Lead>(`/leads/${id}/qualify`, {}),
@@ -355,8 +562,19 @@ export const crmApi = {
   bulkAssignLeads: (ids: string[], ownerUserId?: string | null, teamId?: string | null) =>
     api.post<{ updated: number }>("/leads/bulk-assign", { ids, ownerUserId, teamId }),
   bulkStageLeads: (ids: string[], pipelineId: string, stageId: string) =>
-    api.post<{ updated: number }>("/leads/bulk-stage", { ids, pipelineId, stageId }),
-  convertLead: (id: string) => api.post<Customer>(`/leads/${id}/convert`, {}),
+    api.post<{ updated: number; failed: Array<{ id: string; error: string }> }>("/leads/bulk-stage", {
+      ids,
+      pipelineId,
+      stageId,
+    }),
+  getLeadBoard: (params: URLSearchParams) => api.get<LeadBoard>(`/leads/board?${params}`),
+  getLeadBoardStage: (params: URLSearchParams) =>
+    api.get<{ leads: LeadBoardCard[]; hasMore: boolean }>(`/leads/board/stage?${params}`),
+  moveLead: (id: string, body: LeadMoveInput) => api.post<LeadMoveResult>(`/leads/${id}/move`, body),
+  leadOverview: (params: URLSearchParams) => api.get<LeadOverview>(`/leads/insights/overview?${params}`),
+  leadMyDay: (params: URLSearchParams) => api.get<LeadMyDay>(`/leads/insights/my-day?${params}`),
+  leadForecast: (params: URLSearchParams) => api.get<LeadForecast>(`/leads/insights/forecast?${params}`),
+  leadOwners: (params: URLSearchParams) => api.get<LeadOwnerBreakdown>(`/leads/insights/owners?${params}`),
 
   listCustomers: (params: URLSearchParams) => listWithMeta<Customer>(`/customers?${params}`),
   getCustomerProfile: (id: string) => api.get<CustomerProfile>(`/customers/${id}/profile`),
@@ -473,6 +691,26 @@ export const crmApi = {
     return envelope.data as CrmDocument;
   },
   downloadDocumentUrl: (id: string) => `/api/proxy/documents/${id}/download`,
+  /** Opens in the browser for PDFs, images, text and media; other types still download. */
+  viewDocumentUrl: (id: string) => `/api/proxy/documents/${id}/download?inline=1`,
+  /** Not implemented by the backend yet; only called when the screenshot-extract flag is on. */
+  extractLeadFromImage: async (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch("/api/proxy/leads/extract-from-image", {
+      method: "POST",
+      credentials: "same-origin",
+      body: form,
+    });
+    const envelope = (await res.json()) as ApiEnvelope<LeadImageExtract>;
+    if (!res.ok || !envelope.success) {
+      throw new ApiError(envelope.error?.message ?? "Couldn't read the screenshot", {
+        status: res.status,
+        code: envelope.error?.code ?? "request_failed",
+      });
+    }
+    return envelope.data as LeadImageExtract;
+  },
 
   listTimeline: (params: URLSearchParams) => listWithMeta<TimelineEvent>(`/timeline?${params}`),
   listTimelineTypes: () =>
@@ -549,6 +787,7 @@ export type CrmDocument = {
   notes: string;
   rejectedReason: string;
   leadId?: string | null;
+  leadName?: string | null;
   customerId?: string | null;
   customerName?: string | null;
   dealId?: string | null;
@@ -653,6 +892,8 @@ export type Activity = {
   displayStatus: string;
   needsNextActivity?: boolean;
   nextActivityId?: string | null;
+  /** Only on the write whose completion moved the lead forward. */
+  leadMovedTo?: { stageId: string; stageName: string };
   priority: string;
   notes: string;
   outcome: string;

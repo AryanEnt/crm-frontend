@@ -1,5 +1,5 @@
 export { Form, FormScope, SubmitButton, useZodForm, useFieldRequired, focusFirstInvalid } from "./form";
-export { TextField, PasswordField, TextareaField, SelectField } from "./fields";
+export { TextField, PasswordField, TextareaField, SelectField, ComboboxField, DateField, DateTimeField } from "./fields";
 export { SmartForm, useSmartForm, useSmartFormOptional } from "./smart-form";
 export { FormField, FormFieldSlot, FormFieldGroup, FieldHelp } from "./form-field";
 export { FormSection } from "./form-section";
@@ -17,7 +17,7 @@ export {
   LeadSourceSelect,
   PriorityToggle,
 } from "./entity-pickers";
-export { QuickCreateDrawer, QuickCreateDrawerFooter } from "./quick-create-drawer";
+export { QuickCreateDrawer, QuickCreateDrawerFooter, QuickCreateDialog } from "./quick-create-drawer";
 export { InlineCreateModal } from "./inline-create";
 export { FormSummary } from "./form-summary";
 export { MultiStepForm } from "./multi-step-form";

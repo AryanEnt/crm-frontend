@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { CalendarPlus, Clock, Handshake, UserPlus, Users } from "lucide-react";
+import { CalendarPlus, Clock, UserPlus } from "lucide-react";
 import { getNavForRole } from "@/lib/navigation";
 import { canAccessPath } from "@/lib/permissions";
 import { useAuth } from "@/features/auth/auth-provider";
@@ -14,7 +14,7 @@ const RECENT_KEY = "aurora.cmd.recent";
 const MAX_RECENT = 6;
 
 type RecentItem = { href: string; label: string; at: number };
-type QuickCreateEntity = "lead" | "customer" | "deal" | "activity";
+type QuickCreateEntity = "lead" | "activity";
 
 function readRecent(): RecentItem[] {
   if (typeof window === "undefined") return [];
@@ -74,18 +74,9 @@ export function CommandMenu({ open, onOpenChange, onQuickCreate }: CommandMenuPr
 
   const leadsQuery = useQuery({
     queryKey: ["cmdk-leads", debounced],
-    queryFn: () => crmApi.listLeads(new URLSearchParams({ q: debounced, limit: "5", offset: "0" })),
+    queryFn: () =>
+      crmApi.listLeads(new URLSearchParams({ q: debounced, status: "all", limit: "8", offset: "0" })),
     enabled: open && searchEnabled && can("leads:view"),
-  });
-  const customersQuery = useQuery({
-    queryKey: ["cmdk-customers", debounced],
-    queryFn: () => crmApi.listCustomers(new URLSearchParams({ q: debounced, limit: "5", offset: "0" })),
-    enabled: open && searchEnabled && can("customers:view"),
-  });
-  const dealsQuery = useQuery({
-    queryKey: ["cmdk-deals", debounced],
-    queryFn: () => crmApi.listDeals(new URLSearchParams({ q: debounced, limit: "5", offset: "0" })),
-    enabled: open && searchEnabled && can("deals:view"),
   });
 
   const go = (href: string, label: string) => {
@@ -100,8 +91,6 @@ export function CommandMenu({ open, onOpenChange, onQuickCreate }: CommandMenuPr
     const createActions = (
       [
         { id: "lead", label: "New lead", icon: UserPlus, perm: "leads:create" },
-        { id: "customer", label: "New customer", icon: Users, perm: "customers:create" },
-        { id: "deal", label: "New deal", icon: Handshake, perm: "deals:create" },
         { id: "activity", label: "New activity", icon: CalendarPlus, perm: "activities:create" },
       ] as const
     ).filter((action) => can(action.perm));
@@ -140,8 +129,6 @@ export function CommandMenu({ open, onOpenChange, onQuickCreate }: CommandMenuPr
 
   if (searchEnabled) {
     const leads = leadsQuery.data?.data ?? [];
-    const customers = customersQuery.data?.data ?? [];
-    const deals = dealsQuery.data?.data ?? [];
     if (leads.length) {
       groups.push({
         id: "leads",
@@ -151,36 +138,8 @@ export function CommandMenu({ open, onOpenChange, onQuickCreate }: CommandMenuPr
           id: `lead-${lead.id}`,
           label: lead.fullName,
           icon: UserPlus,
-          hint: lead.email ?? lead.stageName ?? "",
-          onSelect: () => go(`/leads?q=${encodeURIComponent(lead.fullName)}`, lead.fullName),
-        })),
-      });
-    }
-    if (customers.length) {
-      groups.push({
-        id: "customers",
-        heading: "Customers",
-        filter: false,
-        items: customers.map((customer) => ({
-          id: `customer-${customer.id}`,
-          label: customer.fullName,
-          icon: Users,
-          hint: customer.email ?? "",
-          onSelect: () => go(`/customers/${customer.id}`, customer.fullName),
-        })),
-      });
-    }
-    if (deals.length) {
-      groups.push({
-        id: "deals",
-        heading: "Deals",
-        filter: false,
-        items: deals.map((deal) => ({
-          id: `deal-${deal.id}`,
-          label: deal.title,
-          icon: Handshake,
-          hint: deal.customerName,
-          onSelect: () => go(`/deals/${deal.id}`, deal.title),
+          hint: [lead.stageName, lead.employer || lead.email].filter(Boolean).join(" · "),
+          onSelect: () => go(`/leads?leadId=${encodeURIComponent(lead.id)}`, lead.fullName),
         })),
       });
     }
@@ -202,8 +161,7 @@ export function CommandMenu({ open, onOpenChange, onQuickCreate }: CommandMenuPr
     });
   });
 
-  const searching =
-    searchEnabled && (leadsQuery.isFetching || customersQuery.isFetching || dealsQuery.isFetching);
+  const searching = searchEnabled && leadsQuery.isFetching;
 
   return (
     <CommandPalette
@@ -213,7 +171,7 @@ export function CommandMenu({ open, onOpenChange, onQuickCreate }: CommandMenuPr
       onQueryChange={setQuery}
       groups={groups}
       label="Search or jump to"
-      placeholder="Jump to a page, or search leads, customers, deals…"
+      placeholder="Jump to a page, or search leads…"
       loading={searching}
       emptyText={searching ? "Searching…" : "No matches. Try a different name or page."}
       footer={

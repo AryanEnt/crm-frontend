@@ -28,20 +28,8 @@ export default function AdminLookupPage() {
   const leadsQuery = useQuery({
     queryKey: ["lookup", "leads", submitted],
     queryFn: () =>
-      crmApi.listLeads(new URLSearchParams({ q: submitted, limit: "8" })),
+      crmApi.listLeads(new URLSearchParams({ q: submitted, status: "all", limit: "8" })),
     enabled: enabled && can("leads:view"),
-  });
-  const customersQuery = useQuery({
-    queryKey: ["lookup", "customers", submitted],
-    queryFn: () =>
-      crmApi.listCustomers(new URLSearchParams({ q: submitted, limit: "8" })),
-    enabled: enabled && can("customers:view"),
-  });
-  const dealsQuery = useQuery({
-    queryKey: ["lookup", "deals", submitted],
-    queryFn: () =>
-      crmApi.listDeals(new URLSearchParams({ q: submitted, limit: "8" })),
-    enabled: enabled && can("deals:view"),
   });
   const usersQuery = useQuery({
     queryKey: ["lookup", "users", submitted],
@@ -66,8 +54,6 @@ export default function AdminLookupPage() {
 
   const searching =
     leadsQuery.isFetching ||
-    customersQuery.isFetching ||
-    dealsQuery.isFetching ||
     usersQuery.isFetching ||
     teamsQuery.isFetching ||
     auditQuery.isFetching;
@@ -80,7 +66,7 @@ export default function AdminLookupPage() {
           { label: "Record Lookup" },
         ]}
         title="Global record lookup"
-        description="Find leads, customers, deals, users, teams, and audit events. Records are read-only from this administrative context."
+        description="Find leads, users, teams, and audit events. Records are read-only from this administrative context."
       />
 
       <form
@@ -121,32 +107,8 @@ export default function AdminLookupPage() {
               items={(leadsQuery.data?.data ?? []).map((l) => ({
                 id: l.id,
                 primary: l.fullName,
-                secondary: l.email || l.source || "—",
-                href: `/leads`,
-              }))}
-            />
-          ) : null}
-          {can("customers:view") ? (
-            <LookupSection
-              title="Customers"
-              empty={!customersQuery.data?.data?.length}
-              items={(customersQuery.data?.data ?? []).map((c) => ({
-                id: c.id,
-                primary: c.fullName,
-                secondary: c.email || "—",
-                href: `/customers/${c.id}`,
-              }))}
-            />
-          ) : null}
-          {can("deals:view") ? (
-            <LookupSection
-              title="Deals"
-              empty={!dealsQuery.data?.data?.length}
-              items={(dealsQuery.data?.data ?? []).map((d) => ({
-                id: d.id,
-                primary: d.title,
-                secondary: d.status || "—",
-                href: `/deals/${d.id}`,
+                secondary: [l.stageName, l.email || l.source].filter(Boolean).join(" · ") || "—",
+                href: `/leads?leadId=${encodeURIComponent(l.id)}`,
               }))}
             />
           ) : null}

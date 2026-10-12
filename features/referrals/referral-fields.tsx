@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -216,11 +217,11 @@ export function ReferralFields({
 
       <div className="space-y-1.5">
         <Label required>Referral date</Label>
-        <Input
-          type="date"
+        <DatePicker
+          aria-label="Referral date"
+          aria-required
           value={value.referralDate}
-          onChange={(e) => set("referralDate", e.target.value)}
-          required
+          onChange={(d) => set("referralDate", d)}
         />
       </div>
 

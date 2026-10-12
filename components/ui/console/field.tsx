@@ -25,7 +25,7 @@ export function Field({ label, helper, error, required, className, children }: F
       <label htmlFor={id} className="text-caption font-medium text-ink-secondary">
         {label}
         {required ? (
-          <span aria-hidden className="ml-0.5 text-danger">
+          <span aria-hidden className="ml-0.5 font-normal text-danger/70">
             *
           </span>
         ) : null}

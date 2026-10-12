@@ -1,12 +1,21 @@
 "use client";
 
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { callsApi, type CallEntityType, type CallNote } from "@/lib/api/calls";
+import { callsApi, type CallContact, type CallEntityType, type CallNote, type CallPriority } from "@/lib/api/calls";
 
 export type CallSelection = { type: CallEntityType; id: string };
 
+export type ContactFilters = {
+  q: string;
+  type: CallEntityType | "all";
+  priority: CallPriority | "all";
+  pinnedOnly: boolean;
+};
+
+const CONTACTS_KEY = ["calls", "contacts"] as const;
+
 export const callKeys = {
-  contacts: (q: string, type: CallEntityType | "all") => ["calls", "contacts", q, type] as const,
+  contacts: (f: ContactFilters) => [...CONTACTS_KEY, f.q, f.type, f.priority, f.pinnedOnly] as const,
   context: (s: CallSelection) => ["calls", "context", s.type, s.id] as const,
   history: (s: CallSelection) => ["calls", "history", s.type, s.id] as const,
   notes: (s: CallSelection) => ["calls", "notes", s.type, s.id] as const,
@@ -15,12 +24,42 @@ export const callKeys = {
 /** Cached per contact, so switching back to someone is instant. */
 const PER_CONTACT_STALE = 60_000;
 
-export function useCallContacts(q: string, type: CallEntityType | "all") {
+export function useCallContacts(f: ContactFilters) {
   return useQuery({
-    queryKey: callKeys.contacts(q, type),
-    queryFn: ({ signal }) => callsApi.contacts({ q, type: type === "all" ? undefined : type }, signal),
+    queryKey: callKeys.contacts(f),
+    queryFn: ({ signal }) =>
+      callsApi.contacts(
+        {
+          q: f.q,
+          type: f.type === "all" ? undefined : f.type,
+          priority: f.priority === "all" ? undefined : f.priority,
+          pinned: f.pinnedOnly,
+        },
+        signal,
+      ),
     placeholderData: keepPreviousData,
     staleTime: 30_000,
+  });
+}
+
+/** Pins are per user; the list flips the icon immediately and re-sorts once the refetch lands. */
+export function usePinContact() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ contact, pinned }: { contact: CallContact; pinned: boolean }) =>
+      pinned ? callsApi.pin(contact.type, contact.id) : callsApi.unpin(contact.type, contact.id),
+    onMutate: async ({ contact, pinned }) => {
+      await qc.cancelQueries({ queryKey: CONTACTS_KEY });
+      const previous = qc.getQueriesData<CallContact[]>({ queryKey: CONTACTS_KEY });
+      qc.setQueriesData<CallContact[]>({ queryKey: CONTACTS_KEY }, (list) =>
+        list?.map((c) => (c.type === contact.type && c.id === contact.id ? { ...c, pinned } : c)),
+      );
+      return { previous };
+    },
+    onError: (_err, _vars, ctx) => {
+      ctx?.previous.forEach(([key, data]) => qc.setQueryData(key, data));
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: CONTACTS_KEY }),
   });
 }
 

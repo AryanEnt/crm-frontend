@@ -7,6 +7,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { PageHeader } from "@/components/shared/page-header";
 import { FilterBar } from "@/components/ui/filter-bar";
 import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -19,6 +20,7 @@ import { DataTable, SortableHeader } from "@/components/ui/data-table";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { ErrorState } from "@/components/ui/error-state";
 import { LoadingState } from "@/components/ui/loading-state";
+import { leadHref } from "@/features/activities/activity-href";
 import { adminApi } from "@/lib/api/admin";
 import { crmApi } from "@/lib/api/crm";
 import {
@@ -88,8 +90,7 @@ export function ReferralsAdminView() {
         cell: ({ row }) => {
           const r = row.original;
           let href: string | null = null;
-          if (r.referrerCustomerId) href = `/customers/${r.referrerCustomerId}`;
-          else if (r.referrerUserId) href = `/admin/referrals/referrers/user/${r.referrerUserId}`;
+          if (r.referrerUserId) href = `/admin/referrals/referrers/user/${r.referrerUserId}`;
           else if (r.referrerPartnerId)
             href = `/admin/referrals/referrers/partner/${r.referrerPartnerId}`;
           return href ? (
@@ -108,12 +109,12 @@ export function ReferralsAdminView() {
       },
       {
         id: "referred",
-        header: "Referred customer",
+        header: "Referred lead",
         cell: ({ row }) => {
           const r = row.original;
-          if (r.customerId) {
+          if (r.leadId) {
             return (
-              <Link href={`/customers/${r.customerId}`} className="text-brand hover:underline">
+              <Link href={leadHref(r.leadId)} className="text-brand hover:underline">
                 {r.referredName ?? "—"}
               </Link>
             );
@@ -247,11 +248,11 @@ export function ReferralsAdminView() {
         />
         <div className="flex items-center gap-1">
           <Label className="text-[10px]">From</Label>
-          <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-[140px]" />
+          <DatePicker aria-label="From" value={from} max={to || undefined} onChange={setFrom} uiSize="md" clearable placeholder="Any" className="w-[150px]" />
         </div>
         <div className="flex items-center gap-1">
           <Label className="text-[10px]">To</Label>
-          <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-[140px]" />
+          <DatePicker aria-label="To" value={to} min={from || undefined} onChange={setTo} uiSize="md" clearable placeholder="Any" className="w-[150px]" />
         </div>
       </FilterBar>
 

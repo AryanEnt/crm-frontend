@@ -150,6 +150,7 @@ export function DealOutcomeButtons({
       <Button
         size={size}
         disabled={!wonStage || isWon}
+        title={wonStage ? undefined : "This pipeline has no Won stage. Set one in Pipelines & Stages."}
         className="bg-success text-white hover:bg-success/90"
         onClick={(e) => {
           e.stopPropagation();
@@ -163,6 +164,7 @@ export function DealOutcomeButtons({
         size={size}
         variant="destructive"
         disabled={!lostStage || isLost}
+        title={lostStage ? undefined : "This pipeline has no Lost stage. Set one in Pipelines & Stages."}
         onClick={(e) => {
           e.stopPropagation();
           e.preventDefault();

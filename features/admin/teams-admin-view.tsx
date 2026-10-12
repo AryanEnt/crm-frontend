@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Plus } from "lucide-react";
@@ -44,7 +45,11 @@ export function TeamsAdminView() {
   const canViewMembers = scope !== "own";
   const qc = useQueryClient();
   const [search, setSearch] = React.useState("");
-  const [status, setStatus] = React.useState("all");
+  const searchParams = useSearchParams();
+  const [status, setStatus] = React.useState(() => {
+    const fromUrl = searchParams.get("status");
+    return fromUrl === "active" ? "true" : fromUrl === "inactive" ? "false" : "all";
+  });
   const [createOpen, setCreateOpen] = React.useState(false);
   const [editTeam, setEditTeam] = React.useState<AdminTeam | null>(null);
   const [viewTeam, setViewTeam] = React.useState<AdminTeam | null>(null);

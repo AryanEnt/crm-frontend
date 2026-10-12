@@ -1,20 +1,41 @@
 "use client";
 
 import * as React from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Plus } from "lucide-react";
+import { toast } from "sonner";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { FilterBar } from "@/components/ui/filter-bar";
-import { DataTable, EntityCell, SortableHeader } from "@/components/ui/data-table";
+import {
+  DataTable,
+  EntityCell,
+  SortableHeader,
+  createSelectColumn,
+} from "@/components/ui/data-table";
+import { BulkActionBar } from "@/components/ui/console/data-table";
+import { ColumnsMenu } from "@/components/ui/console/toolbar";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { ErrorState } from "@/components/ui/error-state";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAuth } from "@/features/auth/auth-provider";
 import { crmApi, type Customer } from "@/lib/api/crm";
 import { CustomerFormDialog } from "@/features/customers/customer-form-dialog";
-import { ScopeFilterControls, useScopeFilters } from "@/features/teams/scope-filters";
+import {
+  ScopeFilterControls,
+  useOwnerOptions,
+  useScopeFilters,
+} from "@/features/teams/scope-filters";
+import { useColumnVisibility } from "@/lib/column-visibility";
+import { bulkMessage, runBulk } from "@/lib/bulk";
 import { priorityBadgeClass, priorityFromString } from "@/lib/design-tokens";
 import { cn } from "@/lib/utils";
 
@@ -32,10 +53,17 @@ function followUpClass(next?: string | null) {
 export function CustomersTableView() {
   const { can } = useAuth();
   const router = useRouter();
+  const qc = useQueryClient();
   const [search, setSearch] = React.useState("");
   const [createOpen, setCreateOpen] = React.useState(false);
+  const [selected, setSelected] = React.useState<Customer[]>([]);
+  const [selectionResetKey, setSelectionResetKey] = React.useState(0);
+  const [assigning, setAssigning] = React.useState(false);
   const scopeFilters = useScopeFilters("customers:view");
   const scopeParams = scopeFilters.params;
+
+  const canAssign = can("customers:edit");
+  const ownersQuery = useOwnerOptions(canAssign);
 
   const params = React.useMemo(() => {
     const p = new URLSearchParams({ limit: "50", offset: "0" });
@@ -51,9 +79,11 @@ export function CustomersTableView() {
 
   const columns = React.useMemo<ColumnDef<Customer>[]>(
     () => [
+      createSelectColumn<Customer>(),
       {
         accessorKey: "fullName",
         header: ({ column }) => <SortableHeader column={column} title="Customer" />,
+        enableHiding: false,
         cell: ({ row }) => (
           <EntityCell
             name={row.original.fullName}
@@ -164,6 +194,23 @@ export function CustomersTableView() {
     [],
   );
 
+  const columnPrefs = useColumnVisibility("customers", columns);
+
+  const assignOwner = async (ownerUserId: string) => {
+    setAssigning(true);
+    const result = await runBulk(selected, (customer) =>
+      crmApi.updateCustomer(customer.id, { ownerUserId, forceUpdate: true }),
+    );
+    setAssigning(false);
+    if (result.ok > 0) {
+      await qc.invalidateQueries({ queryKey: ["customers"] });
+      setSelectionResetKey((k) => k + 1);
+    }
+    const message = bulkMessage(result, "customer", "reassigned");
+    if (result.failed > 0) toast.error(message);
+    else toast.success(message);
+  };
+
   if (customersQuery.isError) {
     return <ErrorState onRetry={() => void customersQuery.refetch()} />;
   }
@@ -194,15 +241,40 @@ export function CustomersTableView() {
           setSearch("");
           scopeFilters.reset();
         }}
+        trailing={<ColumnsMenu {...columnPrefs.menu} />}
       >
         <ScopeFilterControls filters={scopeFilters} />
       </FilterBar>
 
+      {canAssign ? (
+        <BulkActionBar count={selected.length} onClear={() => setSelectionResetKey((k) => k + 1)}>
+          <Select
+            key={selectionResetKey}
+            disabled={assigning}
+            onValueChange={(ownerUserId) => void assignOwner(ownerUserId)}
+          >
+            <SelectTrigger className="h-8 w-[180px]" aria-label="Assign owner">
+              <SelectValue placeholder={assigning ? "Assigning…" : "Assign owner"} />
+            </SelectTrigger>
+            <SelectContent>
+              {(ownersQuery.data?.data ?? []).map((u) => (
+                <SelectItem key={u.id} value={u.id}>
+                  {u.fullName}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </BulkActionBar>
+      ) : null}
+
       <DataTable
         columns={columns}
+        columnVisibility={columnPrefs.columnVisibility}
         data={customersQuery.data?.data ?? []}
         loading={customersQuery.isLoading}
         searchValue={search}
+        onRowSelectionChange={setSelected}
+        selectionResetKey={selectionResetKey}
         pageSize={10}
         itemLabel="customers"
         onRowClick={(customer) => router.push(`/customers/${customer.id}`)}

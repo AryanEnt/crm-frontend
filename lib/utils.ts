@@ -16,6 +16,24 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/** True when a stored code is only a slug of the display name (`website` / Website). */
+export function codeEchoesName(name: string, code: string) {
+  const normalizedCode = code.trim().toLowerCase();
+  if (!normalizedCode) return true;
+  const slug = name
+    .trim()
+    .toLowerCase()
+    .replace(/['’]/g, "")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  const compact = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+  return (
+    normalizedCode === slug ||
+    normalizedCode === compact ||
+    normalizedCode === name.trim().toLowerCase()
+  );
+}
+
 export function formatCompactNumber(value: number): string {
   return new Intl.NumberFormat("en-US", {
     notation: value >= 10000 ? "compact" : "standard",
