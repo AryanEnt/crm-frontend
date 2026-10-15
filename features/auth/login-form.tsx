@@ -31,16 +31,16 @@ function submitErrorMessage(error: unknown): string {
   return copy.failed("sign you in");
 }
 
-/** Only same-origin app paths the user can open; anything else lands on the role home at "/". */
+/** Only same-origin app paths the user can open; anything else lands on the dashboard. */
 function landingPath(next: string | undefined, permissions: string[]) {
-  if (!next) return "/";
+  if (!next || next === "/") return "/dashboard";
   try {
     const url = new URL(next, window.location.origin);
-    if (url.origin !== window.location.origin || url.pathname.startsWith("/login")) return "/";
-    if (!canAccessPath(permissions, url.pathname)) return "/";
+    if (url.origin !== window.location.origin || url.pathname.startsWith("/login")) return "/dashboard";
+    if (!canAccessPath(permissions, url.pathname)) return "/dashboard";
     return `${url.pathname}${url.search}`;
   } catch {
-    return "/";
+    return "/dashboard";
   }
 }
 

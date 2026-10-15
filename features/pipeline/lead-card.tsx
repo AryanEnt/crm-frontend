@@ -15,6 +15,7 @@ import {
   formatNextAction,
   nextActionTone,
 } from "@/features/leads/lead-format";
+import { useAuth } from "@/features/auth/auth-provider";
 import type { LeadBoardCard, LeadBoardStage } from "@/lib/api/crm";
 import { cn } from "@/lib/utils";
 import { formatDate } from "./pipeline-format";
@@ -47,8 +48,10 @@ export function LeadCard({
   onOpen?: () => void;
   onMove?: (stage: LeadBoardStage) => void;
 }) {
+  const { user } = useAuth();
+  const timezone = user?.timezone || undefined;
   const closed = lead.status === "won" || lead.status === "lost";
-  const tone = nextActionTone(lead.nextActivityAt);
+  const tone = nextActionTone(lead.nextActivityAt, timezone);
   const days = daysSince(lead.stageEnteredAt);
   const showMenu = !overlay && canEdit && !!stages?.length;
 
@@ -105,7 +108,7 @@ export function LeadCard({
         <p className={cn("mt-2 flex min-w-0 items-center gap-1.5 text-caption", TONE_CLASS[tone])}>
           <CalendarClock className="size-3.5 shrink-0" aria-hidden />
           <span className="truncate">
-            <span className={cn(tone !== "none" && "font-medium")}>{formatNextAction(lead.nextActivityAt)}</span>
+            <span className={cn(tone !== "none" && "font-medium")}>{formatNextAction(lead.nextActivityAt, timezone)}</span>
             {tone !== "none" && lead.nextActivityTitle ? (
               <span className="text-ink-muted"> · {lead.nextActivityTitle}</span>
             ) : null}

@@ -32,7 +32,10 @@ export function ConsolePageHeader({
                 return (
                   <li key={`${crumb.label}-${index}`} className="flex items-center gap-1">
                     {crumb.href && !last ? (
-                      <Link href={crumb.href} className="rounded-sm transition-colors duration-150 hover:text-ink">
+                      <Link
+                        href={crumb.href === "/" ? "/dashboard" : crumb.href}
+                        className="rounded-sm transition-colors duration-150 hover:text-ink"
+                      >
                         {crumb.label}
                       </Link>
                     ) : (

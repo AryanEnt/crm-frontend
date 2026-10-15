@@ -25,7 +25,7 @@ export function Breadcrumbs({
             ) : null}
             {item.href && !isLast ? (
               <Link
-                href={item.href}
+                href={item.href === "/" ? "/dashboard" : item.href}
                 className="text-foreground-muted transition-colors hover:text-foreground"
               >
                 {item.label}

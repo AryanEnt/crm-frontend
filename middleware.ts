@@ -1,10 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/login"];
+const PUBLIC_PATHS = ["/login", "/privacy", "/terms"];
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const isPublic =
+    pathname === "/" ||
     PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`)) ||
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/api/proxy") ||
@@ -24,7 +25,7 @@ export function middleware(req: NextRequest) {
 
   if (pathname === "/login" && hasSession) {
     const url = req.nextUrl.clone();
-    url.pathname = "/";
+    url.pathname = "/dashboard";
     url.search = "";
     return NextResponse.redirect(url);
   }

@@ -1,6 +1,12 @@
+import { dayKeyInTimezone, formatInTimezone } from "../../lib/timezone.ts";
+
 const DAY_MS = 86_400_000;
 
 const MONEY_LOCALE = "en-AU";
+
+function resolvedTimeZone(timeZone?: string): string {
+  return timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+}
 
 /** Whole-unit currency in en-AU ("$12,500" for AUD); plain number when the code is not a valid ISO currency. */
 export function formatLeadMoney(value: number | null | undefined, currency = "AUD"): string {
@@ -41,24 +47,32 @@ export function daysSince(iso: string | null | undefined, now: number = Date.now
 
 export type NextActionTone = "none" | "overdue" | "today" | "upcoming";
 
-/** How urgent the next scheduled action is, relative to the viewer's local day. */
-export function nextActionTone(iso: string | null | undefined, now: Date = new Date()): NextActionTone {
+/** How urgent the next scheduled action is, relative to the viewer's day. */
+export function nextActionTone(
+  iso: string | null | undefined,
+  timeZone?: string,
+  now: Date = new Date(),
+): NextActionTone {
   if (!iso) return "none";
   const at = new Date(iso);
   if (Number.isNaN(at.getTime())) return "none";
   if (at < now) return "overdue";
-  const endOfToday = new Date(now);
-  endOfToday.setHours(24, 0, 0, 0);
-  return at < endOfToday ? "today" : "upcoming";
+  const zone = resolvedTimeZone(timeZone);
+  return dayKeyInTimezone(at, zone) === dayKeyInTimezone(now, zone) ? "today" : "upcoming";
 }
 
-export function formatNextAction(iso: string | null | undefined, now: Date = new Date()): string {
+export function formatNextAction(
+  iso: string | null | undefined,
+  timeZone?: string,
+  now: Date = new Date(),
+): string {
   if (!iso) return "No next action";
   const at = new Date(iso);
-  const tone = nextActionTone(iso, now);
-  const time = at.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const zone = resolvedTimeZone(timeZone);
+  const tone = nextActionTone(iso, zone, now);
+  const time = formatInTimezone(at, zone, { hour: "numeric", minute: "2-digit" });
   if (tone === "today") return `Today ${time}`;
-  const day = at.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  const day = formatInTimezone(at, zone, { day: "numeric", month: "short" });
   if (tone === "overdue") return `Overdue · ${day}`;
   return `${day} · ${time}`;
 }

@@ -74,7 +74,7 @@ export function Sidebar({ collapsed, onCollapsedChange, mobileOpen, onMobileOpen
           )}
         >
           <Link
-            href="/"
+            href="/dashboard"
             onClick={closeMobile}
             aria-label={collapsed ? brandLabel : undefined}
             className="flex min-w-0 items-center gap-2.5 rounded-control transition-opacity duration-150 hover:opacity-90"

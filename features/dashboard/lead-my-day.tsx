@@ -14,6 +14,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { StageRibbon, StageRibbonLegend, type RibbonSegment } from "@/components/ui/stage-ribbon";
 import { stageSlotFromPipeline } from "@/components/ui/stage-rail";
+import { useAuth } from "@/features/auth/auth-provider";
 import { formatLeadMoney, formatNextAction } from "@/features/leads/lead-format";
 import type { LeadDayBucket, LeadDayItem, LeadMyDay, LeadOverview } from "@/lib/api/crm";
 import { cn } from "@/lib/utils";
@@ -80,11 +81,11 @@ const BUCKETS: Array<{
   },
 ];
 
-function itemMeta(bucket: LeadDayBucket, item: LeadDayItem): string {
+function itemMeta(bucket: LeadDayBucket, item: LeadDayItem, timezone?: string): string {
   switch (bucket) {
     case "overdue":
     case "today":
-      return [formatNextAction(item.nextActivityAt), item.nextActivityTitle].filter(Boolean).join(" · ");
+      return [formatNextAction(item.nextActivityAt, timezone), item.nextActivityTitle].filter(Boolean).join(" · ");
     case "stale":
       return item.lastActivityAt
         ? `Last touch ${new Date(item.lastActivityAt).toLocaleDateString(undefined, { day: "numeric", month: "short" })}`
@@ -109,6 +110,9 @@ export function LeadMyDaySection({
   loading: boolean;
   showOwner?: boolean;
 }) {
+  const { user } = useAuth();
+  const timezone = user?.timezone || undefined;
+
   return (
     <section aria-label="My day" className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       {BUCKETS.map((b) => {
@@ -151,7 +155,7 @@ export function LeadMyDaySection({
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-body font-medium text-ink">{item.fullName}</span>
                           <span className="block truncate text-meta">
-                            {itemMeta(b.key, item)}
+                            {itemMeta(b.key, item, timezone)}
                             {showOwner && item.ownerName ? ` · ${item.ownerName}` : ""}
                           </span>
                         </span>

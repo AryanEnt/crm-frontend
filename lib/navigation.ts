@@ -43,7 +43,7 @@ export type NavSection = {
 export const crmNav: NavSection[] = [
   {
     title: "Workspace",
-    items: [{ label: "Dashboard", href: "/", icon: LayoutDashboard }],
+    items: [{ label: "Dashboard", href: "/dashboard", icon: LayoutDashboard }],
   },
   {
     title: "Sales",
@@ -71,10 +71,10 @@ export const crmNav: NavSection[] = [
     title: "Insights",
     items: [
       { label: "Sales Funnel", href: "/sales-funnel", icon: Filter },
-      { label: "Analytics", href: "/analytics", icon: BarChart3 },
+      // { label: "Analytics", href: "/analytics", icon: BarChart3 },
       { label: "Targets", href: "/targets", icon: Target },
-      { label: "Forecasts", href: "/forecasts", icon: TrendingUp },
-      { label: "Reports", href: "/reports", icon: PieChart },
+      // { label: "Forecasts", href: "/forecasts", icon: TrendingUp },
+      // { label: "Reports", href: "/reports", icon: PieChart },
     ],
   },
   {
@@ -99,7 +99,7 @@ export const controlCenterNav: NavSection[] = [
   {
     title: "Control Center",
     items: [
-      { label: "Overview", href: "/", icon: LayoutDashboard },
+      { label: "Overview", href: "/dashboard", icon: LayoutDashboard },
       { label: "Find records", href: "/admin/lookup", icon: Search },
     ],
   },
@@ -113,8 +113,8 @@ export const controlCenterNav: NavSection[] = [
   {
     title: "Setup",
     items: [
-      { label: "Pipelines", href: "/admin/pipelines", icon: Layers },
-      { label: "Stages", href: "/admin/pipelines?tab=stages", icon: ListTree },
+      // { label: "Pipelines", href: "/admin/pipelines", icon: Layers },
+      // { label: "Stages", href: "/admin/pipelines?tab=stages", icon: ListTree },
       { label: "Custom fields", href: "/admin/custom-fields", icon: FormInput },
       { label: "Lead sources", href: "/admin/lead-sources", icon: Share2 },
       { label: "Activity types", href: "/admin/activity-types", icon: ListChecks },
@@ -125,7 +125,7 @@ export const controlCenterNav: NavSection[] = [
   {
     title: "Governance",
     items: [
-      { label: "Audit log", href: "/admin/audit-logs", icon: ScrollText },
+      // { label: "Audit log", href: "/admin/audit-logs", icon: ScrollText },
       { label: "Activity log", href: "/admin/system-activity", icon: Activity },
       { label: "Org analytics", href: "/admin/org-analytics", icon: BarChart3 },
     ],
@@ -152,6 +152,6 @@ export function getNavForRole(roleCode: string | undefined): NavSection[] {
 
 export function isNavActive(pathname: string, href: string): boolean {
   const path = href.split("?")[0];
-  if (path === "/") return pathname === "/";
+  if (path === "/dashboard") return pathname === path;
   return pathname === path || pathname.startsWith(`${path}/`);
 }

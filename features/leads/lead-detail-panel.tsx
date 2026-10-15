@@ -104,7 +104,7 @@ export function LeadDetailPanel({
 }
 
 function PanelBody({ leadId, onClose }: { leadId: string; onClose: () => void }) {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const qc = useQueryClient();
   const [activityOpen, setActivityOpen] = React.useState<null | { type?: string }>(null);
   const [editOpen, setEditOpen] = React.useState(false);
@@ -316,6 +316,7 @@ function PanelBody({ leadId, onClose }: { leadId: string; onClose: () => void })
           <NextActionCard
             activity={nextQuery.data ?? null}
             nextAt={lead.nextActivityAt ?? null}
+            timezone={user?.timezone || undefined}
             loading={nextQuery.isLoading}
             canCreate={can("activities:create")}
             canComplete={can("activities:edit")}
@@ -524,6 +525,7 @@ function StageStepper({
 function NextActionCard({
   activity,
   nextAt,
+  timezone,
   loading,
   canCreate,
   canComplete,
@@ -533,6 +535,7 @@ function NextActionCard({
 }: {
   activity: Activity | null;
   nextAt: string | null;
+  timezone?: string;
   loading: boolean;
   canCreate: boolean;
   canComplete: boolean;
@@ -541,7 +544,7 @@ function NextActionCard({
   onComplete: (activityId: string) => void;
 }) {
   const at = activity?.dueAt ?? activity?.startAt ?? nextAt;
-  const tone = nextActionTone(at);
+  const tone = nextActionTone(at, timezone);
   const scheduled = !!activity || !!nextAt;
 
   return (
@@ -570,7 +573,7 @@ function NextActionCard({
               {activity?.title || activity?.typeName || "Follow up"}
             </p>
             <p className={cn("text-meta", tone === "overdue" && "text-danger")}>
-              {formatNextAction(at)}
+              {formatNextAction(at, timezone)}
               {activity?.typeName && activity.title ? ` · ${activity.typeName}` : ""}
             </p>
           </div>

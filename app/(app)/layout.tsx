@@ -24,8 +24,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   // Super Admin should not land on sales-ops primary routes by default navigation,
   // but if they deep-link, permission gates still apply (read-only without write perms).
-  const pathAllowed =
-    !pathname || pathname === "/" || canAccessPath(permissions, pathname);
+  const pathAllowed = !pathname || canAccessPath(permissions, pathname);
 
   if (isLoading) {
     return (
@@ -50,7 +49,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 ? "This sales workspace requires an operational permission you do not have. Use Control Center for governance and configuration."
                 : "You do not have permission to view this page."
             }
-            onRetry={() => router.replace("/")}
+            onRetry={() => router.replace("/dashboard")}
           />
         </AppShell>
       </TooltipProvider>
