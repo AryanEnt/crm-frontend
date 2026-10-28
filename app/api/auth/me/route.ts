@@ -8,7 +8,7 @@ import {
 } from "@/lib/auth/server";
 import type { SessionUser } from "@/features/auth/types";
 
-export async function GET() {
+export async function GET(req: Request) {
   let access = await readAccessToken();
   let upstream = await backendFetch("/api/v1/auth/me", {
     method: "GET",
@@ -28,12 +28,13 @@ export async function GET() {
       return applyAuthCookies(res, {
         accessToken: rotated.accessToken,
         refreshToken: rotated.refreshToken,
+        request: req,
       });
     }
     // Middleware treats any refresh cookie as a session, so a dead one would bounce /login back to /.
     const envelope = await readEnvelope<SessionUser>(upstream);
     const res = NextResponse.json(envelope, { status: upstream.status });
-    return applyAuthCookies(res, { clear: true });
+    return applyAuthCookies(res, { clear: true, request: req });
   }
 
   const envelope = await readEnvelope<SessionUser>(upstream);
@@ -82,6 +83,7 @@ export async function PATCH(req: Request) {
       return applyAuthCookies(res, {
         accessToken: rotated.accessToken,
         refreshToken: rotated.refreshToken,
+        request: req,
       });
     }
   }

@@ -83,7 +83,7 @@ async function forward(
   return backendFetch(target, init);
 }
 
-async function unauthorized(message: string) {
+async function unauthorized(req: NextRequest, message: string) {
   return applyAuthCookies(
     NextResponse.json(
       {
@@ -92,7 +92,7 @@ async function unauthorized(message: string) {
       },
       { status: 401 },
     ),
-    { clear: true },
+    { clear: true, request: req },
   );
 }
 
@@ -113,7 +113,7 @@ async function handle(req: NextRequest, path: string[]) {
   if (!access) {
     rotated = await refreshAccessTokens();
     if (!rotated) {
-      return unauthorized("Authentication required");
+      return unauthorized(req, "Authentication required");
     }
     access = rotated.accessToken;
   }
@@ -122,7 +122,7 @@ async function handle(req: NextRequest, path: string[]) {
   if (upstream.status === 401) {
     rotated = await refreshAccessTokens();
     if (!rotated) {
-      return unauthorized("Session expired");
+      return unauthorized(req, "Session expired");
     }
     access = rotated.accessToken;
     upstream = await forward(req, path, access);
@@ -133,6 +133,7 @@ async function handle(req: NextRequest, path: string[]) {
     return applyAuthCookies(res, {
       accessToken: rotated.accessToken,
       refreshToken: rotated.refreshToken,
+      request: req,
     });
   }
   return res;

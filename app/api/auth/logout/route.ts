@@ -5,7 +5,7 @@ import {
   readRefreshToken,
 } from "@/lib/auth/server";
 
-export async function POST() {
+export async function POST(req: Request) {
   const refresh = await readRefreshToken();
   await backendFetch("/api/v1/auth/logout", {
     method: "POST",
@@ -17,5 +17,5 @@ export async function POST() {
     data: { loggedOut: true },
     timestamp: new Date().toISOString(),
   });
-  return applyAuthCookies(res, { clear: true });
+  return applyAuthCookies(res, { clear: true, request: req });
 }

@@ -56,5 +56,6 @@ export async function POST(req: Request) {
   return applyAuthCookies(res, {
     accessToken: envelope.data.accessToken,
     refreshToken: envelope.data.refreshToken,
+    request: req,
   });
 }

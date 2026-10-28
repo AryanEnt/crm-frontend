@@ -68,6 +68,8 @@ type CookieOptions = {
   accessMaxAge?: number;
   refreshMaxAge?: number;
   clear?: boolean;
+  /** Incoming request — used to set Secure only on HTTPS (LAN HTTP must omit Secure). */
+  request?: Request;
 };
 
 const cookieBase = {
@@ -75,6 +77,33 @@ const cookieBase = {
   sameSite: "lax" as const,
   path: "/",
 };
+
+/**
+ * Secure cookies require HTTPS. Production + plain HTTP (e.g. http://10.x.x.x) must not
+ * set Secure or the browser drops the session and login hangs on "Opening your workspace…".
+ *
+ * Override: COOKIE_SECURE=true|false
+ */
+export function resolveCookieSecure(request?: Request): boolean {
+  const override = process.env.COOKIE_SECURE?.trim().toLowerCase();
+  if (override === "true" || override === "1") return true;
+  if (override === "false" || override === "0") return false;
+
+  if (request) {
+    const forwarded = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+    if (forwarded === "https") return true;
+    if (forwarded === "http") return false;
+    try {
+      const protocol = new URL(request.url).protocol;
+      if (protocol === "https:") return true;
+      if (protocol === "http:") return false;
+    } catch {
+      /* ignore */
+    }
+  }
+
+  return process.env.NODE_ENV === "production";
+}
 
 function legacyRefreshClearHeader(secure: boolean) {
   const parts = [
@@ -89,7 +118,7 @@ function legacyRefreshClearHeader(secure: boolean) {
 }
 
 export async function applyAuthCookies(res: NextResponse, opts: CookieOptions) {
-  const secure = process.env.NODE_ENV === "production";
+  const secure = resolveCookieSecure(opts.request);
   if (opts.clear) {
     res.cookies.set(ACCESS_COOKIE, "", { ...cookieBase, secure, maxAge: 0 });
     res.cookies.set(REFRESH_COOKIE, "", { ...cookieBase, secure, maxAge: 0 });

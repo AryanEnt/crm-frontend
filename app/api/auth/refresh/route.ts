@@ -4,7 +4,7 @@ import {
   refreshAccessTokens,
 } from "@/lib/auth/server";
 
-export async function POST() {
+export async function POST(req: Request) {
   const rotated = await refreshAccessTokens();
   if (!rotated) {
     const res = NextResponse.json(
@@ -14,7 +14,7 @@ export async function POST() {
       },
       { status: 401 },
     );
-    return applyAuthCookies(res, { clear: true });
+    return applyAuthCookies(res, { clear: true, request: req });
   }
 
   const res = NextResponse.json({
@@ -25,5 +25,6 @@ export async function POST() {
   return applyAuthCookies(res, {
     accessToken: rotated.accessToken,
     refreshToken: rotated.refreshToken,
+    request: req,
   });
 }
