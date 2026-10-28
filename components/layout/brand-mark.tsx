@@ -1,15 +1,32 @@
+import Image from "next/image";
 import { cn } from "@/lib/utils";
 
-export function BrandMark({ label = "A", className }: { label?: string; className?: string }) {
+/** Product mark — the CRM logo asset in /public/brand-logo.jpg. */
+export function BrandMark({
+  className,
+  priority = false,
+}: {
+  /** @deprecated Letter mark removed; kept so call sites that pass label still type-check. */
+  label?: string;
+  className?: string;
+  priority?: boolean;
+}) {
   return (
     <span
       aria-hidden
       className={cn(
-        "flex size-8 shrink-0 items-center justify-center rounded-control bg-brand text-caption font-bold tracking-tight text-primary-foreground shadow-[inset_0_1px_0_0_rgb(255_255_255/0.16)]",
+        "relative flex size-8 shrink-0 overflow-hidden rounded-control bg-[#ececee]",
         className,
       )}
     >
-      {label}
+      <Image
+        src="/brand-logo.jpg"
+        alt=""
+        fill
+        sizes="80px"
+        className="object-contain p-0.5"
+        priority={priority}
+      />
     </span>
   );
 }

@@ -1,5 +1,12 @@
 import type { LeadBoard, LeadBoardCard, LeadBoardStage } from "@/lib/api/crm";
 
+/** Fixed id of the post-win Nurturing pipeline (migration 000038). */
+export const NURTURING_PIPELINE_ID = "55555555-5555-5555-5555-555555555505";
+
+export function isNurturingPipeline(pipelineId: string | null | undefined): boolean {
+  return pipelineId === NURTURING_PIPELINE_ID;
+}
+
 /** Pending optimistic moves: lead id -> target stage id. */
 export type PendingMoves = Record<string, string>;
 
@@ -7,6 +14,8 @@ export type MoveIntent =
   | { kind: "noop" }
   | { kind: "move" }
   | { kind: "lost_reason" }
+  /** Sales Won collects the document send deadline before the move + Nurturing handoff. */
+  | { kind: "won_deadline" }
   /** Closed (Won/Lost) leads need an explicit reopen; `lostReason` is also needed when the target is Lost. */
   | { kind: "reopen"; lostReason: boolean };
 
@@ -31,11 +40,14 @@ export function findCard(board: LeadBoard, leadId: string): { card: LeadBoardCar
 /** What a drop (or keyboard move) of `card` onto `to` requires before calling the API. */
 export function classifyMove(
   card: Pick<LeadBoardCard, "stageId" | "status">,
-  to: Pick<LeadBoardStage, "id" | "isLost">,
+  to: Pick<LeadBoardStage, "id" | "isLost" | "isWon">,
+  opts?: { pipelineId?: string | null },
 ): MoveIntent {
   if (card.stageId === to.id) return { kind: "noop" };
   if (isClosedStatus(card.status)) return { kind: "reopen", lostReason: to.isLost };
   if (to.isLost) return { kind: "lost_reason" };
+  // Nurturing "Complete" is isWon in the schema, but it is not a sales win — no doc deadline.
+  if (to.isWon && !isNurturingPipeline(opts?.pipelineId)) return { kind: "won_deadline" };
   return { kind: "move" };
 }
 

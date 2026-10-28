@@ -1,11 +1,11 @@
-import { dayKeyInTimezone, formatInTimezone } from "../../lib/timezone.ts";
+import { dayKeyInTimezone, formatInTimezone, resolveTimezone } from "../../lib/timezone.ts";
 
 const DAY_MS = 86_400_000;
 
 const MONEY_LOCALE = "en-AU";
 
 function resolvedTimeZone(timeZone?: string): string {
-  return timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  return resolveTimezone(timeZone);
 }
 
 /** Whole-unit currency in en-AU ("$12,500" for AUD); plain number when the code is not a valid ISO currency. */
@@ -75,4 +75,50 @@ export function formatNextAction(
   const day = formatInTimezone(at, zone, { day: "numeric", month: "short" });
   if (tone === "overdue") return `Overdue · ${day}`;
   return `${day} · ${time}`;
+}
+
+/** Short board/list label for a document send-by date. */
+export function formatDocumentDeadline(
+  iso: string | null | undefined,
+  timeZone?: string,
+  now: Date = new Date(),
+): string {
+  if (!iso) return "No document deadline";
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return "No document deadline";
+  const zone = resolvedTimeZone(timeZone);
+  const tone = nextActionTone(iso, zone, now);
+  const day = formatInTimezone(at, zone, { day: "numeric", month: "short", year: "numeric" });
+  if (tone === "overdue") return `Docs overdue · ${day}`;
+  if (tone === "today") return "Docs due today";
+  return `Docs due ${day}`;
+}
+
+/** Detail-panel copy: headline + supporting line for the send-by date. */
+export function documentDeadlineCopy(
+  iso: string,
+  timeZone?: string,
+  now: Date = new Date(),
+): { headline: string; detail: string; tone: NextActionTone } {
+  const at = new Date(iso);
+  const zone = resolvedTimeZone(timeZone);
+  const tone = nextActionTone(iso, zone, now);
+  const day = formatInTimezone(at, zone, { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+  if (tone === "overdue") {
+    const days = Math.max(1, Math.ceil((now.getTime() - at.getTime()) / DAY_MS));
+    return {
+      tone,
+      headline: "Document deadline passed",
+      detail: `Was due ${day} · ${days} day${days === 1 ? "" : "s"} overdue`,
+    };
+  }
+  if (tone === "today") {
+    return { tone, headline: "Documents due today", detail: `Send by end of day · ${day}` };
+  }
+  const days = Math.max(1, Math.ceil((at.getTime() - now.getTime()) / DAY_MS));
+  return {
+    tone,
+    headline: "Documents to send",
+    detail: `Send by ${day} · ${days} day${days === 1 ? "" : "s"} left`,
+  };
 }

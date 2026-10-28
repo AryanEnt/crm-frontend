@@ -9,6 +9,7 @@ import {
   CalendarPlus,
   Check,
   ChevronDown,
+  FileText,
   Mail,
   MessageCircle,
   MoreHorizontal,
@@ -52,13 +53,15 @@ import { LeadAttachments } from "@/features/leads/lead-attachments";
 import { CreateLeadSheet } from "@/features/leads/create/create-lead-sheet";
 import {
   daysSince,
+  documentDeadlineCopy,
   formatLeadMoney,
   formatNextAction,
   nextActionTone,
 } from "@/features/leads/lead-format";
+import { isNurturingPipeline } from "@/features/leads/lead-board-state";
 import { useLeadMove } from "@/features/leads/lead-move";
 import { UnifiedTimeline } from "@/features/timeline/unified-timeline";
-import { crmApi, type Activity, type Lead, type PipelineStage } from "@/lib/api/crm";
+import { crmApi, type Activity, type CrmDocument, type Lead, type PipelineStage } from "@/lib/api/crm";
 import { emailApi } from "@/lib/api/email";
 import { stageBadgeClass } from "@/lib/design-tokens";
 import { cn } from "@/lib/utils";
@@ -68,18 +71,41 @@ function formatDate(iso?: string | null) {
   return new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 }
 
+const OPEN_ACTIVITY = new Set(["upcoming", "due", "overdue"]);
+const OPEN_DOC = new Set(["requested", "missing", "uploaded", "expired"]);
+
 /** The next open activity: overdue first, then the soonest upcoming one. */
 function useNextActivity(leadId: string, enabled: boolean) {
   return useQuery({
     queryKey: ["lead", leadId, "next-activity"],
     enabled,
     queryFn: async (): Promise<Activity | null> => {
-      const base = { leadId, limit: "1", offset: "0" };
-      const [overdue, upcoming] = await Promise.all([
-        crmApi.listActivities(new URLSearchParams({ ...base, status: "overdue" })),
-        crmApi.listActivities(new URLSearchParams({ ...base, status: "upcoming" })),
-      ]);
-      return overdue.data[0] ?? upcoming.data[0] ?? null;
+      const listed = await crmApi.listActivities(
+        new URLSearchParams({ leadId, limit: "25", offset: "0", status: "all" }),
+      );
+      const open = listed.data.filter((a) => OPEN_ACTIVITY.has(a.status) || OPEN_ACTIVITY.has(a.displayStatus));
+      open.sort((a, b) => {
+        const ta = new Date(a.dueAt ?? a.startAt ?? 0).getTime();
+        const tb = new Date(b.dueAt ?? b.startAt ?? 0).getTime();
+        return ta - tb;
+      });
+      return open[0] ?? null;
+    },
+  });
+}
+
+/** Earliest open document send-by date for this lead (set when marking Won). */
+function useDocumentDeadline(leadId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["lead", leadId, "document-deadline"],
+    enabled,
+    queryFn: async (): Promise<CrmDocument | null> => {
+      const listed = await crmApi.listDocuments(
+        new URLSearchParams({ leadId, limit: "25", offset: "0" }),
+      );
+      const open = listed.data.filter((d) => d.expiryDate && OPEN_DOC.has(d.status));
+      open.sort((a, b) => new Date(a.expiryDate!).getTime() - new Date(b.expiryDate!).getTime());
+      return open[0] ?? null;
     },
   });
 }
@@ -110,6 +136,7 @@ function PanelBody({ leadId, onClose }: { leadId: string; onClose: () => void })
   const [editOpen, setEditOpen] = React.useState(false);
   const [emailOpen, setEmailOpen] = React.useState(false);
   const [messagingOpen, setMessagingOpen] = React.useState(false);
+  const [detailTab, setDetailTab] = React.useState("timeline");
 
   const leadQuery = useQuery({ queryKey: ["lead", leadId], queryFn: () => crmApi.getLead(leadId) });
   const pipelinesQuery = useQuery({
@@ -117,6 +144,7 @@ function PanelBody({ leadId, onClose }: { leadId: string; onClose: () => void })
     queryFn: () => crmApi.listPipelines("leads"),
   });
   const nextQuery = useNextActivity(leadId, !!leadQuery.data);
+  const deadlineQuery = useDocumentDeadline(leadId, !!leadQuery.data);
   const accountsQuery = useQuery({
     queryKey: ["email-accounts"],
     queryFn: () => emailApi.listAccounts(),
@@ -126,6 +154,7 @@ function PanelBody({ leadId, onClose }: { leadId: string; onClose: () => void })
 
   const refresh = React.useCallback(() => {
     void qc.invalidateQueries({ queryKey: ["lead", leadId] });
+    void qc.invalidateQueries({ queryKey: ["lead", leadId, "document-deadline"] });
     void qc.invalidateQueries({ queryKey: ["lead-board"] });
     void qc.invalidateQueries({ queryKey: ["leads"] });
     void qc.invalidateQueries({ queryKey: ["lead-insights"] });
@@ -135,14 +164,22 @@ function PanelBody({ leadId, onClose }: { leadId: string; onClose: () => void })
   const move = useLeadMove({ onChanged: refresh });
 
   const completeMutation = useMutation({
-    mutationFn: (activityId: string) => crmApi.updateActivity(activityId, { status: "completed" }),
+    mutationFn: async (activityId: string | null) => {
+      if (activityId) return crmApi.updateActivity(activityId, { status: "completed" });
+      // Many leads only have next_activity_at (no activity row) — clear that deadline.
+      await crmApi.updateLead(leadId, { nextActivityAt: "" });
+      return null;
+    },
     onSuccess: (activity) => {
-      toast.success("Marked done", { description: leadMovedMessage(activity) });
+      toast.success("Marked done", { description: activity ? leadMovedMessage(activity) : undefined });
+      void qc.invalidateQueries({ queryKey: ["lead", leadId, "next-activity"] });
+      void qc.invalidateQueries({ queryKey: ["activities"] });
       refresh();
-      if (activity.needsNextActivity && can("activities:create")) setActivityOpen({});
+      const needsNext = activity ? activity.needsNextActivity : true;
+      if (needsNext && can("activities:create")) setActivityOpen({});
     },
     onError: (err) =>
-      toast.error(err instanceof Error && err.message ? err.message : "Couldn't complete the activity."),
+      toast.error(err instanceof Error && err.message ? err.message : "Couldn't complete the next action."),
   });
 
   const archiveMutation = useMutation({
@@ -312,6 +349,16 @@ function PanelBody({ leadId, onClose }: { leadId: string; onClose: () => void })
           />
         ) : null}
 
+        {!closed && deadlineQuery.data?.expiryDate ? (
+          <DocumentDeadlineCard
+            doc={deadlineQuery.data}
+            timezone={user?.timezone || undefined}
+            nurturing={isNurturingPipeline(lead.pipelineId)}
+            canViewFiles={can("documents:view")}
+            onOpenFiles={() => setDetailTab("files")}
+          />
+        ) : null}
+
         {!closed ? (
           <NextActionCard
             activity={nextQuery.data ?? null}
@@ -319,9 +366,10 @@ function PanelBody({ leadId, onClose }: { leadId: string; onClose: () => void })
             timezone={user?.timezone || undefined}
             loading={nextQuery.isLoading}
             canCreate={can("activities:create")}
-            canComplete={can("activities:edit")}
+            canComplete={can("activities:edit") || canEdit}
             completing={completeMutation.isPending}
             onSchedule={() => setActivityOpen({})}
+            onReset={() => setActivityOpen({})}
             onComplete={(id) => completeMutation.mutate(id)}
           />
         ) : null}
@@ -335,7 +383,7 @@ function PanelBody({ leadId, onClose }: { leadId: string; onClose: () => void })
           <Fact label="Created" value={formatDate(lead.createdAt)} />
         </dl>
 
-        <Tabs defaultValue="timeline">
+        <Tabs value={detailTab} onValueChange={setDetailTab}>
           <TabsList>
             <TabsTrigger value="timeline">Timeline</TabsTrigger>
             {can("documents:view") ? <TabsTrigger value="files">Files</TabsTrigger> : null}
@@ -363,6 +411,8 @@ function PanelBody({ leadId, onClose }: { leadId: string; onClose: () => void })
         defaultType={activityOpen?.type}
         onCreated={() => {
           setActivityOpen(null);
+          void qc.invalidateQueries({ queryKey: ["lead", leadId, "next-activity"] });
+          void qc.invalidateQueries({ queryKey: ["activities"] });
           refresh();
         }}
       />
@@ -431,6 +481,8 @@ function StageStepper({
   const lost = stages.find((s) => s.isLost);
   const currentIdx = open.findIndex((s) => s.id === currentId);
   const closed = lead.status === "won" || lead.status === "lost";
+  const nurturing = isNurturingPipeline(lead.pipelineId);
+  const completeLabel = won?.name?.trim() || "Complete";
 
   return (
     <section aria-label="Stage" className="space-y-2.5">
@@ -481,7 +533,11 @@ function StageStepper({
         >
           {lead.status === "won" ? <Check className="size-4" aria-hidden /> : null}
           <span className="font-medium">
-            {lead.status === "won" ? `Won ${formatDate(lead.wonAt)}` : `Lost ${formatDate(lead.lostAt)}`}
+            {lead.status === "won"
+              ? nurturing
+                ? `Complete ${formatDate(lead.wonAt)}`
+                : `Won ${formatDate(lead.wonAt)}`
+              : `Lost ${formatDate(lead.lostAt)}`}
           </span>
           {lead.status === "lost" && lead.lostReason ? <span>· {lead.lostReason}</span> : null}
           {canEdit && open[0] ? (
@@ -508,7 +564,7 @@ function StageStepper({
               onClick={() => onSelect(won)}
             >
               <Check className="size-3.5" />
-              Mark won
+              {nurturing ? completeLabel : "Mark won"}
             </Button>
           ) : null}
           {lost ? (
@@ -522,6 +578,55 @@ function StageStepper({
   );
 }
 
+function DocumentDeadlineCard({
+  doc,
+  timezone,
+  nurturing,
+  canViewFiles,
+  onOpenFiles,
+}: {
+  doc: CrmDocument;
+  timezone?: string;
+  nurturing: boolean;
+  canViewFiles: boolean;
+  onOpenFiles: () => void;
+}) {
+  const copy = documentDeadlineCopy(doc.expiryDate!, timezone);
+  return (
+    <section
+      aria-label="Document deadline"
+      className={cn(
+        "rounded-card border p-4",
+        copy.tone === "overdue"
+          ? "border-danger/30 bg-danger-soft/40"
+          : copy.tone === "today"
+            ? "border-warning/30 bg-warning-soft/50"
+            : "border-brand/25 bg-brand-soft/40",
+      )}
+    >
+      <p className="text-label">{nurturing ? "Send documents by" : "Document send-by date"}</p>
+      <div className="mt-1.5 flex flex-wrap items-center gap-3">
+        <FileText
+          className={cn(
+            "size-5 shrink-0",
+            copy.tone === "overdue" ? "text-danger" : copy.tone === "today" ? "text-warning" : "text-brand",
+          )}
+          aria-hidden
+        />
+        <div className="min-w-0 flex-1">
+          <p className="text-body font-medium text-ink">{copy.headline}</p>
+          <p className={cn("text-meta", copy.tone === "overdue" && "text-danger")}>{copy.detail}</p>
+        </div>
+        {canViewFiles ? (
+          <Button size="sm" variant="outline" onClick={onOpenFiles}>
+            View files
+          </Button>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 function NextActionCard({
   activity,
   nextAt,
@@ -531,6 +636,7 @@ function NextActionCard({
   canComplete,
   completing,
   onSchedule,
+  onReset,
   onComplete,
 }: {
   activity: Activity | null;
@@ -541,7 +647,9 @@ function NextActionCard({
   canComplete: boolean;
   completing: boolean;
   onSchedule: () => void;
-  onComplete: (activityId: string) => void;
+  onReset: () => void;
+  /** Activity id when one exists; null clears a lead-only next_activity_at deadline. */
+  onComplete: (activityId: string | null) => void;
 }) {
   const at = activity?.dueAt ?? activity?.startAt ?? nextAt;
   const tone = nextActionTone(at, timezone);
@@ -577,12 +685,25 @@ function NextActionCard({
               {activity?.typeName && activity.title ? ` · ${activity.typeName}` : ""}
             </p>
           </div>
-          {activity && canComplete ? (
-            <Button size="sm" variant="outline" loading={completing} onClick={() => onComplete(activity.id)}>
-              <CalendarCheck className="size-3.5" />
-              Mark done
-            </Button>
-          ) : null}
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {canComplete ? (
+              <Button
+                size="sm"
+                variant={tone === "overdue" ? "default" : "outline"}
+                loading={completing}
+                onClick={() => onComplete(activity?.id ?? null)}
+              >
+                <CalendarCheck className="size-3.5" />
+                Done
+              </Button>
+            ) : null}
+            {canCreate ? (
+              <Button size="sm" variant="outline" onClick={onReset}>
+                <RotateCcw className="size-3.5" />
+                Reset
+              </Button>
+            ) : null}
+          </div>
         </div>
       ) : (
         <div className="mt-1.5 flex flex-wrap items-center gap-3">

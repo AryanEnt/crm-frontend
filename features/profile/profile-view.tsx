@@ -15,7 +15,7 @@ import { changePassword, updateProfile } from "@/lib/api/auth";
 import { adminApi } from "@/lib/api/admin";
 import { messages } from "@/lib/forms/messages";
 import { applyServerError, type ServerErrorRule } from "@/lib/forms/server-errors";
-import { commonTimezones } from "@/lib/timezone";
+import { commonTimezones, DEFAULT_TIMEZONE } from "@/lib/timezone";
 import { copy } from "@/lib/copy";
 import { PASSWORD_MIN_LENGTH, newPasswordSchema } from "@/validations/common";
 import { ApiError } from "@/types/api";
@@ -83,11 +83,11 @@ export function ProfileView() {
         </dl>
 
         <ProfileForm
-          key={`${user.fullName}|${user.phone ?? ""}|${user.timezone ?? "UTC"}`}
+          key={`${user.fullName}|${user.phone ?? ""}|${user.timezone ?? DEFAULT_TIMEZONE}`}
           initial={{
             fullName: user.fullName,
             phone: user.phone ?? "",
-            timezone: user.timezone || "UTC",
+            timezone: user.timezone || DEFAULT_TIMEZONE,
           }}
           onSaved={refresh}
         />

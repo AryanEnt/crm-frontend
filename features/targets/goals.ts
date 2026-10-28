@@ -16,13 +16,25 @@ export const GOALS: Goal[] = [
   { code: "leads", label: "New leads", hint: "Every lead added in the period.", counts: "new leads added", unit: ["lead", "leads"] },
   { code: "leads_won", label: "Leads won", hint: "Every lead moved to Won in the period.", counts: "leads moved to Won", unit: ["lead", "leads"] },
   { code: "won_lead_value", label: "Won value", hint: "Total value of the leads won.", counts: "the value of leads moved to Won" },
-  { code: "activities", label: "Activities", hint: "Calls, meetings and tasks logged.", counts: "activities logged", unit: ["activity", "activities"] },
+  { code: "activities", label: "Activities (any)", hint: "Calls, meetings, tasks — every type.", counts: "activities logged", unit: ["activity", "activities"] },
+  { code: "activities_calls", label: "Calls", hint: "Phone calls logged in the period.", counts: "calls logged", unit: ["call", "calls"] },
+  { code: "activities_meetings", label: "Meetings", hint: "Meetings logged in the period.", counts: "meetings logged", unit: ["meeting", "meetings"] },
 ];
 
 export const MORE_GOALS: Goal[] = [
   { code: "proposal_entries", label: "Leads reaching Proposal", hint: "Leads that entered the Proposal stage in the period.", counts: "leads that entered Proposal", unit: ["lead", "leads"] },
   { code: "open_lead_value", label: "Open lead value", hint: "Value of open leads right now, not limited to the period.", counts: "the value of open leads right now" },
 ];
+
+/** Activity-style metrics that open the Activities list when you click the card. */
+export const ACTIVITY_GOALS = new Set(["activities", "activities_calls", "activities_meetings"]);
+
+/** URL filter for /activities?type=…, or "" for any type. */
+export function activitiesHrefFor(metric: string): string {
+  if (metric === "activities_calls") return "/activities?type=call";
+  if (metric === "activities_meetings") return "/activities?type=meeting";
+  return "/activities";
+}
 
 /** Deal-era metrics: still shown on existing targets, never offered for new ones. */
 const LEGACY_GOALS: Goal[] = [
@@ -52,7 +64,7 @@ export function whoName(t: CrmTarget) {
   return "Everyone";
 }
 
-const DEFAULT_NAME = /^(monthly|quarterly) [a-z_]+ target$/;
+const DEFAULT_NAME = /^(daily|monthly|quarterly) [a-z_]+ target$/;
 
 /** The name someone typed, or "" when the backend generated it. */
 export function customTargetName(t: CrmTarget) {

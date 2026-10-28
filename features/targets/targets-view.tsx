@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
@@ -32,8 +33,11 @@ import { useAuth } from "@/features/auth/auth-provider";
 import { dataScopeFor } from "@/features/auth/list-scope";
 import { adminApi } from "@/lib/api/admin";
 import { crmApi, type CrmTarget, type TargetProgress } from "@/lib/api/crm";
+import { canAccessPath } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import {
+  ACTIVITY_GOALS,
+  activitiesHrefFor,
   customTargetName,
   formatAmount,
   GOALS,
@@ -50,12 +54,18 @@ const utcDate = (ymd: string) => new Date(`${ymd}T00:00:00Z`);
 
 function periodLabel(t: Pick<CrmTarget, "periodType" | "periodStart">) {
   const start = utcDate(t.periodStart);
+  if (t.periodType === "daily") return dayFmt.format(start);
   if (t.periodType === "quarterly") return `Q${Math.floor(start.getUTCMonth() / 3) + 1} ${start.getUTCFullYear()}`;
   return monthFmt.format(start);
 }
 
 function dateRange(start: string, end: string) {
+  if (start === end) return dayFmt.format(utcDate(start));
   return `${dayFmt.format(utcDate(start))} – ${dayFmt.format(utcDate(end))}`;
+}
+
+function ymd(y: number, m: number, d: number): string {
+  return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
 
 function monthBounds(y: number, m: number): { start: string; end: string } {
@@ -72,18 +82,33 @@ function quarterBounds(y: number, q: number): { start: string; end: string } {
   };
 }
 
-type PeriodOption = { value: string; label: string; periodType: "monthly" | "quarterly"; start: string; end: string };
+function dayBounds(y: number, m: number, d: number): { start: string; end: string } {
+  const date = ymd(y, m, d);
+  return { start: date, end: date };
+}
+
+type PeriodOption = { value: string; label: string; periodType: "daily" | "monthly" | "quarterly"; start: string; end: string };
 
 function periodOptions(now: Date): PeriodOption[] {
   const y = now.getFullYear();
   const m = now.getMonth();
-  const month = (value: string, prefix: string, offset: number): PeriodOption => {
-    const d = new Date(Date.UTC(y, m + offset, 1));
+  const d = now.getDate();
+  const day = (value: string, prefix: string, offset: number): PeriodOption => {
+    const at = new Date(y, m, d + offset);
     return {
       value,
-      label: `${prefix} (${monthFmt.format(d)})`,
+      label: `${prefix} (${dayFmt.format(new Date(Date.UTC(at.getFullYear(), at.getMonth(), at.getDate())))})`,
+      periodType: "daily",
+      ...dayBounds(at.getFullYear(), at.getMonth(), at.getDate()),
+    };
+  };
+  const month = (value: string, prefix: string, offset: number): PeriodOption => {
+    const at = new Date(Date.UTC(y, m + offset, 1));
+    return {
+      value,
+      label: `${prefix} (${monthFmt.format(at)})`,
       periodType: "monthly",
-      ...monthBounds(d.getUTCFullYear(), d.getUTCMonth()),
+      ...monthBounds(at.getUTCFullYear(), at.getUTCMonth()),
     };
   };
   const quarter = (value: string, prefix: string, offset: number): PeriodOption => {
@@ -93,6 +118,8 @@ function periodOptions(now: Date): PeriodOption[] {
     return { value, label: `${prefix} (Q${q} ${qy})`, periodType: "quarterly", ...quarterBounds(qy, q) };
   };
   return [
+    day("today", "Today", 0),
+    day("tomorrow", "Tomorrow", 1),
     month("this-month", "This month", 0),
     month("next-month", "Next month", 1),
     quarter("this-quarter", "This quarter", 0),
@@ -235,6 +262,7 @@ export function TargetsView() {
 }
 
 function TargetCard({ row, canManage, onDelete }: { row: TargetProgress; canManage: boolean; onDelete: () => void }) {
+  const { user } = useAuth();
   const t = row.target;
   const goal = goalFor(t.metric);
   const name = whoName(t);
@@ -244,6 +272,10 @@ function TargetCard({ row, canManage, onDelete }: { row: TargetProgress; canMana
   const upcoming = utcDate(t.periodStart).getTime() > asOf;
   const pct = row.progressPct ?? 0;
   const customName = customTargetName(t);
+  const activitiesHref =
+    ACTIVITY_GOALS.has(t.metric) && canAccessPath(user?.permissions, "/activities")
+      ? activitiesHrefFor(t.metric)
+      : undefined;
 
   let status: string;
   if (reached) status = "Target reached";
@@ -254,8 +286,8 @@ function TargetCard({ row, canManage, onDelete }: { row: TargetProgress; canMana
     status = `${Math.round(pct)}% done · ${formatAmount(goal, row.remaining, true)} to go · ${days}`;
   }
 
-  return (
-    <article className="space-y-3 rounded-lg border border-border bg-surface p-4">
+  const body = (
+    <>
       <header className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="truncate text-xs text-foreground-muted">
@@ -267,8 +299,20 @@ function TargetCard({ row, canManage, onDelete }: { row: TargetProgress; canMana
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {reached ? <StatusBadge tone="success">Reached</StatusBadge> : null}
+          {activitiesHref ? (
+            <ChevronRight className="size-4 text-ink-muted transition-transform group-hover/card:translate-x-0.5" aria-hidden />
+          ) : null}
           {canManage ? (
-            <Button size="icon-sm" variant="ghost" aria-label="Delete target" onClick={onDelete}>
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              aria-label="Delete target"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onDelete();
+              }}
+            >
               <Trash2 className="size-3.5" />
             </Button>
           ) : null}
@@ -285,9 +329,31 @@ function TargetCard({ row, canManage, onDelete }: { row: TargetProgress; canMana
       <p className="text-xs text-foreground-muted">{status}</p>
       <p className="text-[11px] text-foreground-subtle">
         {explain(goal, t.scopeType, name, t.periodStart, t.periodEnd)}
+        {activitiesHref ? (
+          <span className="mt-1 block font-medium text-brand">
+            {t.metric === "activities_calls"
+              ? "View calls"
+              : t.metric === "activities_meetings"
+                ? "View meetings"
+                : "View activities"}
+          </span>
+        ) : null}
       </p>
-    </article>
+    </>
   );
+
+  if (activitiesHref) {
+    return (
+      <Link
+        href={activitiesHref}
+        className="group/card block space-y-3 rounded-lg border border-border bg-surface p-4 transition-colors hover:border-brand/40 hover:bg-brand-soft/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        {body}
+      </Link>
+    );
+  }
+
+  return <article className="space-y-3 rounded-lg border border-border bg-surface p-4">{body}</article>;
 }
 
 function OptionButton({
@@ -350,10 +416,14 @@ function CreateTargetDialog({
     enabled: open,
   });
   const usersQuery = useQuery({
-    queryKey: ["users", "targets", teamScoped ? myTeamIds.join(",") : "all"],
+    // Team leads set individual targets for sales executives on their team — not for themselves.
+    queryKey: ["users", "targets", teamScoped ? `se:${myTeamIds.join(",")}` : "all"],
     queryFn: () => {
       const p = new URLSearchParams({ limit: "100", isActive: "true" });
-      if (teamScoped && myTeamIds.length === 1) p.set("teamId", myTeamIds[0]);
+      if (teamScoped) {
+        p.set("roleCode", "sales_executive");
+        if (myTeamIds.length === 1) p.set("teamId", myTeamIds[0]);
+      }
       return adminApi.listUsers(p);
     },
     enabled: open && !noTeam,
@@ -365,7 +435,12 @@ function CreateTargetDialog({
   });
 
   const teams = (teamsQuery.data?.data ?? []).filter((t) => !teamScoped || myTeamIds.includes(t.id));
-  const people = usersQuery.data?.data ?? [];
+  // Team leads pick sales executives on their team — never themselves or other managers.
+  const people = React.useMemo(
+    () => (usersQuery.data?.data ?? []).filter((u) => u.id !== user?.id),
+    [usersQuery.data, user?.id],
+  );
+  if (userId && people.length > 0 && !people.some((u) => u.id === userId)) setUserId("");
   const teamId = teamScoped ? (myTeamIds.length === 1 ? myTeamIds[0] : "") : teamChoice;
   const goal = goalFor(goalCode);
   const period = periods.find((p) => p.value === periodValue) ?? periods[0];

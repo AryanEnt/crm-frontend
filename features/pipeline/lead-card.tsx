@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   daysSince,
+  formatDocumentDeadline,
   formatLeadMoney,
   formatNextAction,
   nextActionTone,
@@ -104,6 +105,16 @@ export function LeadCard({
             ? `Won ${formatDate(lead.wonAt)}`
             : `Lost${lead.lostReason ? ` · ${lead.lostReason}` : ` ${formatDate(lead.lostAt)}`}`}
         </p>
+      ) : lead.documentDeadlineAt ? (
+        <p
+          className={cn(
+            "mt-2 flex min-w-0 items-center gap-1.5 text-caption",
+            TONE_CLASS[nextActionTone(lead.documentDeadlineAt, timezone)],
+          )}
+        >
+          <CalendarClock className="size-3.5 shrink-0" aria-hidden />
+          <span className="truncate font-medium">{formatDocumentDeadline(lead.documentDeadlineAt, timezone)}</span>
+        </p>
       ) : (
         <p className={cn("mt-2 flex min-w-0 items-center gap-1.5 text-caption", TONE_CLASS[tone])}>
           <CalendarClock className="size-3.5 shrink-0" aria-hidden />
@@ -130,6 +141,8 @@ function MoveMenu({
 }) {
   const open = stages.filter((s) => !s.isWon && !s.isLost);
   const outcomes = stages.filter((s) => s.isWon || s.isLost);
+  // Nurturing has a Complete outcome and no Lost; sales has Won + Lost.
+  const completeOnly = outcomes.some((s) => s.isWon) && !outcomes.some((s) => s.isLost);
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -156,7 +169,7 @@ function MoveMenu({
             onSelect={() => onMove?.(s)}
             className={s.isWon ? "text-success" : "text-danger"}
           >
-            Mark as {s.isWon ? "won" : "lost"}
+            {s.isWon ? (completeOnly ? s.name || "Complete" : "Mark as won") : "Mark as lost"}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>

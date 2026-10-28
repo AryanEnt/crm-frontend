@@ -10,10 +10,19 @@ export const metadata: Metadata = {
 };
 
 function Wordmark({ size }: { size: "lg" | "sm" }) {
+  const large = size === "lg";
   return (
-    <div className={cn("flex items-center", size === "lg" ? "gap-3" : "gap-2.5")}>
-      <BrandMark className={cn("aurora-mark", size === "lg" && "size-10 rounded-xl text-body")} />
-      <span className={cn("text-ink", size === "lg" ? "text-title" : "text-page-title")}>CRMAurora</span>
+    <div className={cn("flex items-center", large ? "gap-3" : "gap-2.5")}>
+      <BrandMark
+        priority
+        className={cn(
+          "aurora-mark rounded-xl",
+          large ? "size-14" : "size-10",
+        )}
+      />
+      <span className={cn("font-semibold tracking-tight text-ink", large ? "text-title" : "text-page-title")}>
+        Aurora CRM
+      </span>
     </div>
   );
 }

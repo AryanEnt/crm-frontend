@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { crmApi } from "@/lib/api/crm";
-import { formatDateInTimezone, formatTimeInTimezone } from "@/lib/timezone";
+import { DEFAULT_TIMEZONE, formatDateInTimezone, formatTimeInTimezone } from "@/lib/timezone";
 import { useAuth } from "@/features/auth/auth-provider";
 import { cn } from "@/lib/utils";
 
@@ -16,7 +16,7 @@ export function FollowUpIntelPanel({
   dealId?: string;
 }) {
   const { user } = useAuth();
-  const timezone = user?.timezone || "UTC";
+  const timezone = user?.timezone || DEFAULT_TIMEZONE;
   const params = new URLSearchParams();
   if (leadId) params.set("leadId", leadId);
   if (customerId) params.set("customerId", customerId);

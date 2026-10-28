@@ -86,9 +86,19 @@ describe("classifyMove", () => {
     assert.deepEqual(classifyMove(card("a", "created"), created), { kind: "noop" });
   });
 
-  it("moves open leads between open stages and into Won directly", () => {
+  it("moves open leads between open stages", () => {
     assert.deepEqual(classifyMove(card("a", "created"), proposal), { kind: "move" });
-    assert.deepEqual(classifyMove(card("a", "created"), won), { kind: "move" });
+  });
+
+  it("asks for a document send deadline before Won", () => {
+    assert.deepEqual(classifyMove(card("a", "created"), won), { kind: "won_deadline" });
+  });
+
+  it("moves into Nurturing Complete without a document deadline", () => {
+    assert.deepEqual(
+      classifyMove(card("a", "created"), won, { pipelineId: "55555555-5555-5555-5555-555555555505" }),
+      { kind: "move" },
+    );
   });
 
   it("asks for a lost reason before Lost", () => {

@@ -25,6 +25,7 @@ import {
 import { useAuth } from "@/features/auth/auth-provider";
 import { crmApi } from "@/lib/api/crm";
 import { ActivityQuickCreateDialog } from "@/features/activities/activity-quick-create";
+import { WhatsAppCallDialog } from "./whatsapp-call-dialog";
 
 type Context = {
   customerId?: string;
@@ -37,7 +38,8 @@ export function CommunicationActions({ context }: { context: Context }) {
   const { can } = useAuth();
   const qc = useQueryClient();
   const [whatsAppOpen, setWhatsAppOpen] = React.useState(false);
-  const [callOpen, setCallOpen] = React.useState(false);
+  const [waCallOpen, setWaCallOpen] = React.useState(false);
+  const [twilioOpen, setTwilioOpen] = React.useState(false);
   const [activityOpen, setActivityOpen] = React.useState(false);
   const [waAccountId, setWaAccountId] = React.useState("");
   const [callAccountId, setCallAccountId] = React.useState("");
@@ -68,6 +70,7 @@ export function CommunicationActions({ context }: { context: Context }) {
   const invalidate = () => {
     void qc.invalidateQueries({ queryKey: ["timeline"] });
     void qc.invalidateQueries({ queryKey: ["whatsapp-messages"] });
+    void qc.invalidateQueries({ queryKey: ["whatsapp-calls"] });
     void qc.invalidateQueries({ queryKey: ["twilio-calls"] });
     void qc.invalidateQueries({ queryKey: ["customer-360"] });
     void qc.invalidateQueries({ queryKey: ["deal"] });
@@ -107,7 +110,7 @@ export function CommunicationActions({ context }: { context: Context }) {
         leadId: context.leadId,
       }),
     onSuccess: () => {
-      setCallOpen(false);
+      setTwilioOpen(false);
       setError("");
       invalidate();
       toast.success("Call started");
@@ -132,10 +135,16 @@ export function CommunicationActions({ context }: { context: Context }) {
               <MessageCircle className="size-3.5" />
               WhatsApp
             </Button>
-            <Button size="sm" variant="outline" onClick={() => { setError(""); setCallOpen(true); }}>
+            <Button size="sm" variant="outline" onClick={() => { setError(""); setWaCallOpen(true); }}>
               <Phone className="size-3.5" />
-              Call
+              WhatsApp call
             </Button>
+            {twilioAccounts.length > 0 ? (
+              <Button size="sm" variant="outline" onClick={() => { setError(""); setTwilioOpen(true); }}>
+                <Phone className="size-3.5" />
+                Phone call
+              </Button>
+            ) : null}
           </>
         ) : null}
         {can("activities:create") ? (
@@ -191,12 +200,19 @@ export function CommunicationActions({ context }: { context: Context }) {
         </ModalContent>
       </Modal>
 
-      <Modal open={callOpen} onOpenChange={setCallOpen}>
+      <WhatsAppCallDialog
+        open={waCallOpen}
+        onOpenChange={setWaCallOpen}
+        context={context}
+        accounts={waAccounts}
+      />
+
+      <Modal open={twilioOpen} onOpenChange={setTwilioOpen}>
         <ModalContent>
           <ModalHeader>
-            <ModalTitle>Place call</ModalTitle>
+            <ModalTitle>Place phone call</ModalTitle>
             <ModalDescription>
-              Via Twilio Voice. Call status updates write to the same CRM timeline.
+              Via Twilio Voice (PSTN). Prefer WhatsApp call when the contact is on WhatsApp.
             </ModalDescription>
           </ModalHeader>
           <div className="space-y-3 px-1 py-2">
@@ -221,7 +237,7 @@ export function CommunicationActions({ context }: { context: Context }) {
             {error ? <p className="text-sm text-danger">{error}</p> : null}
           </div>
           <ModalFooter>
-            <Button variant="outline" onClick={() => setCallOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setTwilioOpen(false)}>Cancel</Button>
             <Button disabled={callMutation.isPending} onClick={() => callMutation.mutate()}>
               Call now
             </Button>

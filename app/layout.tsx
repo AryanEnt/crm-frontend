@@ -25,6 +25,10 @@ export const metadata: Metadata = {
     template: "%s · Aurora CRM",
   },
   description: "Premium customer relationship management platform",
+  icons: {
+    icon: [{ url: "/brand-logo.jpg", type: "image/jpeg" }],
+    apple: [{ url: "/brand-logo.jpg" }],
+  },
 };
 
 export default function RootLayout({

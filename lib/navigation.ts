@@ -23,6 +23,7 @@ import {
   ListTree,
   Mail,
   Phone,
+  MessageCircle,
   Columns3,
   type LucideIcon,
 } from "lucide-react";
@@ -55,6 +56,7 @@ export const crmNav: NavSection[] = [
   {
     title: "Communications",
     items: [
+      { label: "WhatsApp", href: "/whatsapp", icon: MessageCircle },
       { label: "Email", href: "/email", icon: Mail },
       { label: "Calls", href: "/calls", icon: Phone },
     ],
@@ -88,6 +90,7 @@ export const crmNav: NavSection[] = [
   {
     title: "Settings",
     items: [
+      { label: "WhatsApp accounts", href: "/settings/whatsapp", icon: MessageCircle },
       { label: "Email accounts", href: "/settings/email", icon: Mail },
       { label: "Email templates", href: "/settings/email/templates", icon: FileText },
     ],

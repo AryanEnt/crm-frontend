@@ -32,7 +32,7 @@ import { crmApi, type Activity } from "@/lib/api/crm";
 import { ActivityQuickCreateDialog } from "@/features/activities/activity-quick-create";
 import { leadHref } from "@/features/activities/activity-href";
 import { bulkLeadMovedMessage, invalidateLeadViews } from "@/features/activities/lead-moved";
-import { formatInTimezone } from "@/lib/timezone";
+import { DEFAULT_TIMEZONE, formatInTimezone } from "@/lib/timezone";
 import { ScopeFilterControls, useScopeFilters } from "@/features/teams/scope-filters";
 import { useColumnVisibility } from "@/lib/column-visibility";
 import { bulkMessage, runBulk } from "@/lib/bulk";
@@ -51,14 +51,21 @@ const statusTone = (s: string) =>
 export function ActivitiesTableView() {
   const { can, user } = useAuth();
   const qc = useQueryClient();
-  const timezone = user?.timezone || "UTC";
+  const timezone = user?.timezone || DEFAULT_TIMEZONE;
   const [search, setSearch] = React.useState("");
-  const [typeCode, setTypeCode] = React.useState("all");
   const searchParams = useSearchParams();
+  const [typeCode, setTypeCode] = React.useState(() => searchParams.get("type") || "all");
   const [status, setStatus] = React.useState(() => {
     const fromUrl = searchParams.get("status");
     return fromUrl && ACTIVITY_STATUSES.includes(fromUrl) ? fromUrl : "all";
   });
+  // Follow URL changes (e.g. clicking a Calls target) without fighting an in-page filter change.
+  const urlType = searchParams.get("type") || "all";
+  const [syncedType, setSyncedType] = React.useState(urlType);
+  if (urlType !== syncedType) {
+    setSyncedType(urlType);
+    setTypeCode(urlType);
+  }
   const [createOpen, setCreateOpen] = React.useState(false);
   const [selected, setSelected] = React.useState<Activity[]>([]);
   const [selectionResetKey, setSelectionResetKey] = React.useState(0);

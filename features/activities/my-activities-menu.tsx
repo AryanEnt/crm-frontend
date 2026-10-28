@@ -30,6 +30,7 @@ import {
   addDays,
   calendarDayKey,
   dayKeyInTimezone,
+  DEFAULT_TIMEZONE,
   startOfDayInTimezone,
   todayInTimezone,
 } from "@/lib/timezone";
@@ -48,7 +49,7 @@ export function MyActivitiesMenu() {
   const router = useRouter();
   const update = useUpdateActivity();
   const userId = user?.id ?? "";
-  const timezone = user?.timezone || "UTC";
+  const timezone = user?.timezone || DEFAULT_TIMEZONE;
   const enabled = Boolean(userId) && can("activities:view");
   const canEdit = can("activities:edit");
   const [done, setDone] = React.useState<ReadonlySet<string>>(new Set());

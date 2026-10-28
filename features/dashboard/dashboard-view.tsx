@@ -38,7 +38,7 @@ import { adminApi } from "@/lib/api/admin";
 import { ActivityQuickCreateDialog } from "@/features/activities/activity-quick-create";
 import { activityHref } from "@/features/activities/activity-href";
 import { AddTeamMemberButton } from "@/features/admin/add-team-member-button";
-import { formatInTimezone } from "@/lib/timezone";
+import { DEFAULT_TIMEZONE, formatInTimezone } from "@/lib/timezone";
 import { canAccessPath } from "@/lib/permissions";
 import { customTargetName, formatAmount, goalFor, whoName } from "@/features/targets/goals";
 import { useCountUp } from "@/lib/use-count-up";
@@ -81,7 +81,7 @@ export function DashboardView() {
   const qc = useQueryClient();
   const quickCreate = useQuickCreateOptional();
   const [createOpen, setCreateOpen] = React.useState(false);
-  const timezone = user?.timezone || "UTC";
+  const timezone = user?.timezone || DEFAULT_TIMEZONE;
   const isTeamLead = user?.roleCode === "sales_manager";
   const canAddMember = isTeamLead && (can("users:create") || can("users:manage"));
   const { salesExecutiveId, setSalesExecutiveId } = useTeamMemberFilter(isTeamLead);

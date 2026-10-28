@@ -4,6 +4,8 @@ import * as React from "react";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
+import { Label } from "@/components/ui/label";
 import {
   Modal,
   ModalContent,
@@ -19,7 +21,7 @@ import {
   type StageMoveError,
 } from "@/lib/api/crm";
 import { ApiError } from "@/types/api";
-import { classifyMove } from "@/features/leads/lead-board-state";
+import { classifyMove, isNurturingPipeline } from "@/features/leads/lead-board-state";
 import {
   LostReasonDialog,
   LostReasonFields,
@@ -45,12 +47,20 @@ export type LeadMoveRequest = {
   pipelineId?: string;
   /** Already-captured reason; when set, moving to Lost skips the prompt. */
   lostReason?: string | null;
+  /** Already-captured YYYY-MM-DD; when set, moving to Won skips the prompt. */
+  documentDeadline?: string | null;
 };
 
-type MoveVars = Omit<LeadMoveRequest, "lostReason"> & { force?: boolean; reopen?: boolean; lostReason?: string };
+type MoveVars = Omit<LeadMoveRequest, "lostReason" | "documentDeadline"> & {
+  force?: boolean;
+  reopen?: boolean;
+  lostReason?: string;
+  documentDeadline?: string;
+};
 
 type Pending =
   | { kind: "lost"; req: MoveVars }
+  | { kind: "won"; req: MoveVars }
   | { kind: "reopen"; req: MoveVars; needsReason: boolean }
   | { kind: "blocked"; vars: MoveVars; details: StageMoveError }
   | null;
@@ -66,8 +76,8 @@ function isLeadClosedError(details: unknown): details is LeadClosedError {
 }
 
 /**
- * The one stage-move flow for Leads: lost reason, reopen confirmation, and
- * stage requirements. Callers own optimistic UI through
+ * The one stage-move flow for Leads: lost reason, Won document deadline, reopen
+ * confirmation, and stage requirements. Callers own optimistic UI through
  * `onOptimistic`, which returns a rollback.
  */
 export function useLeadMove({
@@ -91,13 +101,19 @@ export function useLeadMove({
         force: vars.force,
         reopen: vars.reopen,
         lostReason: vars.lostReason,
+        documentDeadline: vars.documentDeadline,
       }),
     onMutate: (vars) => ({ rollback: onOptimistic?.(vars) ?? undefined }),
     onSuccess: (result, vars) => {
       setPending(null);
       if (vars.to.isWon) {
-        toast.success("Lead marked as won", { description: vars.leadName });
-        setAnnounce(`${vars.leadName} marked as won`);
+        if (isNurturingPipeline(vars.pipelineId)) {
+          toast.success("Nurturing complete", { description: vars.leadName });
+          setAnnounce(`${vars.leadName} marked complete in Nurturing`);
+        } else {
+          toast.success("Lead marked as won — moved to Nurturing", { description: vars.leadName });
+          setAnnounce(`${vars.leadName} marked as won and moved to Nurturing`);
+        }
       } else if (vars.to.isLost) {
         toast.success("Lead marked as lost", { description: vars.leadName });
         setAnnounce(`${vars.leadName} marked as lost`);
@@ -112,6 +128,11 @@ export function useLeadMove({
     onError: (err, vars, ctx) => {
       ctx?.rollback?.();
       if (err instanceof ApiError && err.status === 400 && isStageMoveError(err.details)) {
+        if ((err.details as StageMoveError).reason === "document_deadline_required") {
+          setPending({ kind: "won", req: vars });
+          setAnnounce("Set a document send deadline to mark as won.");
+          return;
+        }
         setPending({ kind: "blocked", vars, details: err.details });
         setAnnounce("Stage move blocked. Review the requirements.");
         return;
@@ -130,15 +151,22 @@ export function useLeadMove({
   });
 
   const request = React.useCallback(
-    ({ lostReason: captured, ...req }: LeadMoveRequest) => {
+    ({ lostReason: captured, documentDeadline: deadline, ...req }: LeadMoveRequest) => {
       const known = captured?.trim() || undefined;
-      const intent = classifyMove({ stageId: req.fromStageId, status: req.status }, req.to);
+      const knownDeadline = deadline?.trim() || undefined;
+      const intent = classifyMove({ stageId: req.fromStageId, status: req.status }, req.to, {
+        pipelineId: req.pipelineId,
+      });
       switch (intent.kind) {
         case "noop":
           return;
         case "lost_reason":
           if (known) mutation.mutate({ ...req, lostReason: known });
           else setPending({ kind: "lost", req });
+          return;
+        case "won_deadline":
+          if (knownDeadline) mutation.mutate({ ...req, documentDeadline: knownDeadline });
+          else setPending({ kind: "won", req });
           return;
         case "reopen":
           setPending({ kind: "reopen", req: { ...req, lostReason: known }, needsReason: intent.lostReason && !known });
@@ -161,6 +189,15 @@ export function useLeadMove({
         loading={mutation.isPending}
         onCancel={() => setPending(null)}
         onConfirm={(lostReason) => pending?.kind === "lost" && mutation.mutate({ ...pending.req, lostReason })}
+      />
+      <WonDeadlineDialog
+        open={pending?.kind === "won"}
+        leadName={pending?.kind === "won" ? pending.req.leadName : ""}
+        loading={mutation.isPending}
+        onCancel={() => setPending(null)}
+        onConfirm={(documentDeadline) =>
+          pending?.kind === "won" && mutation.mutate({ ...pending.req, documentDeadline })
+        }
       />
       <ReopenModal
         open={pending?.kind === "reopen"}
@@ -185,6 +222,54 @@ export function useLeadMove({
   );
 
   return { request, dialogs, isPending: mutation.isPending };
+}
+
+function WonDeadlineDialog({
+  open,
+  leadName,
+  loading,
+  onCancel,
+  onConfirm,
+}: {
+  open: boolean;
+  leadName: string;
+  loading: boolean;
+  onCancel: () => void;
+  onConfirm: (documentDeadline: string) => void;
+}) {
+  const [deadline, setDeadline] = React.useState("");
+  const [wasOpen, setWasOpen] = React.useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setDeadline("");
+  }
+  const today = React.useMemo(() => new Date().toISOString().slice(0, 10), []);
+  return (
+    <Modal open={open} onOpenChange={(o) => !o && onCancel()}>
+      <ModalContent>
+        <ModalHeader>
+          <ModalTitle>Mark {leadName || "this lead"} as won</ModalTitle>
+          <ModalDescription>
+            Choose when documents must be sent. We&apos;ll move the lead into Nurturing and track that send-by date
+            there.
+          </ModalDescription>
+        </ModalHeader>
+        <div className="space-y-1.5">
+          <Label required>Send documents by</Label>
+          <DatePicker value={deadline} onChange={setDeadline} min={today} placeholder="Pick a send-by date" />
+          <p className="text-meta text-ink-muted">Shown on the Nurturing board so the team can chase on time.</p>
+        </div>
+        <ModalFooter>
+          <Button variant="outline" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button loading={loading} disabled={!deadline} onClick={() => onConfirm(deadline)}>
+            Won — move to Nurturing
+          </Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
+  );
 }
 
 function ReopenModal({

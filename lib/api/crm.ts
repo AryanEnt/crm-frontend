@@ -116,6 +116,7 @@ export type DealDetail = {
 };
 
 export type StageMoveError = {
+  reason?: string;
   missingFields?: string[];
   missingActivities?: string[];
   missingDocuments?: string[];
@@ -199,6 +200,8 @@ export type LeadBoardCard = {
   wonAt: string | null;
   lostAt: string | null;
   lostReason: string;
+  /** Earliest open document send-by date (set when marking Won). */
+  documentDeadlineAt?: string | null;
 };
 
 export type LeadBoardStage = {
@@ -229,6 +232,8 @@ export type LeadMoveInput = {
   force?: boolean;
   reopen?: boolean;
   lostReason?: string;
+  /** YYYY-MM-DD; required when marking Sales Won. */
+  documentDeadline?: string;
   nextActivity?: { title?: string; dueAt: string; typeCode?: string };
 };
 
@@ -766,12 +771,37 @@ export const crmApi = {
     ),
   createCommunicationAccount: (body: unknown) =>
     api.post<CommunicationAccount>("/communications/accounts", body),
+  whatsappConnectConfig: () =>
+    api.get<{ configured: boolean; appId: string; configId: string; graphApiVersion: string }>(
+      "/communications/whatsapp/connect-config",
+    ),
+  completeWhatsAppEmbeddedSignup: (body: unknown) =>
+    api.post<CommunicationAccount>("/communications/whatsapp/embedded-signup", body),
+  connectWhatsAppAccount: (body: unknown) =>
+    api.post<CommunicationAccount>("/communications/whatsapp/connect", body),
+  disconnectCommunicationAccount: (id: string) =>
+    api.post<CommunicationAccount>(`/communications/accounts/${id}/disconnect`, {}),
+  listWhatsAppConversations: (params: URLSearchParams) =>
+    listWithMeta<WhatsAppConversation>(`/communications/whatsapp/conversations?${params}`),
   listWhatsAppMessages: (params: URLSearchParams) =>
     listWithMeta<WhatsAppMessage>(`/communications/whatsapp/messages?${params}`),
   sendWhatsApp: (body: unknown) => api.post<WhatsAppMessage>("/communications/whatsapp/send", body),
   listTwilioCalls: (params: URLSearchParams) =>
     listWithMeta<TwilioCall>(`/communications/twilio/calls?${params}`),
   placeTwilioCall: (body: unknown) => api.post<TwilioCall>("/communications/twilio/calls", body),
+  listWhatsAppCalls: (params: URLSearchParams) =>
+    listWithMeta<WhatsAppCall>(`/communications/whatsapp/calls?${params}`),
+  getWhatsAppCall: (id: string) => api.get<WhatsAppCall>(`/communications/whatsapp/calls/${id}`),
+  requestWhatsAppCallPermission: (body: unknown) =>
+    api.post<WhatsAppMessage>("/communications/whatsapp/call-permission", body),
+  initiateWhatsAppCall: (body: unknown) => api.post<WhatsAppCall>("/communications/whatsapp/calls", body),
+  preAcceptWhatsAppCall: (id: string, body: unknown) =>
+    api.post<WhatsAppCall>(`/communications/whatsapp/calls/${id}/pre-accept`, body),
+  acceptWhatsAppCall: (id: string, body: unknown) =>
+    api.post<WhatsAppCall>(`/communications/whatsapp/calls/${id}/accept`, body),
+  rejectWhatsAppCall: (id: string) => api.post<WhatsAppCall>(`/communications/whatsapp/calls/${id}/reject`, {}),
+  terminateWhatsAppCall: (id: string) =>
+    api.post<WhatsAppCall>(`/communications/whatsapp/calls/${id}/terminate`, {}),
 };
 
 export type CrmDocument = {
@@ -1250,6 +1280,20 @@ export type WhatsAppMessage = {
   createdAt: string;
 };
 
+export type WhatsAppConversation = {
+  conversationKey: string;
+  lastMessageId: string;
+  direction: string;
+  status: string;
+  fromNumber: string;
+  toNumber: string;
+  body: string;
+  customerId?: string | null;
+  dealId?: string | null;
+  leadId?: string | null;
+  occurredAt: string;
+};
+
 export type TwilioCall = {
   id: string;
   accountId: string;
@@ -1261,6 +1305,27 @@ export type TwilioCall = {
   durationSeconds?: number | null;
   recordingSid?: string;
   recordingUrl?: string;
+  customerId?: string | null;
+  dealId?: string | null;
+  leadId?: string | null;
+  startedAt?: string | null;
+  endedAt?: string | null;
+  createdAt: string;
+};
+
+export type WhatsAppCall = {
+  id: string;
+  accountId: string;
+  direction: string;
+  status: string;
+  providerCallId: string;
+  fromNumber: string;
+  toNumber: string;
+  durationSeconds?: number | null;
+  remoteSdp?: string;
+  remoteSdpType?: string;
+  localSdp?: string;
+  localSdpType?: string;
   customerId?: string | null;
   dealId?: string | null;
   leadId?: string | null;

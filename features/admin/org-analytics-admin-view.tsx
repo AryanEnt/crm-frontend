@@ -84,9 +84,12 @@ export function OrgAnalyticsAdminView() {
   });
 
   const usersQuery = useQuery({
-    queryKey: ["users", "org-analytics"],
-    queryFn: () =>
-      adminApi.listUsers(new URLSearchParams({ limit: "100", isActive: "true" })),
+    queryKey: ["users", "org-analytics", teamId],
+    queryFn: () => {
+      const p = new URLSearchParams({ limit: "100", isActive: "true" });
+      if (teamId) p.set("teamId", teamId);
+      return adminApi.listUsers(p);
+    },
     enabled: canView,
   });
 
@@ -154,7 +157,10 @@ export function OrgAnalyticsAdminView() {
         </Select>
         <Select
           value={teamId || "all"}
-          onValueChange={(v) => setTeamId(v === "all" ? "" : v)}
+          onValueChange={(v) => {
+            setTeamId(v === "all" ? "" : v);
+            setOwnerUserId("");
+          }}
         >
           <SelectTrigger className="w-[160px]">
             <SelectValue placeholder="Team" />

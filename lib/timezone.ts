@@ -1,5 +1,13 @@
 /** Format / parse timestamps using the user's configured IANA timezone. */
 
+/** Org default — Calendar, activities, and follow-ups use this when unset. */
+export const DEFAULT_TIMEZONE = "Asia/Kathmandu";
+
+export function resolveTimezone(timeZone?: string | null): string {
+  const tz = (timeZone ?? "").trim();
+  return tz || DEFAULT_TIMEZONE;
+}
+
 export function formatInTimezone(
   value: string | Date | null | undefined,
   timeZone: string,
@@ -12,7 +20,7 @@ export function formatInTimezone(
   const d = typeof value === "string" ? new Date(value) : value;
   if (Number.isNaN(d.getTime())) return "—";
   try {
-    return new Intl.DateTimeFormat(undefined, { ...options, timeZone: timeZone || "UTC" }).format(d);
+    return new Intl.DateTimeFormat(undefined, { ...options, timeZone: resolveTimezone(timeZone) }).format(d);
   } catch {
     return new Intl.DateTimeFormat(undefined, options).format(d);
   }
@@ -36,7 +44,7 @@ export function formatDateInTimezone(
 export function dayKeyInTimezone(value: Date, timeZone: string): string {
   try {
     return new Intl.DateTimeFormat("en-CA", {
-      timeZone: timeZone || "UTC",
+      timeZone: resolveTimezone(timeZone),
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
@@ -82,8 +90,9 @@ function timezoneOffsetMs(at: Date, timeZone: string): number {
 export function startOfDayInTimezone(d: Date, timeZone: string): Date {
   const utcMidnight = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
   try {
-    const guess = utcMidnight - timezoneOffsetMs(new Date(utcMidnight), timeZone || "UTC");
-    return new Date(utcMidnight - timezoneOffsetMs(new Date(guess), timeZone || "UTC"));
+    const zone = resolveTimezone(timeZone);
+    const guess = utcMidnight - timezoneOffsetMs(new Date(utcMidnight), zone);
+    return new Date(utcMidnight - timezoneOffsetMs(new Date(guess), zone));
   } catch {
     return new Date(d.getFullYear(), d.getMonth(), d.getDate());
   }
@@ -115,18 +124,18 @@ export function startOfWeek(d: Date): Date {
 
 export function commonTimezones(): string[] {
   return [
+    DEFAULT_TIMEZONE,
+    "Asia/Kolkata",
+    "Asia/Dubai",
+    "Asia/Singapore",
+    "Asia/Tokyo",
     "UTC",
+    "Europe/London",
+    "Europe/Paris",
     "America/New_York",
     "America/Chicago",
     "America/Denver",
     "America/Los_Angeles",
-    "Europe/London",
-    "Europe/Paris",
-    "Asia/Dubai",
-    "Asia/Kolkata",
-    "Asia/Kathmandu",
-    "Asia/Singapore",
-    "Asia/Tokyo",
     "Australia/Sydney",
     "Pacific/Auckland",
   ];

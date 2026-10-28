@@ -3,7 +3,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { crmApi, type Activity } from "@/lib/api/crm";
-import { startOfDayInTimezone } from "@/lib/timezone";
+import { DEFAULT_TIMEZONE, startOfDayInTimezone } from "@/lib/timezone";
 import { invalidateLeadViews } from "./lead-moved";
 
 export type CalendarData = Awaited<ReturnType<typeof crmApi.calendarActivities>>;
@@ -32,7 +32,7 @@ export const isOpen = (a: Activity) => a.status !== "completed" && a.status !== 
 export function minutesInTimezone(d: Date, timeZone: string): number {
   try {
     const parts = new Intl.DateTimeFormat("en-US", {
-      timeZone: timeZone || "UTC",
+      timeZone: timeZone || DEFAULT_TIMEZONE,
       hourCycle: "h23",
       hour: "numeric",
       minute: "numeric",

@@ -87,8 +87,12 @@ export function AnalyticsFilterBar({
     enabled: teamFilter,
   });
   const usersQuery = useQuery({
-    queryKey: ["users", "analytics"],
-    queryFn: () => adminApi.listUsers(new URLSearchParams({ limit: "100", isActive: "true" })),
+    queryKey: ["users", "analytics", value.teamId],
+    queryFn: () => {
+      const p = new URLSearchParams({ limit: "100", isActive: "true" });
+      if (value.teamId && value.teamId !== "all") p.set("teamId", value.teamId);
+      return adminApi.listUsers(p);
+    },
     enabled: ownerFilter,
   });
   const anzscoQuery = useQuery({
@@ -126,7 +130,10 @@ export function AnalyticsFilterBar({
       {teamFilter ? (
         <div className="space-y-1">
           <Label className="text-[11px]">Team</Label>
-          <Select value={value.teamId} onValueChange={(v) => set({ teamId: v })}>
+          <Select
+            value={value.teamId}
+            onValueChange={(v) => set({ teamId: v, ownerUserId: "all" })}
+          >
             <SelectTrigger><SelectValue placeholder="Team" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All teams</SelectItem>

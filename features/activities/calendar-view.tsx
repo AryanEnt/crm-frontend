@@ -49,6 +49,7 @@ import {
   calendarDayKey,
   commonTimezones,
   dayKeyInTimezone,
+  DEFAULT_TIMEZONE,
   startOfDayInTimezone,
   startOfMonth,
   startOfWeek,
@@ -173,7 +174,7 @@ function CalendarViewToggle({ value, onChange }: { value: ViewMode; onChange: (v
 export function CalendarView() {
   const { user, can } = useAuth();
   const qc = useQueryClient();
-  const timezone = user?.timezone || "UTC";
+  const timezone = user?.timezone || DEFAULT_TIMEZONE;
   const canCreate = can("activities:create");
   const canEdit = can("activities:edit");
   const scopeFilters = useScopeFilters("activities:view");
@@ -364,6 +365,12 @@ export function CalendarView() {
         description="Plan follow-ups and meetings"
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            {canCreate ? (
+              <Button size="sm" onClick={() => openCreate()} title="New activity (C)">
+                <Plus className="size-3.5" />
+                Activity
+              </Button>
+            ) : null}
             <Select
               value={tzDraft}
               onValueChange={(tz) => {
@@ -386,12 +393,6 @@ export function CalendarView() {
                 ))}
               </SelectContent>
             </Select>
-            {canCreate ? (
-              <Button size="sm" onClick={() => openCreate()} title="New activity (C)">
-                <Plus className="size-3.5" />
-                Activity
-              </Button>
-            ) : null}
           </div>
         }
       />

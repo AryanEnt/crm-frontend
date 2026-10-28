@@ -116,7 +116,12 @@ export function UserPicker({
   );
 }
 
-export type LeadOption = ComboboxOption & { stageName?: string | null; contact?: string };
+export type LeadOption = ComboboxOption & {
+  stageName?: string | null;
+  contact?: string;
+  phone?: string | null;
+  email?: string | null;
+};
 
 /** Async lead search across every status the caller can see, with avatar, stage and contact in each option. */
 export function LeadCombobox({
@@ -152,6 +157,8 @@ export function LeadCombobox({
         visual: <UserAvatar name={l.fullName} />,
         stageName: l.stageName,
         contact,
+        phone: l.phone,
+        email: l.email,
       };
       results.current.set(l.id, option);
       return option;
