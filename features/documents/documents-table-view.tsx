@@ -646,7 +646,6 @@ function UploadDocumentDialog({
                   setFile(null);
                   setName("");
                   setType("");
-                  setLeadId("");
                   setViewerUserIds([]);
                   onDone();
                   toast.success("Document uploaded");
