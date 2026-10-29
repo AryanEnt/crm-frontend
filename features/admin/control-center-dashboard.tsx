@@ -303,8 +303,8 @@ export function ControlCenterDashboard() {
             </li>
           </ul>
           <p className="text-[11px] text-foreground-muted">
-            Super Admin configures the CRM. Daily sales work belongs to Manager, Sales Executive,
-            and Sales Support roles.
+            Super Admin configures the CRM. Daily sales work belongs to Manager and Sales Executive
+            roles.
           </p>
         </section>
       </div>

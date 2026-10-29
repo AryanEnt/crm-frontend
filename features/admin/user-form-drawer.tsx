@@ -12,6 +12,7 @@ import { Field } from "@/components/ui/console/field";
 import { Input } from "@/components/ui/console/input";
 import { Select } from "@/components/ui/console/select";
 import { useToast } from "@/components/ui/console/toast";
+import { assignableRoles } from "@/features/admin/assignable-roles";
 
 export type UserFormFocus = "role" | "team" | "password";
 
@@ -88,10 +89,11 @@ export function UserFormDrawer({
     enabled: open,
   });
   const teams = teamsQuery.data?.data ?? [];
+  const roleOptions = assignableRoles(roles, initial?.roleId);
 
   const { firstName, lastName, email, phone, password, teamId, isActive } = values;
-  const roleId = values.roleId || roles[0]?.id || "";
-  const selectedRole = roles.find((r) => r.id === roleId);
+  const roleId = values.roleId || roleOptions[0]?.id || "";
+  const selectedRole = roleOptions.find((r) => r.id === roleId) ?? roles.find((r) => r.id === roleId);
   const requiresTeam = selectedRole?.code === "sales_executive" || selectedRole?.code === "sales_manager";
   const selectedTeam = teams.find((t) => t.id === teamId);
 
@@ -294,8 +296,8 @@ export function UserFormDrawer({
           <DrawerSection title="Access" description="What this person can see and do in the CRM.">
             <Field label="Role" required error={errors.roleId}>
               <Select ref={roleRef} name="roleId" value={roleId} onChange={(e) => set("roleId", e.target.value)}>
-                {roles.length === 0 ? <option value="">Loading roles…</option> : null}
-                {roles.map((role) => (
+                {roleOptions.length === 0 ? <option value="">Loading roles…</option> : null}
+                {roleOptions.map((role) => (
                   <option key={role.id} value={role.id}>
                     {role.name}
                   </option>

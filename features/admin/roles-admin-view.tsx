@@ -7,7 +7,8 @@ import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { adminApi } from "@/lib/api/admin";
 
-const ROLE_ORDER = ["super_admin", "sales_manager", "sales_executive", "sales_support"];
+const ROLE_ORDER = ["super_admin", "sales_manager", "sales_executive"];
+const HIDDEN_ROLES = new Set(["sales_support"]);
 
 export function RolesAdminView() {
   const rolesQuery = useQuery({ queryKey: ["roles"], queryFn: adminApi.listRoles });
@@ -17,9 +18,9 @@ export function RolesAdminView() {
     return <ErrorState onRetry={() => void rolesQuery.refetch()} />;
   }
 
-  const roles = [...(rolesQuery.data ?? [])].sort(
-    (a, b) => ROLE_ORDER.indexOf(a.code) - ROLE_ORDER.indexOf(b.code),
-  );
+  const roles = [...(rolesQuery.data ?? [])]
+    .filter((role) => !HIDDEN_ROLES.has(role.code))
+    .sort((a, b) => ROLE_ORDER.indexOf(a.code) - ROLE_ORDER.indexOf(b.code));
 
   return (
     <div className="space-y-3">

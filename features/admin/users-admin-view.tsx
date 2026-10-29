@@ -47,6 +47,7 @@ import {
 } from "@/components/ui/console/data-table";
 import { ToastProvider, useToast } from "@/components/ui/console/toast";
 import { ColumnsMenu, DensityToggle, FilterSelect, type ColumnOption } from "@/components/ui/console/toolbar";
+import { assignableRoles } from "./assignable-roles";
 import { TeamMemberDrawer } from "./team-member-drawer";
 import { UserFormDrawer, type UserFormFocus } from "./user-form-drawer";
 import {
@@ -496,7 +497,7 @@ function UsersConsole() {
             <FilterSelect
               label="Role"
               icon={ShieldCheck}
-              options={roles.map((role) => ({ value: role.id, label: role.name }))}
+              options={assignableRoles(roles).map((role) => ({ value: role.id, label: role.name }))}
               value={roleId}
               onChange={(value) => {
                 setRoleId(value);
