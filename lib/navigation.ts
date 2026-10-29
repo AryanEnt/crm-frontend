@@ -12,7 +12,6 @@ import {
   UserCog,
   UsersRound,
   Layers,
-  FormInput,
   ScrollText,
   Settings,
   Search,
@@ -116,7 +115,7 @@ export const controlCenterNav: NavSection[] = [
     items: [
       // { label: "Pipelines", href: "/admin/pipelines", icon: Layers },
       // { label: "Stages", href: "/admin/pipelines?tab=stages", icon: ListTree },
-      { label: "Custom fields", href: "/admin/custom-fields", icon: FormInput },
+      // { label: "Custom fields", href: "/admin/custom-fields", icon: FormInput },
       { label: "Lead sources", href: "/admin/lead-sources", icon: Share2 },
       { label: "Activity types", href: "/admin/activity-types", icon: ListChecks },
       { label: "Referrals", href: "/admin/referrals", icon: Building2 },

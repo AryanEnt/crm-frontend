@@ -40,6 +40,7 @@ import { LoadingState } from "@/components/ui/loading-state";
 import { AnzscoCombobox } from "@/components/shared/anzsco-combobox";
 import { DuplicateReviewDialog } from "@/components/shared/duplicate-review-dialog";
 import { useAuth } from "@/features/auth/auth-provider";
+import { canAttachLeadScreenshot } from "@/features/leads/can-attach-screenshot";
 import {
   emptyReferralForm,
   SmartReferralFields,
@@ -294,7 +295,7 @@ function LeadFormBody({
   const [customFields, setCustomFields] = React.useState<Record<string, unknown>>({});
   const [screenshot, setScreenshot] = React.useState<File | null>(null);
   const [screenshotAttached, setScreenshotAttached] = React.useState(false);
-  const canAttachScreenshot = !isEdit && can("documents:create");
+  const canAttachScreenshot = !isEdit && canAttachLeadScreenshot(can, user);
 
   const leadSourcesQuery = useQuery({
     queryKey: ["lead-sources", "form"],

@@ -108,7 +108,19 @@ export function ReferralFields({
 
       <div className="space-y-1.5">
         <Label required>Referrer type</Label>
-        <Select value={value.referrerTypeCode} onValueChange={(v) => set("referrerTypeCode", v)}>
+        <Select
+          value={value.referrerTypeCode}
+          onValueChange={(v) =>
+            onChange({
+              ...value,
+              referrerTypeCode: v,
+              referrerUserId: "none",
+              referrerCustomerId: "none",
+              referrerPartnerId: "none",
+              referrerName: v === "other" ? value.referrerName : "",
+            })
+          }
+        >
           <SelectTrigger>
             <SelectValue placeholder="Select type" />
           </SelectTrigger>
@@ -191,7 +203,7 @@ export function ReferralFields({
               <SelectValue placeholder="Select partner" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="none">None — use name below</SelectItem>
+              <SelectItem value="none">Select…</SelectItem>
               {(partnersQuery.data ?? []).map((p) => (
                 <SelectItem key={p.id} value={p.id}>
                   {p.name}
@@ -203,17 +215,17 @@ export function ReferralFields({
         </div>
       )}
 
-      <div className="space-y-1.5 sm:col-span-2">
-        <Label required={typeCode === "other" || value.referrerUserId === "none"}>
-          Referred by (name)
-        </Label>
-        <Input
-          value={value.referrerName}
-          onChange={(e) => set("referrerName", e.target.value)}
-          placeholder="John Smith"
-          required={typeCode === "other"}
-        />
-      </div>
+      {typeCode === "other" ? (
+        <div className="space-y-1.5 sm:col-span-2">
+          <Label required>Referred by (name)</Label>
+          <Input
+            value={value.referrerName}
+            onChange={(e) => set("referrerName", e.target.value)}
+            placeholder="John Smith"
+            required
+          />
+        </div>
+      ) : null}
 
       <div className="space-y-1.5">
         <Label required>Referral date</Label>

@@ -19,6 +19,7 @@ import {
 import { LoadingState } from "@/components/ui/loading-state";
 import { useAuth } from "@/features/auth/auth-provider";
 import type { SessionUser } from "@/features/auth/types";
+import { canAttachLeadScreenshot } from "@/features/leads/can-attach-screenshot";
 import { emptyReferralForm } from "@/features/referrals/smart-referral-fields";
 import { crmApi, type DuplicateMatch, type Lead, type LeadSource, type Pipeline } from "@/lib/api/crm";
 import { env } from "@/lib/env";
@@ -233,7 +234,7 @@ function CreateLeadForm({
   const { can } = useAuth();
   // Sales executives always own what they create; the API enforces the assign scope for everyone else.
   const canAssignOwner = can("leads:assign") && user.roleCode !== "sales_executive";
-  const canAttachScreenshot = can("documents:create");
+  const canAttachScreenshot = canAttachLeadScreenshot(can, user);
   const timeZone = user.timezone || undefined;
   const me = React.useMemo(() => ({ id: user.id, fullName: user.fullName }), [user.id, user.fullName]);
 

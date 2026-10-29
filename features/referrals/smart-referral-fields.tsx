@@ -120,6 +120,8 @@ export function SmartReferralFields({
                 referrerUserId: "none",
                 referrerCustomerId: "none",
                 referrerPartnerId: "none",
+                // Free-text name is only for "Other"; clear when switching away.
+                referrerName: v === "other" ? value.referrerName : "",
               })
             }
           >
@@ -197,23 +199,18 @@ export function SmartReferralFields({
         </FormFieldSlot>
       ) : null}
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="space-y-1.5 sm:col-span-2">
-          <Label required={typeCode === "other" || !selectedReferrerValue}>
-            Referred by (name)
-          </Label>
+      {typeCode === "other" ? (
+        <FormFieldSlot label="Referred by (name)" required error={error}>
           <Input
             value={value.referrerName}
             onChange={(e) => set("referrerName", e.target.value)}
             placeholder="John Smith"
             aria-invalid={error ? true : undefined}
           />
-          {error && typeCode === "other" ? (
-            <p className="text-[12px] text-destructive" role="alert">
-              {error}
-            </p>
-          ) : null}
-        </div>
+        </FormFieldSlot>
+      ) : null}
+
+      <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label required>Referral date</Label>
           <DatePicker

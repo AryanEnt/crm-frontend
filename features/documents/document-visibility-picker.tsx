@@ -37,6 +37,9 @@ export function DocumentVisibilityPicker({
 
   const members: AdminUser[] = membersQuery.data?.data ?? [];
   const selected = new Set(value);
+  const allIds = members.map((m) => m.id);
+  const allSelected = allIds.length > 0 && allIds.every((id) => selected.has(id));
+  const someSelected = allIds.some((id) => selected.has(id));
 
   const toggle = (id: string, checked: boolean) => {
     if (checked) onChange([...value, id].filter((v, i, arr) => arr.indexOf(v) === i));
@@ -54,6 +57,16 @@ export function DocumentVisibilityPicker({
         <p className="text-[13px] text-foreground-muted">No Sales Executives on your team yet.</p>
       ) : (
         <ul className="max-h-40 space-y-1.5 overflow-y-auto rounded-md border border-border p-2">
+          <li>
+            <label className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 hover:bg-surface-muted">
+              <Checkbox
+                checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                onCheckedChange={(v) => onChange(v === true ? allIds : [])}
+                aria-label="Select all Sales Executives"
+              />
+              <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">Select all</span>
+            </label>
+          </li>
           {members.map((m) => {
             const checked = selected.has(m.id);
             return (

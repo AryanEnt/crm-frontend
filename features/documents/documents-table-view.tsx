@@ -18,7 +18,6 @@ import {
 } from "@/components/ui/data-table";
 import { BulkActionBar } from "@/components/ui/console/data-table";
 import { ColumnsMenu } from "@/components/ui/console/toolbar";
-import { StatusBadge } from "@/components/ui/status-badge";
 import { ErrorState } from "@/components/ui/error-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -42,9 +41,7 @@ import {
   CrmFormSection,
   CRM_FIELD_INPUT_CLASS,
 } from "@/components/forms";
-import { LeadCombobox } from "@/components/forms/entity-pickers";
 import { DatePicker } from "@/components/ui/date-picker";
-import { formTriggerClass } from "@/components/ui/dropdown-styles";
 import { leadHref } from "@/features/activities/activity-href";
 import { useAuth } from "@/features/auth/auth-provider";
 import { DocumentVisibilityPicker } from "@/features/documents/document-visibility-picker";
@@ -61,28 +58,6 @@ const DOC_STATUSES = [
   "missing",
   "expired",
 ] as const;
-
-const statusTone = (s: string) => {
-  switch (s) {
-    case "verified":
-      return "success" as const;
-    case "uploaded":
-      return "brand" as const;
-    case "requested":
-    case "missing":
-      return "warning" as const;
-    case "rejected":
-    case "expired":
-      return "danger" as const;
-    default:
-      return "neutral" as const;
-  }
-};
-
-function formatWhen(v?: string | null) {
-  if (!v) return "—";
-  return new Date(v).toLocaleString();
-}
 
 type DocumentLink = { leadId?: string; customerId?: string; dealId?: string };
 
@@ -106,7 +81,12 @@ export function DocumentsTableView({
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
 
   const params = React.useMemo(() => {
-    const p = new URLSearchParams({ limit: "50", offset: "0" });
+    const p = new URLSearchParams({
+      limit: "50",
+      offset: "0",
+      // Lead screenshots live under the lead Files tab only.
+      excludeScreenshots: "1",
+    });
     if (status !== "all") p.set("status", status);
     if (leadId) p.set("leadId", leadId);
     if (customerId) p.set("customerId", customerId);
@@ -174,26 +154,6 @@ export function DocumentsTableView({
           }
           return <span className="text-foreground-muted">{d.customerName || d.dealTitle || "—"}</span>;
         },
-      },
-      {
-        accessorKey: "status",
-        header: "Status",
-        cell: ({ row }) => (
-          <StatusBadge tone={statusTone(row.original.status)}>
-            {row.original.status}
-          </StatusBadge>
-        ),
-      },
-      {
-        id: "dates",
-        header: "Dates",
-        cell: ({ row }) => (
-          <div className="text-[11px] text-foreground-muted space-y-0.5">
-            <div>Req: {formatWhen(row.original.requestedDate)}</div>
-            <div>Up: {formatWhen(row.original.uploadedDate)}</div>
-            <div>Exp: {formatWhen(row.original.expiryDate)}</div>
-          </div>
-        ),
       },
       {
         id: "people",
@@ -268,7 +228,7 @@ export function DocumentsTableView({
         <PageHeader
           breadcrumbs={[{ label: "Workspace", href: "/" }, { label: "Documents" }]}
           title="Documents"
-          description="Upload and share files with your team."
+          description="Team Lead documents shared with your team. Lead screenshots stay on each lead’s Files tab."
           actions={
             <div className="flex gap-2">
               {can("documents:create") ? (
@@ -381,7 +341,6 @@ function RequestDocumentDialog({
 }) {
   const [name, setName] = React.useState("");
   const [type, setType] = React.useState("");
-  const [leadId, setLeadId] = React.useState("");
   const [expiryDate, setExpiryDate] = React.useState("");
   const [viewerUserIds, setViewerUserIds] = React.useState<string[]>([]);
   const [loading, setLoading] = React.useState(false);
@@ -390,7 +349,6 @@ function RequestDocumentDialog({
   if (open !== openedAt) {
     setOpenedAt(open);
     if (open) {
-      setLeadId("");
       setName("");
       setType("");
       setExpiryDate("");
@@ -426,7 +384,7 @@ function RequestDocumentDialog({
                   toast.error("Name and type are required");
                   return;
                 }
-                const link = linkBody(fixedLink, leadId);
+                const link = linkBody(fixedLink, "");
                 setLoading(true);
                 try {
                   await crmApi.requestDocument({
@@ -475,16 +433,6 @@ function RequestDocumentDialog({
           </FormFieldSlot>
         </CrmFormSection>
         <CrmFormSection title="Link to" divided>
-          {!hasFixedLink(fixedLink) ? (
-            <FormFieldSlot label="Lead">
-              <LeadCombobox
-                value={leadId || null}
-                onChange={(v) => setLeadId(v ?? "")}
-                triggerClassName={formTriggerClass}
-              />
-              <p className="text-[12px] text-foreground-subtle">Optional — leave empty for a shared team file.</p>
-            </FormFieldSlot>
-          ) : null}
           <FormFieldSlot label="Expiry date">
             <DatePicker
               aria-label="Expiry date"
@@ -619,7 +567,6 @@ function UploadDocumentDialog({
 }) {
   const [name, setName] = React.useState("");
   const [type, setType] = React.useState("");
-  const [leadId, setLeadId] = React.useState("");
   const [viewerUserIds, setViewerUserIds] = React.useState<string[]>([]);
   const [file, setFile] = React.useState<File | null>(null);
   const [loading, setLoading] = React.useState(false);
@@ -628,14 +575,13 @@ function UploadDocumentDialog({
   if (open !== openedAt) {
     setOpenedAt(open);
     if (open) {
-      setLeadId("");
       setViewerUserIds([]);
       setFile(null);
       setName("");
       setType("");
     }
   }
-  const link = linkBody(fixedLink, leadId);
+  const link = linkBody(fixedLink, "");
 
   return (
     <Modal open={open} onOpenChange={onOpenChange}>
@@ -670,13 +616,6 @@ function UploadDocumentDialog({
               placeholder="passport, contract…"
             />
           </div>
-          {!hasFixedLink(fixedLink) ? (
-            <div className="space-y-1.5">
-              <Label>Lead</Label>
-              <LeadCombobox value={leadId || null} onChange={(v) => setLeadId(v ?? "")} />
-              <p className="text-[12px] text-foreground-subtle">Optional — leave empty for a shared team file.</p>
-            </div>
-          ) : null}
           <div className="space-y-1.5">
             <Label>Visible to</Label>
             <DocumentVisibilityPicker value={viewerUserIds} onChange={setViewerUserIds} />

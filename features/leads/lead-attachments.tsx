@@ -3,20 +3,12 @@
 import * as React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Download, FileText, ImageIcon, ImagePlus, Loader2 } from "lucide-react";
+import { Download, FileText, ImageIcon, ImagePlus, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import {
-  Modal,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-  ModalTitle,
-} from "@/components/ui/modal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/features/auth/auth-provider";
 import { DocumentViewer } from "@/features/documents/document-viewer";
-import { DocumentVisibilityPicker } from "@/features/documents/document-visibility-picker";
+import { canAttachLeadScreenshot } from "@/features/leads/can-attach-screenshot";
 import { crmApi, type CrmDocument } from "@/lib/api/crm";
 import { formatRelative } from "@/lib/relative-time";
 import { MAX_SCREENSHOT_BYTES, formatSize, namedImage } from "./lead-screenshot-field";
@@ -26,20 +18,23 @@ const isImage = (d: CrmDocument) =>
   d.mimeType.startsWith("image/") ||
   d.type.toLowerCase() === "screenshot" ||
   d.category.toLowerCase() === "screenshot";
+const isScreenshot = (d: CrmDocument) =>
+  d.type.toLowerCase() === "screenshot" || d.category.toLowerCase() === "screenshot";
 
 export const leadDocumentsKey = (leadId: string) => ["documents", "lead", leadId];
 
 /** Screenshots and files attached to a lead, with an in-app viewer and quick screenshot upload. */
 export function LeadAttachments({ leadId }: { leadId: string }) {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const qc = useQueryClient();
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [viewing, setViewing] = React.useState<CrmDocument | null>(null);
-  const [pendingFile, setPendingFile] = React.useState<File | null>(null);
-  const [viewerUserIds, setViewerUserIds] = React.useState<string[]>([]);
   const [uploading, setUploading] = React.useState(false);
+  const [deletingId, setDeletingId] = React.useState<string | null>(null);
   const [now] = React.useState(() => Date.now());
-  const canUpload = can("documents:create");
+  const canUpload = canAttachLeadScreenshot(can, user);
+  const canDeleteDoc = (d: CrmDocument) =>
+    can("documents:delete") || (user?.roleCode === "sales_executive" && isScreenshot(d));
 
   const docsQuery = useQuery({
     queryKey: leadDocumentsKey(leadId),
@@ -50,7 +45,15 @@ export function LeadAttachments({ leadId }: { leadId: string }) {
   const images = docs.filter(isImage);
   const files = docs.filter((d) => !isImage(d));
 
-  const pickFile = (file: File | undefined) => {
+  const refresh = async () => {
+    await Promise.all([
+      qc.invalidateQueries({ queryKey: leadDocumentsKey(leadId) }),
+      qc.invalidateQueries({ queryKey: ["documents"] }),
+      qc.invalidateQueries({ queryKey: ["timeline"] }),
+    ]);
+  };
+
+  const upload = async (file: File | undefined) => {
     if (inputRef.current) inputRef.current.value = "";
     if (!file) return;
     if (!file.type.startsWith("image/")) {
@@ -61,30 +64,37 @@ export function LeadAttachments({ leadId }: { leadId: string }) {
       toast.error("That image is over 10 MB. Use a smaller screenshot.");
       return;
     }
-    setPendingFile(namedImage(file));
-    setViewerUserIds([]);
-  };
-
-  const upload = async () => {
-    if (!pendingFile) return;
+    const named = namedImage(file);
     const body = new FormData();
-    body.append("file", pendingFile);
-    body.append("name", pendingFile.name || "Screenshot");
+    body.append("file", named);
+    body.append("name", named.name || "Screenshot");
     body.append("type", "screenshot");
     body.append("category", "screenshot");
     body.append("leadId", leadId);
-    body.append("viewerUserIds", JSON.stringify(viewerUserIds));
     setUploading(true);
     try {
       await crmApi.uploadDocument(body);
-      await qc.invalidateQueries({ queryKey: leadDocumentsKey(leadId) });
-      setPendingFile(null);
-      setViewerUserIds([]);
+      await refresh();
       toast.success("Screenshot added");
     } catch (err) {
       toast.error(err instanceof Error && err.message ? err.message : "Couldn't upload the screenshot.");
     } finally {
       setUploading(false);
+    }
+  };
+
+  const remove = async (d: CrmDocument) => {
+    if (!window.confirm(`Delete “${d.name}”?`)) return;
+    setDeletingId(d.id);
+    try {
+      await crmApi.deleteDocument(d.id);
+      if (viewing?.id === d.id) setViewing(null);
+      await refresh();
+      toast.success("Deleted");
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : "Couldn't delete.");
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -113,29 +123,60 @@ export function LeadAttachments({ leadId }: { leadId: string }) {
       ) : (
         <>
           {images.length > 0 ? (
-            <ul className="grid grid-cols-3 gap-2">
-              {images.map((d) => (
-                <li key={d.id}>
-                  <button
-                    type="button"
-                    onClick={() => setViewing(d)}
-                    title={d.name}
-                    className="group relative block aspect-[4/3] w-full overflow-hidden rounded-md border border-border bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={crmApi.viewDocumentUrl(d.id)}
-                      alt={d.name}
-                      loading="lazy"
-                      className="size-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
-                    />
-                    <span className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/60 to-transparent px-1.5 pb-1 pt-4 text-left text-[10px] font-medium text-white">
-                      {formatRelative(d.uploadedDate || d.createdAt, now)}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <div className="space-y-1.5">
+              <p className="text-[12px] text-foreground-subtle">
+                <span className="font-semibold text-foreground">*</span> Screenshot
+              </p>
+              <ul className="grid grid-cols-3 gap-2">
+                {images.map((d) => (
+                  <li key={d.id} className="relative">
+                    {canDeleteDoc(d) ? (
+                      <button
+                        type="button"
+                        aria-label={`Delete ${d.name}`}
+                        disabled={deletingId === d.id}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          void remove(d);
+                        }}
+                        className="absolute right-1 top-1 z-10 inline-flex size-6 items-center justify-center rounded-md bg-black/60 text-white hover:bg-black/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+                      >
+                        {deletingId === d.id ? (
+                          <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                        ) : (
+                          <X className="size-3.5" aria-hidden />
+                        )}
+                      </button>
+                    ) : (
+                      <span
+                        className="pointer-events-none absolute right-1 top-1 z-10 rounded bg-black/55 px-1.5 py-0.5 text-[12px] font-semibold leading-none text-white"
+                        aria-label="Screenshot"
+                      >
+                        *
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setViewing(d)}
+                      title={`${d.name} (screenshot)`}
+                      className="group relative block aspect-[4/3] w-full overflow-hidden rounded-md border border-border bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={crmApi.viewDocumentUrl(d.id)}
+                        alt={d.name}
+                        loading="lazy"
+                        className="size-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
+                      />
+                      <span className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/60 to-transparent px-1.5 pb-1 pt-4 text-left text-[10px] font-medium text-white">
+                        {formatRelative(d.uploadedDate || d.createdAt, now)}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
           ) : null}
           {files.length > 0 ? (
             <ul className="divide-y divide-border rounded-md border border-border">
@@ -162,6 +203,21 @@ export function LeadAttachments({ leadId }: { leadId: string }) {
                   >
                     <Download className="size-4" aria-hidden />
                   </a>
+                  {canDeleteDoc(d) ? (
+                    <button
+                      type="button"
+                      aria-label={`Delete ${d.name}`}
+                      disabled={deletingId === d.id}
+                      onClick={() => void remove(d)}
+                      className="inline-flex size-8 items-center justify-center rounded-md text-foreground-muted hover:bg-danger/10 hover:text-danger"
+                    >
+                      {deletingId === d.id ? (
+                        <Loader2 className="size-4 animate-spin" aria-hidden />
+                      ) : (
+                        <X className="size-4" aria-hidden />
+                      )}
+                    </button>
+                  ) : null}
                 </li>
               ))}
             </ul>
@@ -178,8 +234,8 @@ export function LeadAttachments({ leadId }: { leadId: string }) {
             disabled={uploading}
             onClick={() => inputRef.current?.click()}
           >
-            <ImagePlus className="size-3.5" />
-            Add screenshot
+            {uploading ? <Loader2 className="size-3.5 animate-spin" /> : <ImagePlus className="size-3.5" />}
+            {uploading ? "Uploading…" : "Add screenshot"}
           </Button>
           <input
             ref={inputRef}
@@ -188,34 +244,10 @@ export function LeadAttachments({ leadId }: { leadId: string }) {
             className="hidden"
             tabIndex={-1}
             aria-hidden
-            onChange={(event) => pickFile(event.target.files?.[0])}
+            onChange={(event) => void upload(event.target.files?.[0])}
           />
         </>
       ) : null}
-
-      <Modal open={Boolean(pendingFile)} onOpenChange={(open) => !open && !uploading && setPendingFile(null)}>
-        <ModalContent>
-          <ModalHeader>
-            <ModalTitle>Add screenshot</ModalTitle>
-          </ModalHeader>
-          <div className="grid gap-3">
-            <p className="truncate text-[13px] text-foreground-muted">{pendingFile?.name}</p>
-            <div className="space-y-1.5">
-              <Label>Visible to</Label>
-              <DocumentVisibilityPicker value={viewerUserIds} onChange={setViewerUserIds} />
-            </div>
-          </div>
-          <ModalFooter>
-            <Button variant="outline" disabled={uploading} onClick={() => setPendingFile(null)}>
-              Cancel
-            </Button>
-            <Button loading={uploading} onClick={() => void upload()}>
-              {uploading ? <Loader2 className="size-3.5 animate-spin" /> : null}
-              Upload
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
 
       <DocumentViewer doc={viewing} onClose={() => setViewing(null)} />
     </div>
