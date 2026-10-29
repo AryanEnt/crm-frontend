@@ -52,7 +52,27 @@ export function ClosedBoard({
   onOpenLead: (leadId: string) => void;
   onMove: (lead: LeadBoardCard, to: LeadBoardStage) => void;
 }) {
-  const outcome = data.outcomeStage;
+  // Won lists by won_at and only needs a Won stage for column chrome; Lost still needs its stage.
+  const outcome =
+    data.outcomeStage ??
+    (filters.status === "won"
+      ? ({
+          id: "won",
+          name: "Won",
+          position: 0,
+          isWon: true,
+          isLost: false,
+          probability: 100,
+          visualAccent: "",
+          requiredFields: [],
+          requiredActivities: [],
+          requiredDocuments: [],
+          count: 0,
+          totalValue: 0,
+          hasMore: false,
+          leads: [],
+        } satisfies LeadBoardStage)
+      : null);
   if (!outcome) return null;
   return (
     <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-4 crm-scroll">
@@ -90,7 +110,15 @@ function ClosedBoardColumn({
   onMove: (lead: LeadBoardCard, to: LeadBoardStage) => void;
 }) {
   const params = (offset: number) =>
-    closedLeadsParams(data.pipelineId, outcome.id, filters, column.interval, PAGE_SIZE, offset);
+    closedLeadsParams(
+      data.pipelineId,
+      outcome.id,
+      filters,
+      column.interval,
+      PAGE_SIZE,
+      offset,
+      outcome.isWon ? "won" : "lost",
+    );
   const query = useInfiniteQuery({
     queryKey: ["leads", "pipeline-closed-board", params(0).toString()],
     queryFn: ({ pageParam }) => crmApi.listLeads(params(pageParam)),

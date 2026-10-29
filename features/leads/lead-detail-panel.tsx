@@ -159,6 +159,8 @@ function PanelBody({ leadId, onClose }: { leadId: string; onClose: () => void })
     void qc.invalidateQueries({ queryKey: ["leads"] });
     void qc.invalidateQueries({ queryKey: ["lead-insights"] });
     void qc.invalidateQueries({ queryKey: ["timeline"] });
+    void qc.invalidateQueries({ queryKey: ["calendar"] });
+    void qc.invalidateQueries({ queryKey: ["activities"] });
   }, [qc, leadId]);
 
   const move = useLeadMove({ onChanged: refresh });
@@ -166,14 +168,13 @@ function PanelBody({ leadId, onClose }: { leadId: string; onClose: () => void })
   const completeMutation = useMutation({
     mutationFn: async (activityId: string | null) => {
       if (activityId) return crmApi.updateActivity(activityId, { status: "completed" });
-      // Many leads only have next_activity_at (no activity row) — clear that deadline.
+      // Clears next_activity_at and cancels open follow-up activities on the server.
       await crmApi.updateLead(leadId, { nextActivityAt: "" });
       return null;
     },
     onSuccess: (activity) => {
       toast.success("Marked done", { description: activity ? leadMovedMessage(activity) : undefined });
       void qc.invalidateQueries({ queryKey: ["lead", leadId, "next-activity"] });
-      void qc.invalidateQueries({ queryKey: ["activities"] });
       refresh();
       const needsNext = activity ? activity.needsNextActivity : true;
       if (needsNext && can("activities:create")) setActivityOpen({});
@@ -241,6 +242,11 @@ function PanelBody({ leadId, onClose }: { leadId: string; onClose: () => void })
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2 text-meta">
           {stage ? <StagePill stage={stage} stages={stages} /> : lead.stageName ? <span>{lead.stageName}</span> : null}
+          {lead.wonAt && lead.status !== "lost" ? (
+            <span className="rounded-md bg-stage-won-soft px-1.5 py-0.5 text-caption font-medium text-stage-won-ink">
+              Won {formatDate(lead.wonAt)}
+            </span>
+          ) : null}
           <span className="text-numeral-sm text-ink">
             {lead.potentialValue != null ? formatLeadMoney(lead.potentialValue, lead.currency) : "No value"}
           </span>
@@ -412,7 +418,6 @@ function PanelBody({ leadId, onClose }: { leadId: string; onClose: () => void })
         onCreated={() => {
           setActivityOpen(null);
           void qc.invalidateQueries({ queryKey: ["lead", leadId, "next-activity"] });
-          void qc.invalidateQueries({ queryKey: ["activities"] });
           refresh();
         }}
       />

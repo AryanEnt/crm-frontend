@@ -87,6 +87,15 @@ describe("API params", () => {
     assert.equal(closed.get("limit"), "25");
     assert.equal(closed.get("offset"), "25");
   });
+
+  it("Won lists by won_at, not the sales Won stage (leads hand off to Nurturing)", () => {
+    const won = closedListParams("p1", "won-stage", parse("status=won&sort=closed&order=desc"), 25, undefined, "won");
+    assert.equal(won.get("status"), "won");
+    assert.equal(won.has("stageId"), false);
+    assert.equal(won.has("pipelineId"), false);
+    assert.equal(won.get("sort"), "closed");
+    assert.equal(won.get("limit"), "25");
+  });
 });
 
 describe("filter chips", () => {

@@ -74,6 +74,7 @@ export function usePipelineLeads(filters: PipelineFilters, closedPageSize = CLOS
     [boardQuery.data, pending],
   );
   const stages = React.useMemo(() => board?.stages ?? [], [board]);
+  // Board Won column is filled by won_at (sales → Nurturing handoff), so totals match that column.
   const totals = React.useMemo(() => derivePipelineTotals(stages), [stages]);
   const counts = React.useMemo(() => statusCounts(totals), [totals]);
   const openStages = React.useMemo(() => stages.filter((s) => !s.isWon && !s.isLost), [stages]);
@@ -82,9 +83,19 @@ export function usePipelineLeads(filters: PipelineFilters, closedPageSize = CLOS
   const currency = primaryCurrency(board);
 
   const outcomeStage = filters.status === "won" ? wonStage : filters.status === "lost" ? lostStage : null;
-  const closedQs = outcomeStage
-    ? closedListParams(pipelineId, outcomeStage.id, filters, closedPageSize, closedRange).toString()
-    : "";
+  const closedOutcome = filters.status === "won" || filters.status === "lost" ? filters.status : null;
+  // Won needs no stage row (query is by won_at); Lost still needs the Lost stage on this pipeline.
+  const closedQs =
+    closedOutcome === "won" || (closedOutcome === "lost" && outcomeStage)
+      ? closedListParams(
+          pipelineId,
+          outcomeStage?.id ?? "",
+          filters,
+          closedPageSize,
+          closedRange,
+          closedOutcome,
+        ).toString()
+      : "";
   const closedQuery = useQuery({
     queryKey: ["leads", "pipeline-closed", closedQs],
     queryFn: () => crmApi.listLeads(new URLSearchParams(closedQs)),

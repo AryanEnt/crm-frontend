@@ -175,8 +175,12 @@ export function boardParams(pipelineId: string, f: PipelineFilters): URLSearchPa
 const SORT_PARAM: Record<ClosedSortKey, string> = { name: "name", value: "value", closed: "closed" };
 
 /**
- * Leads in the Won or Lost stage that closed within `interval`, sorted, one page at a time.
- * The next-action filter is left out: closed leads have no next action to filter on.
+ * Won / Lost leads that closed within `interval`, sorted, one page at a time.
+ * Next-action is left out: closed leads have no next action to filter on.
+ *
+ * Won: match by `won_at` (not current stage). Sales Won hands off to Nurturing, so
+ * stage/pipeline membership would empty the Won view.
+ * Lost: still the Lost stage on this pipeline (no handoff).
  */
 export function closedLeadsParams(
   pipelineId: string,
@@ -185,11 +189,15 @@ export function closedLeadsParams(
   interval: Interval,
   limit: number,
   offset: number,
+  outcome: "won" | "lost" = f.status === "won" ? "won" : "lost",
 ): URLSearchParams {
-  const p = sharedParams(pipelineId, { ...f, next: "" });
-  p.set("stageId", stageId);
-  // The stage decides membership, exactly like the board column; status must not narrow it further.
-  p.set("status", "all");
+  const p = sharedParams(outcome === "won" ? "" : pipelineId, { ...f, next: "" });
+  if (outcome === "won") {
+    p.set("status", "won");
+  } else {
+    p.set("stageId", stageId);
+    p.set("status", "all");
+  }
   setIntervalParams(p, interval);
   p.set("sort", SORT_PARAM[f.sort]);
   p.set("order", f.order);
@@ -205,8 +213,9 @@ export function closedListParams(
   f: PipelineFilters,
   pageSize: number,
   interval: Interval = { from: null, to: null },
+  outcome: "won" | "lost" = f.status === "won" ? "won" : "lost",
 ): URLSearchParams {
-  return closedLeadsParams(pipelineId, stageId, f, interval, pageSize, (f.page - 1) * pageSize);
+  return closedLeadsParams(pipelineId, stageId, f, interval, pageSize, (f.page - 1) * pageSize, outcome);
 }
 
 export type FilterChipKey = "q" | "next" | "owner" | "source" | "value" | "closed";

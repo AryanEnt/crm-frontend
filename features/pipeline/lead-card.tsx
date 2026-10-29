@@ -51,7 +51,10 @@ export function LeadCard({
 }) {
   const { user } = useAuth();
   const timezone = user?.timezone || undefined;
-  const closed = lead.status === "won" || lead.status === "lost";
+  // Sales Won keeps wonAt after handoff to Nurturing (status becomes open again).
+  const won = lead.status === "won" || Boolean(lead.wonAt);
+  const lost = lead.status === "lost";
+  const closed = won || lost;
   const tone = nextActionTone(lead.nextActivityAt, timezone);
   const days = daysSince(lead.stageEnteredAt);
   const showMenu = !overlay && canEdit && !!stages?.length;
@@ -94,18 +97,14 @@ export function LeadCard({
         <OwnerAvatar id={lead.ownerUserId} name={lead.ownerName} />
       </div>
 
-      {closed ? (
-        <p
-          className={cn(
-            "mt-2 truncate text-caption",
-            lead.status === "won" ? "text-stage-won-ink" : "text-stage-lost-ink",
-          )}
-        >
-          {lead.status === "won"
-            ? `Won ${formatDate(lead.wonAt)}`
-            : `Lost${lead.lostReason ? ` · ${lead.lostReason}` : ` ${formatDate(lead.lostAt)}`}`}
+      {lost ? (
+        <p className="mt-2 truncate text-caption text-stage-lost-ink">
+          {`Lost${lead.lostReason ? ` · ${lead.lostReason}` : ` ${formatDate(lead.lostAt)}`}`}
         </p>
-      ) : lead.documentDeadlineAt ? (
+      ) : won ? (
+        <p className="mt-2 truncate text-caption text-stage-won-ink">{`Won ${formatDate(lead.wonAt)}`}</p>
+      ) : null}
+      {!lost && lead.documentDeadlineAt ? (
         <p
           className={cn(
             "mt-2 flex min-w-0 items-center gap-1.5 text-caption",
@@ -115,7 +114,7 @@ export function LeadCard({
           <CalendarClock className="size-3.5 shrink-0" aria-hidden />
           <span className="truncate font-medium">{formatDocumentDeadline(lead.documentDeadlineAt, timezone)}</span>
         </p>
-      ) : (
+      ) : !closed ? (
         <p className={cn("mt-2 flex min-w-0 items-center gap-1.5 text-caption", TONE_CLASS[tone])}>
           <CalendarClock className="size-3.5 shrink-0" aria-hidden />
           <span className="truncate">
@@ -125,7 +124,7 @@ export function LeadCard({
             ) : null}
           </span>
         </p>
-      )}
+      ) : null}
     </article>
   );
 }
