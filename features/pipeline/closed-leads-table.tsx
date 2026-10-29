@@ -29,7 +29,7 @@ export function ClosedLeadsTable({
   onOpenLead,
   empty,
 }: {
-  kind: "won" | "lost";
+  kind: "won" | "lost" | "complete";
   rows: Lead[];
   total: number;
   loading: boolean;
@@ -105,7 +105,7 @@ export function ClosedLeadsTable({
         meta: { label: "Closed" },
         cell: ({ row }) => (
           <span className="whitespace-nowrap tabular-nums text-ink-secondary">
-            {formatDate(kind === "won" ? row.original.wonAt : row.original.lostAt)}
+            {formatDate(kind === "lost" ? row.original.lostAt : row.original.wonAt)}
           </span>
         ),
       },

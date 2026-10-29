@@ -63,6 +63,13 @@ export function UnifiedTimeline({
     queryKey: ["timeline-types"],
     queryFn: () => crmApi.listTimelineTypes(),
   });
+  const filterTypes = typesQuery.data ?? [];
+
+  // Drop a stale filter if the curated type list no longer includes it.
+  React.useEffect(() => {
+    if (typeFilter === "all" || filterTypes.length === 0) return;
+    if (!filterTypes.some((t) => t.code === typeFilter)) setTypeFilter("all");
+  }, [filterTypes, typeFilter]);
 
   const params = React.useMemo(() => {
     const p = new URLSearchParams({
@@ -117,18 +124,13 @@ export function UnifiedTimeline({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <Select
-          value={typeFilter}
-          onValueChange={(v) => {
-            setTypeFilter(v);
-          }}
-        >
-          <SelectTrigger className="w-[220px]">
+        <Select value={typeFilter} onValueChange={setTypeFilter}>
+          <SelectTrigger className="h-9 w-[12.5rem] shrink-0" aria-label="Filter timeline by event type">
             <SelectValue placeholder="Event type" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All events</SelectItem>
-            {(typesQuery.data ?? []).map((t) => (
+            {filterTypes.map((t) => (
               <SelectItem key={t.code} value={t.code}>
                 {t.label}
               </SelectItem>

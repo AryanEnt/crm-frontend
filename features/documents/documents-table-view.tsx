@@ -4,7 +4,8 @@ import * as React from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
-import { BadgeCheck, Download, Eye, FileUp, Plus, Trash2 } from "lucide-react";
+import { Download, FileText, FileUp, Plus, Trash2, X } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
@@ -46,6 +47,7 @@ import { DatePicker } from "@/components/ui/date-picker";
 import { formTriggerClass } from "@/components/ui/dropdown-styles";
 import { leadHref } from "@/features/activities/activity-href";
 import { useAuth } from "@/features/auth/auth-provider";
+import { DocumentVisibilityPicker } from "@/features/documents/document-visibility-picker";
 import { crmApi, type CrmDocument } from "@/lib/api/crm";
 import { useColumnVisibility } from "@/lib/column-visibility";
 import { DocumentViewer } from "./document-viewer";
@@ -99,8 +101,9 @@ export function DocumentsTableView({
   const [uploadOpen, setUploadOpen] = React.useState(false);
   const [selected, setSelected] = React.useState<CrmDocument[]>([]);
   const [selectionResetKey, setSelectionResetKey] = React.useState(0);
-  const [bulkPending, setBulkPending] = React.useState<"verify" | "delete" | null>(null);
+  const [bulkPending, setBulkPending] = React.useState(false);
   const [viewing, setViewing] = React.useState<CrmDocument | null>(null);
+  const [deletingId, setDeletingId] = React.useState<string | null>(null);
 
   const params = React.useMemo(() => {
     const p = new URLSearchParams({ limit: "50", offset: "0" });
@@ -119,27 +122,21 @@ export function DocumentsTableView({
 
   const invalidate = () => void qc.invalidateQueries({ queryKey: ["documents"] });
 
-  const verifyMutation = useMutation({
-    mutationFn: (id: string) => crmApi.verifyDocument(id),
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => crmApi.deleteDocument(id),
     onSuccess: () => {
       invalidate();
-      toast.success("Document verified");
+      toast.success("Document deleted");
     },
-    onError: (err: Error) => toast.error(err.message || "Could not verify document"),
+    onError: (err: Error) => toast.error(err.message || "Could not delete document"),
+    onSettled: () => setDeletingId(null),
   });
-  const rejectMutation = useMutation({
-    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
-      crmApi.rejectDocument(id, reason),
-    onSuccess: () => {
-      invalidate();
-      toast.success("Document rejected");
-    },
-    onError: (err: Error) => toast.error(err.message || "Could not reject document"),
-  });
+
+  const canDelete = can("documents:delete");
 
   const columns = React.useMemo<ColumnDef<CrmDocument>[]>(
     () => [
-      createSelectColumn<CrmDocument>(),
+      ...(canDelete ? [createSelectColumn<CrmDocument>()] : []),
       {
         accessorKey: "name",
         header: ({ column }) => <SortableHeader column={column} title="Name" />,
@@ -202,9 +199,8 @@ export function DocumentsTableView({
         id: "people",
         header: "By",
         cell: ({ row }) => (
-          <div className="text-[11px] text-foreground-muted space-y-0.5">
-            <div>↑ {row.original.uploadedByName ?? "—"}</div>
-            <div>✓ {row.original.verifiedByName ?? "—"}</div>
+          <div className="text-[11px] text-foreground-muted">
+            {row.original.uploadedByName ?? "—"}
           </div>
         ),
       },
@@ -216,40 +212,26 @@ export function DocumentsTableView({
           return (
             <div className="flex flex-wrap justify-end gap-1">
               {d.fileKey ? (
-                <>
-                  <Button size="sm" variant="ghost" onClick={() => setViewing(d)}>
-                    <Eye className="size-3.5" aria-hidden />
-                    View
-                  </Button>
-                  <Button size="sm" variant="ghost" asChild>
-                    <a href={crmApi.downloadDocumentUrl(d.id)} download={d.name} aria-label={`Download ${d.name}`}>
-                      <Download className="size-3.5" aria-hidden />
-                    </a>
-                  </Button>
-                </>
-              ) : null}
-              {can("documents:edit") && (d.status === "uploaded" || d.status === "rejected") ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  loading={verifyMutation.isPending}
-                  onClick={() => verifyMutation.mutate(d.id)}
-                >
-                  Verify
+                <Button size="sm" variant="ghost" asChild>
+                  <a href={crmApi.downloadDocumentUrl(d.id)} download={d.name} aria-label={`Download ${d.name}`}>
+                    <Download className="size-3.5" aria-hidden />
+                  </a>
                 </Button>
               ) : null}
-              {can("documents:edit") &&
-              (d.status === "uploaded" || d.status === "verified") ? (
+              {canDelete ? (
                 <Button
                   size="sm"
-                  variant="outline"
-                  loading={rejectMutation.isPending}
+                  variant="ghost"
+                  className="text-danger hover:bg-danger/10 hover:text-danger"
+                  loading={deletingId === d.id}
                   onClick={() => {
-                    const reason = window.prompt("Rejection reason");
-                    if (reason) rejectMutation.mutate({ id: d.id, reason });
+                    if (!window.confirm(`Delete “${d.name}”?`)) return;
+                    setDeletingId(d.id);
+                    deleteMutation.mutate(d.id);
                   }}
                 >
-                  Reject
+                  <Trash2 className="size-3.5" aria-hidden />
+                  Delete
                 </Button>
               ) : null}
             </div>
@@ -257,31 +239,16 @@ export function DocumentsTableView({
         },
       },
     ],
-    [can, verifyMutation, rejectMutation],
+    [canDelete, deleteMutation, deletingId],
   );
 
   const columnPrefs = useColumnVisibility("documents", columns);
 
-  /** Only uploaded or rejected documents can move to verified; skip the rest. */
-  const verifiable = selected.filter((d) => d.status === "uploaded" || d.status === "rejected");
-
-  const verifySelected = async () => {
-    setBulkPending("verify");
-    const result = await runBulk(verifiable, (d) => crmApi.verifyDocument(d.id));
-    setBulkPending(null);
-    if (result.ok > 0) {
-      invalidate();
-      setSelectionResetKey((k) => k + 1);
-    }
-    const message = bulkMessage(result, "document", "verified");
-    if (result.failed > 0) toast.error(message);
-    else toast.success(message);
-  };
-
   const deleteSelected = async () => {
-    setBulkPending("delete");
+    if (!window.confirm(`Delete ${selected.length} document${selected.length === 1 ? "" : "s"}?`)) return;
+    setBulkPending(true);
     const result = await runBulk(selected, (d) => crmApi.deleteDocument(d.id));
-    setBulkPending(null);
+    setBulkPending(false);
     if (result.ok > 0) {
       invalidate();
       setSelectionResetKey((k) => k + 1);
@@ -301,7 +268,7 @@ export function DocumentsTableView({
         <PageHeader
           breadcrumbs={[{ label: "Workspace", href: "/" }, { label: "Documents" }]}
           title="Documents"
-          description="Request, upload, and verify files for your leads."
+          description="Upload and share files with your team."
           actions={
             <div className="flex gap-2">
               {can("documents:create") ? (
@@ -351,34 +318,18 @@ export function DocumentsTableView({
         </Select>
       </FilterBar>
 
-      {can("documents:edit") || can("documents:delete") ? (
+      {canDelete ? (
         <BulkActionBar count={selected.length} onClear={() => setSelectionResetKey((k) => k + 1)}>
-          {can("documents:edit") ? (
-            <ConsoleButton
-              size="sm"
-              variant="secondary"
-              loading={bulkPending === "verify"}
-              disabled={bulkPending !== null || verifiable.length === 0}
-              onClick={() => void verifySelected()}
-            >
-              <BadgeCheck aria-hidden />
-              {verifiable.length === selected.length
-                ? "Verify"
-                : `Verify ${verifiable.length} of ${selected.length}`}
-            </ConsoleButton>
-          ) : null}
-          {can("documents:delete") ? (
-            <ConsoleButton
-              size="sm"
-              variant="secondary"
-              loading={bulkPending === "delete"}
-              disabled={bulkPending !== null}
-              onClick={() => void deleteSelected()}
-            >
-              <Trash2 aria-hidden />
-              Delete
-            </ConsoleButton>
-          ) : null}
+          <ConsoleButton
+            size="sm"
+            variant="secondary"
+            loading={bulkPending}
+            disabled={bulkPending}
+            onClick={() => void deleteSelected()}
+          >
+            <Trash2 aria-hidden />
+            Delete
+          </ConsoleButton>
         </BulkActionBar>
       ) : null}
 
@@ -432,6 +383,7 @@ function RequestDocumentDialog({
   const [type, setType] = React.useState("");
   const [leadId, setLeadId] = React.useState("");
   const [expiryDate, setExpiryDate] = React.useState("");
+  const [viewerUserIds, setViewerUserIds] = React.useState<string[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [openedAt, setOpenedAt] = React.useState(open);
 
@@ -442,6 +394,7 @@ function RequestDocumentDialog({
       setName("");
       setType("");
       setExpiryDate("");
+      setViewerUserIds([]);
     }
   }
 
@@ -474,10 +427,6 @@ function RequestDocumentDialog({
                   return;
                 }
                 const link = linkBody(fixedLink, leadId);
-                if (!hasFixedLink(link)) {
-                  toast.error("Choose the lead this document is for");
-                  return;
-                }
                 setLoading(true);
                 try {
                   await crmApi.requestDocument({
@@ -487,6 +436,7 @@ function RequestDocumentDialog({
                     customerId: link.customerId ?? null,
                     dealId: link.dealId ?? null,
                     expiryDate: expiryDate || null,
+                    viewerUserIds,
                   });
                   onOpenChange(false);
                   onDone();
@@ -526,12 +476,13 @@ function RequestDocumentDialog({
         </CrmFormSection>
         <CrmFormSection title="Link to" divided>
           {!hasFixedLink(fixedLink) ? (
-            <FormFieldSlot label="Lead" required>
+            <FormFieldSlot label="Lead">
               <LeadCombobox
                 value={leadId || null}
                 onChange={(v) => setLeadId(v ?? "")}
                 triggerClassName={formTriggerClass}
               />
+              <p className="text-[12px] text-foreground-subtle">Optional — leave empty for a shared team file.</p>
             </FormFieldSlot>
           ) : null}
           <FormFieldSlot label="Expiry date">
@@ -544,8 +495,114 @@ function RequestDocumentDialog({
             />
           </FormFieldSlot>
         </CrmFormSection>
+        <CrmFormSection title="Visible to" divided>
+          <DocumentVisibilityPicker value={viewerUserIds} onChange={setViewerUserIds} />
+        </CrmFormSection>
       </div>
     </QuickCreateDrawer>
+  );
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function UploadFileDropzone({
+  file,
+  onChange,
+}: {
+  file: File | null;
+  onChange: (file: File | null) => void;
+}) {
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const [dragOver, setDragOver] = React.useState(false);
+  const preview = React.useMemo(() => {
+    if (!file || !file.type.startsWith("image/")) return null;
+    return URL.createObjectURL(file);
+  }, [file]);
+
+  React.useEffect(() => {
+    if (!preview) return;
+    return () => URL.revokeObjectURL(preview);
+  }, [preview]);
+
+  const take = (next: File | null) => {
+    onChange(next);
+    if (!next && inputRef.current) inputRef.current.value = "";
+  };
+
+  if (file) {
+    return (
+      <div className="flex items-center gap-3 rounded-md border border-border bg-surface p-3">
+        {preview ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={preview} alt="" className="size-12 shrink-0 rounded object-cover" />
+        ) : (
+          <span className="inline-flex size-12 shrink-0 items-center justify-center rounded-md bg-surface-muted text-foreground-muted">
+            <FileText className="size-5" aria-hidden />
+          </span>
+        )}
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[13px] font-medium text-foreground">{file.name}</p>
+          <p className="text-[12px] text-foreground-subtle">{formatFileSize(file.size)}</p>
+        </div>
+        <button
+          type="button"
+          className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-foreground-muted hover:bg-surface-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label="Remove file"
+          onClick={() => take(null)}
+        >
+          <X className="size-4" aria-hidden />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        onDragEnter={(e) => {
+          e.preventDefault();
+          setDragOver(true);
+        }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          take(e.dataTransfer.files?.[0] ?? null);
+        }}
+        className={cn(
+          "flex w-full items-center gap-3 rounded-md border border-dashed px-3 py-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          dragOver
+            ? "border-brand bg-brand-soft"
+            : "border-border bg-surface hover:border-brand hover:bg-surface-muted",
+        )}
+      >
+        <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-md bg-surface-muted text-foreground-muted">
+          <FileUp className="size-4" aria-hidden />
+        </span>
+        <span className="min-w-0">
+          <span className="block text-[13px] font-medium text-foreground">Drop a file here or browse</span>
+          <span className="block text-[12px] text-foreground-subtle">PDF, images, Word, Excel — any file type</span>
+        </span>
+      </button>
+      <input
+        ref={inputRef}
+        type="file"
+        className="hidden"
+        tabIndex={-1}
+        aria-hidden
+        onChange={(e) => take(e.target.files?.[0] ?? null)}
+      />
+    </>
   );
 }
 
@@ -563,13 +620,20 @@ function UploadDocumentDialog({
   const [name, setName] = React.useState("");
   const [type, setType] = React.useState("");
   const [leadId, setLeadId] = React.useState("");
+  const [viewerUserIds, setViewerUserIds] = React.useState<string[]>([]);
   const [file, setFile] = React.useState<File | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [openedAt, setOpenedAt] = React.useState(open);
 
   if (open !== openedAt) {
     setOpenedAt(open);
-    if (open) setLeadId("");
+    if (open) {
+      setLeadId("");
+      setViewerUserIds([]);
+      setFile(null);
+      setName("");
+      setType("");
+    }
   }
   const link = linkBody(fixedLink, leadId);
 
@@ -582,11 +646,12 @@ function UploadDocumentDialog({
         <div className="grid gap-3">
           <div className="space-y-1.5">
             <Label required>File</Label>
-            <Input
-              type="file"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              required
-              aria-required="true"
+            <UploadFileDropzone
+              file={file}
+              onChange={(next) => {
+                setFile(next);
+                if (next && !name.trim()) setName(next.name);
+              }}
             />
           </div>
           <div className="space-y-1.5">
@@ -594,19 +659,28 @@ function UploadDocumentDialog({
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder={file?.name ?? ""}
+              placeholder={file?.name ?? "Document name"}
             />
           </div>
           <div className="space-y-1.5">
             <Label>Type</Label>
-            <Input value={type} onChange={(e) => setType(e.target.value)} />
+            <Input
+              value={type}
+              onChange={(e) => setType(e.target.value)}
+              placeholder="passport, contract…"
+            />
           </div>
           {!hasFixedLink(fixedLink) ? (
             <div className="space-y-1.5">
-              <Label required>Lead</Label>
+              <Label>Lead</Label>
               <LeadCombobox value={leadId || null} onChange={(v) => setLeadId(v ?? "")} />
+              <p className="text-[12px] text-foreground-subtle">Optional — leave empty for a shared team file.</p>
             </div>
           ) : null}
+          <div className="space-y-1.5">
+            <Label>Visible to</Label>
+            <DocumentVisibilityPicker value={viewerUserIds} onChange={setViewerUserIds} />
+          </div>
         </div>
         <ModalFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -614,7 +688,7 @@ function UploadDocumentDialog({
           </Button>
           <Button
             loading={loading}
-            disabled={!file || !hasFixedLink(link)}
+            disabled={!file}
             onClick={() => {
               void (async () => {
                 if (!file) return;
@@ -627,11 +701,14 @@ function UploadDocumentDialog({
                   if (link.leadId) form.append("leadId", link.leadId);
                   if (link.customerId) form.append("customerId", link.customerId);
                   if (link.dealId) form.append("dealId", link.dealId);
+                  form.append("viewerUserIds", JSON.stringify(viewerUserIds));
                   await crmApi.uploadDocument(form);
                   onOpenChange(false);
                   setFile(null);
                   setName("");
                   setType("");
+                  setLeadId("");
+                  setViewerUserIds([]);
                   onDone();
                   toast.success("Document uploaded");
                 } catch (err) {

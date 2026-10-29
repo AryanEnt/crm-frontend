@@ -45,7 +45,6 @@ import { countryFromLocale, detectDialCountry, formatPhone } from "./phone";
 import { ProfileSection } from "./profile-section";
 import { QuickAddFields } from "./quick-add-fields";
 import { SalesSection, useOwnerChoices } from "./sales-section";
-import { ScreenshotField } from "./screenshot-field";
 import { loadSourceUsage, pickDefaultSource, rankSources } from "./source-usage";
 import { useCreateLead } from "./use-create-lead";
 
@@ -275,8 +274,6 @@ function CreateLeadForm({
     };
   }, [hasChangesRef, isDirty, screenshot]);
 
-  const openSection = (section: DetailSection) => setOpenSections((prev) => new Set(prev).add(section));
-
   const onInvalid = (errs: FieldErrors<CreateLeadInput>) => {
     const sections = Object.keys(errs)
       .map(sectionForField)
@@ -388,7 +385,6 @@ function CreateLeadForm({
   const notesSummary = [
     values.notes.trim() ? "Note added" : null,
     tagCount ? (tagCount === 1 ? "1 tag" : `${tagCount} tags`) : null,
-    screenshot ? "Screenshot attached" : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -417,6 +413,11 @@ function CreateLeadForm({
               duplicateBusy={isSubmitting}
               editing={Boolean(editing)}
               anzscoLabel={lead?.anzscoCode && lead.anzscoTitle ? `${lead.anzscoCode} — ${lead.anzscoTitle}` : null}
+              screenshot={screenshot}
+              onScreenshotChange={setScreenshot}
+              pasteTarget={pasteTarget}
+              extractEnabled={!editing && env.features.leadScreenshotExtract}
+              onApplyExtract={applyExtract}
             />
             <MoreDetailsAccordion<DetailSection>
               open={openSections}
@@ -470,25 +471,15 @@ function CreateLeadForm({
                 },
                 {
                   id: "notes",
-                  title: canAttachScreenshot ? "Notes and screenshot" : "Notes",
+                  title: "Notes",
                   emoji: "📝",
                   summary: notesSummary || undefined,
-                  placeholder: canAttachScreenshot ? "Notes, tags or a screenshot" : "Notes or tags",
+                  placeholder: "Notes or tags",
                   invalid: sectionInvalid("notes"),
                   content: (
                     <>
                       <NotesField />
                       <TagsField />
-                      {canAttachScreenshot ? (
-                        <ScreenshotField
-                          file={screenshot}
-                          onChange={setScreenshot}
-                          pasteTarget={pasteTarget}
-                          onPasted={() => openSection("notes")}
-                          extractEnabled={env.features.leadScreenshotExtract}
-                          onApplyExtract={applyExtract}
-                        />
-                      ) : null}
                     </>
                   ),
                 },

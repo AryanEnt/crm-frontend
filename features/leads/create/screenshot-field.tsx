@@ -101,8 +101,9 @@ export function ScreenshotField({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <span id={`${id}-label`} className="text-cell font-semibold text-ink">
+      <span id={`${id}-label`} className="flex items-baseline justify-between gap-2 text-cell font-semibold text-ink">
         Screenshot
+        <span className="text-caption font-normal text-ink-muted">Optional</span>
       </span>
       {file && preview ? (
         <div className="flex items-center gap-3 rounded-2xl bg-surface-muted p-2">
@@ -143,8 +144,8 @@ export function ScreenshotField({
             take(dropped);
           }}
           className={cn(
-            "flex w-full items-center gap-3 rounded-2xl border-2 border-dashed px-3.5 py-3.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand/20",
-            dragOver ? "border-brand bg-brand-soft" : "border-line bg-surface-muted/50 hover:border-brand-border hover:bg-brand-soft/50",
+            "flex w-full items-center gap-3 rounded-2xl border-2 border-dashed px-3.5 py-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand/20",
+            dragOver ? "border-brand bg-brand-soft" : "border-brand-border bg-brand-soft/40 hover:border-brand hover:bg-brand-soft/70",
           )}
         >
           <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-surface-muted text-ink-muted">

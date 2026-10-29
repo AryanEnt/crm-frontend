@@ -60,13 +60,13 @@ describe("derivePipelineTotals", () => {
 
   it("is all zeros for an empty board", () => {
     const t = derivePipelineTotals([]);
-    assert.deepEqual(statusCounts(t), { open: 0, won: 0, lost: 0, all: 0 });
+    assert.deepEqual(statusCounts(t), { open: 0, won: 0, lost: 0, complete: 0, all: 0 });
     assert.equal(t.openValue, 0);
   });
 
   it("gives status counts that add up to the whole board", () => {
     const counts = statusCounts(derivePipelineTotals(STAGES));
-    assert.deepEqual(counts, { open: 7, won: 3, lost: 1, all: 11 });
+    assert.deepEqual(counts, { open: 7, won: 3, lost: 1, complete: 3, all: 11 });
     assert.equal(counts.open + counts.won + counts.lost, counts.all);
   });
 });

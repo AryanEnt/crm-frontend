@@ -41,6 +41,7 @@ export function PipelineBoard({
   data,
   showClosedColumns,
   canEdit,
+  nurturing = false,
   onOpenLead,
   onMove,
 }: {
@@ -48,6 +49,8 @@ export function PipelineBoard({
   /** "All" shows Won and Lost as columns; "Open" keeps them as drop targets only. */
   showClosedColumns: boolean;
   canEdit: boolean;
+  /** Nurturing's isWon drop zone is Complete, not Won. */
+  nurturing?: boolean;
   onOpenLead: (leadId: string) => void;
   onMove: (lead: LeadBoardCard, to: LeadBoardStage) => void;
 }) {
@@ -143,7 +146,9 @@ export function PipelineBoard({
             aria-label="Close the lead"
             className="outcome-dock pointer-events-auto flex items-stretch gap-2 rounded-2xl border border-line bg-surface/90 p-2 shadow-lift backdrop-blur-md"
           >
-            {wonStage ? <OutcomeDropZone kind="won" disabled={active.stageId === wonStage.id} /> : null}
+            {wonStage ? (
+              <OutcomeDropZone kind="won" complete={nurturing} disabled={active.stageId === wonStage.id} />
+            ) : null}
             {wonStage && lostStage ? <div className="my-2 w-px bg-line" aria-hidden /> : null}
             {lostStage ? <OutcomeDropZone kind="lost" disabled={active.stageId === lostStage.id} /> : null}
           </div>
@@ -155,11 +160,30 @@ export function PipelineBoard({
   );
 }
 
-function OutcomeDropZone({ kind, disabled }: { kind: "won" | "lost"; disabled: boolean }) {
+function OutcomeDropZone({
+  kind,
+  disabled,
+  complete = false,
+}: {
+  kind: "won" | "lost";
+  disabled: boolean;
+  complete?: boolean;
+}) {
   const { setNodeRef, isOver } = useDroppable({ id: kind === "won" ? OUTCOME_WON : OUTCOME_LOST, disabled });
   const won = kind === "won";
   const Icon = won ? Trophy : CircleX;
-  const hint = disabled ? (won ? "Already won" : "Already lost") : won ? "Drop to close as won" : "Drop to close · add a reason";
+  const success = complete ? "Complete" : "Won";
+  const hint = disabled
+    ? won
+      ? complete
+        ? "Already complete"
+        : "Already won"
+      : "Already lost"
+    : won
+      ? complete
+        ? "Drop to complete"
+        : "Drop to close as won"
+      : "Drop to close · add a reason";
   return (
     <div
       ref={setNodeRef}
@@ -184,7 +208,7 @@ function OutcomeDropZone({ kind, disabled }: { kind: "won" | "lost"; disabled: b
       </span>
       <span className="min-w-0">
         <span className={cn("block text-[0.875rem] font-semibold", won ? "text-stage-won-ink" : "text-stage-lost-ink")}>
-          {won ? "Won" : "Lost"}
+          {won ? success : "Lost"}
         </span>
         <span className="block truncate text-[0.75rem] text-ink-muted">{hint}</span>
       </span>

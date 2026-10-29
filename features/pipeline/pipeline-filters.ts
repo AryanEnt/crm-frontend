@@ -47,7 +47,22 @@ export const DEFAULT_PIPELINE_FILTERS: PipelineFilters = {
   page: 1,
 };
 
-export const isClosedStatus = (s: PipelineStatus): s is "won" | "lost" => s === "won" || s === "lost";
+export type ClosedOutcome = "won" | "lost" | "complete";
+
+export const isClosedStatus = (s: PipelineStatus): s is ClosedOutcome =>
+  s === "won" || s === "lost" || s === "complete";
+
+/** Nurturing's closed-won stage is Complete; sales still uses Won. */
+export function closedWonLabel(nurturing: boolean): "Complete" | "Won" {
+  return nurturing ? "Complete" : "Won";
+}
+
+export function closedStatusLabel(status: PipelineStatus, nurturing = false): string {
+  if (status === "complete") return "Complete";
+  if (status === "won") return closedWonLabel(nurturing);
+  if (status === "lost") return "Lost";
+  return "";
+}
 
 export const CLOSED_SORT_OPTIONS: { value: `${ClosedSortKey}:${SortOrder}`; label: string }[] = [
   { value: "closed:desc", label: "Most recent" },
@@ -64,6 +79,18 @@ export const STATUS_OPTIONS: { value: PipelineStatus; label: string }[] = [
   { value: "won", label: "Won" },
   { value: "lost", label: "Lost" },
 ];
+
+/** Nurturing adds Complete after Lost; sales keeps Won as the closed-success filter. */
+export function statusOptions(nurturing: boolean): { value: PipelineStatus; label: string }[] {
+  if (!nurturing) return STATUS_OPTIONS;
+  return [
+    { value: "all", label: "All" },
+    { value: "open", label: "Open" },
+    { value: "won", label: "Won" },
+    { value: "lost", label: "Lost" },
+    { value: "complete", label: "Complete" },
+  ];
+}
 
 export const NEXT_ACTION_OPTIONS: { value: NextActionFilter; label: string }[] = [
   { value: "", label: "Any" },
@@ -114,7 +141,7 @@ export function parsePipelineFilters(sp: URLSearchParams): PipelineFilters {
   if (closedFrom && closedTo && closedFrom > closedTo) [closedFrom, closedTo] = [closedTo, closedFrom];
   if (closed === "custom" && !closedFrom && !closedTo) closed = "";
   return {
-    status: oneOf(sp.get("status"), ["open", "won", "lost", "all"] as const, DEFAULT_PIPELINE_FILTERS.status),
+    status: oneOf(sp.get("status"), ["open", "won", "lost", "complete", "all"] as const, DEFAULT_PIPELINE_FILTERS.status),
     q: (sp.get("q") ?? "").trim(),
     next: oneOf(sp.get("next"), ["", "overdue", "today", "week", "none"] as const, ""),
     owner: sp.get("owner") ?? "",
@@ -189,7 +216,7 @@ export function closedLeadsParams(
   interval: Interval,
   limit: number,
   offset: number,
-  outcome: "won" | "lost" = f.status === "won" ? "won" : "lost",
+  outcome: ClosedOutcome = f.status === "won" ? "won" : f.status === "complete" ? "complete" : "lost",
 ): URLSearchParams {
   const p = sharedParams(outcome === "won" ? "" : pipelineId, { ...f, next: "" });
   if (outcome === "won") {
@@ -213,7 +240,7 @@ export function closedListParams(
   f: PipelineFilters,
   pageSize: number,
   interval: Interval = { from: null, to: null },
-  outcome: "won" | "lost" = f.status === "won" ? "won" : "lost",
+  outcome: ClosedOutcome = f.status === "won" ? "won" : f.status === "complete" ? "complete" : "lost",
 ): URLSearchParams {
   return closedLeadsParams(pipelineId, stageId, f, interval, pageSize, (f.page - 1) * pageSize, outcome);
 }
@@ -226,14 +253,14 @@ const formatAmount = (v: string) => Number(v).toLocaleString("en-AU");
 /** Removable chips for every active filter except status, which has its own control. */
 export function activeFilterChips(
   f: PipelineFilters,
-  names: { owner?: string; currencySymbol?: string } = {},
+  names: { owner?: string; currencySymbol?: string; nurturing?: boolean } = {},
 ): FilterChip[] {
   const chips: FilterChip[] = [];
   const sym = names.currencySymbol ?? "$";
   const closedView = isClosedStatus(f.status);
   if (f.q) chips.push({ key: "q", label: `“${f.q}”` });
   if (closedView && f.closed) {
-    chips.push({ key: "closed", label: `${f.status === "won" ? "Won" : "Lost"} ${closedRangeLabel(f)}` });
+    chips.push({ key: "closed", label: `${closedStatusLabel(f.status, names.nurturing)} ${closedRangeLabel(f)}` });
   }
   if (f.next && !closedView) {
     const label = NEXT_ACTION_OPTIONS.find((o) => o.value === f.next)?.label ?? f.next;

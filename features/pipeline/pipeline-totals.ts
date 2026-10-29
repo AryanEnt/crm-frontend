@@ -22,7 +22,7 @@ export type PipelineTotals = {
   winRate: number | null;
 };
 
-export type PipelineStatus = "open" | "won" | "lost" | "all";
+export type PipelineStatus = "open" | "won" | "lost" | "complete" | "all";
 
 const num = (v: number | string) => {
   const n = Number(v);
@@ -70,5 +70,5 @@ export function derivePipelineTotals(stages: StageAggregate[]): PipelineTotals {
 
 /** Lead counts per status segment, from the same totals. */
 export function statusCounts(t: PipelineTotals): Record<PipelineStatus, number> {
-  return { open: t.openCount, won: t.wonCount, lost: t.lostCount, all: t.totalCount };
+  return { open: t.openCount, won: t.wonCount, lost: t.lostCount, complete: t.wonCount, all: t.totalCount };
 }

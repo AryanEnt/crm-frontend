@@ -14,6 +14,7 @@ import { DuplicateNotice } from "./duplicate-notice";
 import { FIELD_CONTROL, LeadField, TRIGGER_CONTROL } from "./field-ui";
 import { PHONE_COUNTRIES, detectDialCountry, formatPhone, phoneCountry } from "./phone";
 import { PriorityPicker } from "./priority-picker";
+import { ScreenshotField } from "./screenshot-field";
 import { SourcePicker } from "./source-picker";
 
 const useLeadForm = () => useFormContext<CreateLeadInput, unknown, CreateLeadValues>();
@@ -26,6 +27,11 @@ export function QuickAddFields({
   duplicateBusy,
   editing = false,
   anzscoLabel = null,
+  screenshot,
+  onScreenshotChange,
+  pasteTarget,
+  extractEnabled,
+  onApplyExtract,
 }: {
   nameRef: React.RefObject<HTMLInputElement | null>;
   sources: readonly string[];
@@ -36,6 +42,11 @@ export function QuickAddFields({
   editing?: boolean;
   /** Label for the ANZSCO occupation already on the lead. */
   anzscoLabel?: string | null;
+  screenshot: File | null;
+  onScreenshotChange: (file: File | null) => void;
+  pasteTarget: React.RefObject<HTMLElement | null>;
+  extractEnabled: boolean;
+  onApplyExtract: (found: { fullName?: string; phone?: string; email?: string }) => void;
 }) {
   const { control, register, formState } = useLeadForm();
   const source = useWatch({ control, name: "source" });
@@ -89,6 +100,14 @@ export function QuickAddFields({
           />
         ) : null}
       </div>
+
+      <ScreenshotField
+        file={screenshot}
+        onChange={onScreenshotChange}
+        pasteTarget={pasteTarget}
+        extractEnabled={extractEnabled}
+        onApplyExtract={onApplyExtract}
+      />
 
       <SourceField sources={sources} />
       {isReferralSource(source) ? (

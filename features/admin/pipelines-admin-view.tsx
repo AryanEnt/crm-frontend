@@ -79,8 +79,12 @@ export function PipelinesAdminView() {
     queryFn: () => crmApi.listPipelines(undefined, true),
   });
 
+  const activePipelines = React.useMemo(
+    () => (pipelinesQuery.data ?? []).filter((p) => p.isActive),
+    [pipelinesQuery.data],
+  );
   const selected =
-    pipelinesQuery.data?.find((p) => p.id === selectedId) ?? pipelinesQuery.data?.[0] ?? null;
+    activePipelines.find((p) => p.id === selectedId) ?? activePipelines[0] ?? null;
   const activeSelectedId = selected?.id ?? "";
 
   const invalidate = () => void qc.invalidateQueries({ queryKey: ["pipelines"] });
@@ -119,7 +123,7 @@ export function PipelinesAdminView() {
       <div className="grid gap-3 lg:grid-cols-[240px_1fr]">
         <aside className="rounded-lg border border-border bg-surface p-2">
           <ul className="space-y-1">
-            {(pipelinesQuery.data ?? []).map((p) => (
+            {activePipelines.map((p) => (
               <li key={p.id}>
                 <button
                   type="button"
@@ -133,7 +137,6 @@ export function PipelinesAdminView() {
                   <span className="block font-medium">{p.name}</span>
                   <span className="text-[11px] text-foreground-muted">
                     {p.kind} · {p.stages.length} stages
-                    {!p.isActive ? " · inactive" : ""}
                   </span>
                 </button>
               </li>

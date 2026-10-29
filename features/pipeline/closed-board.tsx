@@ -117,7 +117,7 @@ function ClosedBoardColumn({
       column.interval,
       PAGE_SIZE,
       offset,
-      outcome.isWon ? "won" : "lost",
+      filters.status === "complete" ? "complete" : outcome.isWon ? "won" : "lost",
     );
   const query = useInfiniteQuery({
     queryKey: ["leads", "pipeline-closed-board", params(0).toString()],
@@ -172,7 +172,7 @@ function ClosedBoardColumn({
           ? "Couldn't load these leads. Refresh to try again."
           : query.isLoading
             ? "Loading…"
-            : `No ${outcome.isWon ? "won" : "lost"} leads in this period`
+            : `No ${filters.status === "complete" ? "complete" : outcome.isWon ? "won" : "lost"} leads in this period`
       }
     />
   );

@@ -832,6 +832,8 @@ export type CrmDocument = {
   verifiedAt?: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Sales Executives explicitly allowed to see this document. */
+  viewerUserIds?: string[];
 };
 
 export type TimelineEvent = {

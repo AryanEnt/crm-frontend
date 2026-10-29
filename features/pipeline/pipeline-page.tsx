@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/error-state";
 import { useAuth } from "@/features/auth/auth-provider";
 import { CreateLeadSheet } from "@/features/leads/create/create-lead-sheet";
+import { isNurturingPipeline } from "@/features/leads/lead-board-state";
 import { LeadDetailPanel } from "@/features/leads/lead-detail-panel";
 import { useLeadMove } from "@/features/leads/lead-move";
 import { useLeadUrl } from "@/features/leads/use-lead-url";
@@ -17,10 +18,12 @@ import { PipelineBoard } from "./pipeline-board";
 import { PipelineEmpty } from "./pipeline-empty";
 import {
   clearAllFilters,
+  closedStatusLabel,
   hasNarrowingFilters,
   isClosedStatus,
   parsePipelineFilters,
   writePipelineFilters,
+  type ClosedOutcome,
   type PipelineFilters,
 } from "./pipeline-filters";
 import { PipelineHeader } from "./pipeline-header";
@@ -54,6 +57,7 @@ export function PipelinePage() {
   const canEdit = can("leads:edit");
   const canCreate = can("leads:create");
   const filtered = hasNarrowingFilters(filters);
+  const nurturing = isNurturingPipeline(data.pipelineId);
 
   const move = useLeadMove({ onOptimistic: data.optimisticMove, onChanged: data.settleMove });
   const requestMove = (lead: LeadBoardCard, to: LeadBoardStage) =>
@@ -81,16 +85,19 @@ export function PipelinePage() {
 
   const setStatus = (status: PipelineFilters["status"]) => setFilters({ ...filters, status, page: 1 });
 
-  const renderClosed = (status: "won" | "lost") => {
+  const renderClosed = (status: ClosedOutcome) => {
+    const label = closedStatusLabel(status, nurturing).toLowerCase();
     const empty = (
       <PipelineEmpty
-        title={filtered ? `No ${status} leads match these filters` : status === "won" ? "No won leads yet" : "No lost leads yet"}
+        title={filtered ? `No ${label} leads match these filters` : status === "lost" ? "No lost leads yet" : `No ${label} leads yet`}
         description={
           filtered
             ? "Try a wider date range or removing a filter."
-            : status === "won"
-              ? "Drag a lead onto Won, or choose Mark as won from its menu, and it shows up here."
-              : "Leads marked as lost appear here with their reason, so patterns are easy to spot."
+            : status === "complete"
+              ? "Drop a lead onto Complete, and it shows up here."
+              : status === "won"
+                ? "Drag a lead onto Won, or choose Mark as won from its menu, and it shows up here."
+                : "Leads marked as lost appear here with their reason, so patterns are easy to spot."
         }
         action={
           filtered ? (
@@ -137,7 +144,11 @@ export function PipelinePage() {
       <PipelineHeader
         pipelines={data.pipelines}
         pipelineId={data.pipelineId}
-        onPipelineChange={(id) => setFilters({ ...filters, pipeline: id, page: 1 })}
+        onPipelineChange={(id) => {
+          const next: PipelineFilters = { ...filters, pipeline: id, page: 1 };
+          if (!isNurturingPipeline(id) && next.status === "complete") next.status = "won";
+          setFilters(next);
+        }}
         onCreate={canCreate ? () => setCreateOpen(true) : undefined}
       />
 
@@ -153,13 +164,20 @@ export function PipelinePage() {
           {data.isLoading ? (
             <PipelineStatsSkeleton />
           ) : (
-            <PipelineStats totals={data.totals} currency={data.currency} status={filters.status} onStatus={setStatus} />
+            <PipelineStats
+              totals={data.totals}
+              currency={data.currency}
+              status={filters.status}
+              nurturing={nurturing}
+              onStatus={setStatus}
+            />
           )}
 
           <PipelineToolbar
             filters={filters}
             counts={data.isLoading ? null : data.counts}
             currency={data.currency}
+            nurturing={nurturing}
             onChange={setFilters}
           />
 
@@ -181,6 +199,7 @@ export function PipelinePage() {
                   data={data}
                   showClosedColumns={filters.status === "all"}
                   canEdit={canEdit}
+                  nurturing={nurturing}
                   onOpenLead={openLead}
                   onMove={requestMove}
                 />

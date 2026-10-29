@@ -25,7 +25,7 @@ export function ClosedDateFilter({ filters, onChange }: Props) {
   const [open, setOpen] = React.useState(false);
   const [from, setFrom] = React.useState("");
   const [to, setTo] = React.useState("");
-  const verb = filters.status === "won" ? "Won" : "Lost";
+  const verb = filters.status === "complete" ? "Complete" : filters.status === "won" ? "Won" : "Lost";
   const reversed = Boolean(from && to && from > to);
 
   const apply = (closed: ClosedRange, closedFrom = "", closedTo = "") => {

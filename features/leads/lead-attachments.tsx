@@ -5,9 +5,18 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Download, FileText, ImageIcon, ImagePlus, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import {
+  Modal,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalTitle,
+} from "@/components/ui/modal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/features/auth/auth-provider";
 import { DocumentViewer } from "@/features/documents/document-viewer";
+import { DocumentVisibilityPicker } from "@/features/documents/document-visibility-picker";
 import { crmApi, type CrmDocument } from "@/lib/api/crm";
 import { formatRelative } from "@/lib/relative-time";
 import { MAX_SCREENSHOT_BYTES, formatSize, namedImage } from "./lead-screenshot-field";
@@ -26,6 +35,8 @@ export function LeadAttachments({ leadId }: { leadId: string }) {
   const qc = useQueryClient();
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [viewing, setViewing] = React.useState<CrmDocument | null>(null);
+  const [pendingFile, setPendingFile] = React.useState<File | null>(null);
+  const [viewerUserIds, setViewerUserIds] = React.useState<string[]>([]);
   const [uploading, setUploading] = React.useState(false);
   const [now] = React.useState(() => Date.now());
   const canUpload = can("documents:create");
@@ -39,7 +50,7 @@ export function LeadAttachments({ leadId }: { leadId: string }) {
   const images = docs.filter(isImage);
   const files = docs.filter((d) => !isImage(d));
 
-  const upload = async (file: File | undefined) => {
+  const pickFile = (file: File | undefined) => {
     if (inputRef.current) inputRef.current.value = "";
     if (!file) return;
     if (!file.type.startsWith("image/")) {
@@ -50,17 +61,25 @@ export function LeadAttachments({ leadId }: { leadId: string }) {
       toast.error("That image is over 10 MB. Use a smaller screenshot.");
       return;
     }
-    const named = namedImage(file);
+    setPendingFile(namedImage(file));
+    setViewerUserIds([]);
+  };
+
+  const upload = async () => {
+    if (!pendingFile) return;
     const body = new FormData();
-    body.append("file", named);
-    body.append("name", named.name || "Screenshot");
+    body.append("file", pendingFile);
+    body.append("name", pendingFile.name || "Screenshot");
     body.append("type", "screenshot");
     body.append("category", "screenshot");
     body.append("leadId", leadId);
+    body.append("viewerUserIds", JSON.stringify(viewerUserIds));
     setUploading(true);
     try {
       await crmApi.uploadDocument(body);
       await qc.invalidateQueries({ queryKey: leadDocumentsKey(leadId) });
+      setPendingFile(null);
+      setViewerUserIds([]);
       toast.success("Screenshot added");
     } catch (err) {
       toast.error(err instanceof Error && err.message ? err.message : "Couldn't upload the screenshot.");
@@ -159,8 +178,8 @@ export function LeadAttachments({ leadId }: { leadId: string }) {
             disabled={uploading}
             onClick={() => inputRef.current?.click()}
           >
-            {uploading ? <Loader2 className="size-3.5 animate-spin" /> : <ImagePlus className="size-3.5" />}
-            {uploading ? "Uploading…" : "Add screenshot"}
+            <ImagePlus className="size-3.5" />
+            Add screenshot
           </Button>
           <input
             ref={inputRef}
@@ -169,10 +188,34 @@ export function LeadAttachments({ leadId }: { leadId: string }) {
             className="hidden"
             tabIndex={-1}
             aria-hidden
-            onChange={(event) => void upload(event.target.files?.[0])}
+            onChange={(event) => pickFile(event.target.files?.[0])}
           />
         </>
       ) : null}
+
+      <Modal open={Boolean(pendingFile)} onOpenChange={(open) => !open && !uploading && setPendingFile(null)}>
+        <ModalContent>
+          <ModalHeader>
+            <ModalTitle>Add screenshot</ModalTitle>
+          </ModalHeader>
+          <div className="grid gap-3">
+            <p className="truncate text-[13px] text-foreground-muted">{pendingFile?.name}</p>
+            <div className="space-y-1.5">
+              <Label>Visible to</Label>
+              <DocumentVisibilityPicker value={viewerUserIds} onChange={setViewerUserIds} />
+            </div>
+          </div>
+          <ModalFooter>
+            <Button variant="outline" disabled={uploading} onClick={() => setPendingFile(null)}>
+              Cancel
+            </Button>
+            <Button loading={uploading} onClick={() => void upload()}>
+              {uploading ? <Loader2 className="size-3.5 animate-spin" /> : null}
+              Upload
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
 
       <DocumentViewer doc={viewing} onClose={() => setViewing(null)} />
     </div>

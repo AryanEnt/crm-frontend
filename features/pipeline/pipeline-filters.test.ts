@@ -96,6 +96,20 @@ describe("API params", () => {
     assert.equal(won.get("sort"), "closed");
     assert.equal(won.get("limit"), "25");
   });
+
+  it("Complete lists the Complete stage on this pipeline, not won_at", () => {
+    const complete = closedListParams(
+      "p1",
+      "complete-stage",
+      parse("status=complete&sort=closed&order=desc"),
+      25,
+      undefined,
+      "complete",
+    );
+    assert.equal(complete.get("stageId"), "complete-stage");
+    assert.equal(complete.get("pipelineId"), "p1");
+    assert.equal(complete.get("status"), "all");
+  });
 });
 
 describe("filter chips", () => {

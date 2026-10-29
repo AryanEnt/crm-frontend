@@ -23,12 +23,12 @@ import { crmApi } from "@/lib/api/crm";
 import { cn } from "@/lib/utils";
 import {
   NEXT_ACTION_OPTIONS,
-  STATUS_OPTIONS,
   activeFilterChips,
   clearAllFilters,
   clearFilter,
   cleanAmount,
   isClosedStatus,
+  statusOptions,
   type NextActionFilter,
   type PipelineFilters,
 } from "./pipeline-filters";
@@ -68,16 +68,23 @@ export function PipelineToolbar({
   filters,
   counts,
   currency,
+  nurturing = false,
   onChange,
 }: {
   filters: PipelineFilters;
   counts: Record<PipelineStatus, number> | null;
   currency: string;
+  /** Nurturing shows a Complete filter and uses Complete wording for closed-success. */
+  nurturing?: boolean;
   onChange: (next: PipelineFilters) => void;
 }) {
   const owners = useOwnerChoices();
   const ownerName = owners.options.find((o) => o.id === filters.owner)?.name;
-  const chips = activeFilterChips(filters, { owner: ownerName, currencySymbol: currencySymbol(currency) });
+  const chips = activeFilterChips(filters, {
+    owner: ownerName,
+    currencySymbol: currencySymbol(currency),
+    nurturing,
+  });
   const closedView = isClosedStatus(filters.status);
 
   return (
@@ -88,7 +95,7 @@ export function PipelineToolbar({
           ariaLabel="Lead status"
           value={filters.status}
           onChange={(status) => onChange({ ...filters, status, page: 1 })}
-          options={STATUS_OPTIONS.map((o) => ({ ...o, count: counts?.[o.value] }))}
+          options={statusOptions(nurturing).map((o) => ({ ...o, count: counts?.[o.value] }))}
         />
         {closedView ? (
           <>
@@ -201,11 +208,13 @@ function SearchField({ filters, onChange }: { filters: PipelineFilters; onChange
           }
         }}
         placeholder={
-          filters.status === "won"
-            ? "Search won leads"
-            : filters.status === "lost"
-              ? "Search lost leads"
-              : "Search name, company, email, phone"
+          filters.status === "complete"
+            ? "Search complete leads"
+            : filters.status === "won"
+              ? "Search won leads"
+              : filters.status === "lost"
+                ? "Search lost leads"
+                : "Search name, company, email, phone"
         }
         aria-label="Search leads"
         aria-keyshortcuts="/"

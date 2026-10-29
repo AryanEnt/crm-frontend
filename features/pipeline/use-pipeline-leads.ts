@@ -82,11 +82,17 @@ export function usePipelineLeads(filters: PipelineFilters, closedPageSize = CLOS
   const lostStage = stages.find((s) => s.isLost) ?? null;
   const currency = primaryCurrency(board);
 
-  const outcomeStage = filters.status === "won" ? wonStage : filters.status === "lost" ? lostStage : null;
-  const closedOutcome = filters.status === "won" || filters.status === "lost" ? filters.status : null;
-  // Won needs no stage row (query is by won_at); Lost still needs the Lost stage on this pipeline.
+  const outcomeStage =
+    filters.status === "won" || filters.status === "complete"
+      ? wonStage
+      : filters.status === "lost"
+        ? lostStage
+        : null;
+  const closedOutcome =
+    filters.status === "won" || filters.status === "lost" || filters.status === "complete" ? filters.status : null;
+  // Won needs no stage row (query is by won_at). Complete and Lost list the stage on this pipeline.
   const closedQs =
-    closedOutcome === "won" || (closedOutcome === "lost" && outcomeStage)
+    closedOutcome === "won" || ((closedOutcome === "lost" || closedOutcome === "complete") && outcomeStage)
       ? closedListParams(
           pipelineId,
           outcomeStage?.id ?? "",

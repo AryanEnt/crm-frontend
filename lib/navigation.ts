@@ -13,7 +13,6 @@ import {
   UsersRound,
   Layers,
   FormInput,
-  Zap,
   ScrollText,
   Settings,
   Search,
@@ -23,7 +22,6 @@ import {
   ListTree,
   Mail,
   Phone,
-  MessageCircle,
   Columns3,
   type LucideIcon,
 } from "lucide-react";
@@ -56,7 +54,7 @@ export const crmNav: NavSection[] = [
   {
     title: "Communications",
     items: [
-      { label: "WhatsApp", href: "/whatsapp", icon: MessageCircle },
+      // { label: "WhatsApp", href: "/whatsapp", icon: MessageCircle },
       { label: "Email", href: "/email", icon: Mail },
       { label: "Calls", href: "/calls", icon: Phone },
     ],
@@ -90,9 +88,9 @@ export const crmNav: NavSection[] = [
   {
     title: "Settings",
     items: [
-      { label: "WhatsApp accounts", href: "/settings/whatsapp", icon: MessageCircle },
+      // { label: "WhatsApp accounts", href: "/settings/whatsapp", icon: MessageCircle },
       { label: "Email accounts", href: "/settings/email", icon: Mail },
-      { label: "Email templates", href: "/settings/email/templates", icon: FileText },
+      // { label: "Email templates", href: "/settings/email/templates", icon: FileText },
     ],
   },
 ];
@@ -122,7 +120,7 @@ export const controlCenterNav: NavSection[] = [
       { label: "Lead sources", href: "/admin/lead-sources", icon: Share2 },
       { label: "Activity types", href: "/admin/activity-types", icon: ListChecks },
       { label: "Referrals", href: "/admin/referrals", icon: Building2 },
-      { label: "Automations", href: "/admin/automations", icon: Zap },
+      // { label: "Automations", href: "/admin/automations", icon: Zap },
     ],
   },
   {

@@ -54,11 +54,13 @@ export function PipelineStats({
   totals,
   currency,
   status,
+  nurturing = false,
   onStatus,
 }: {
   totals: PipelineTotals;
   currency: string;
   status: PipelineStatus;
+  nurturing?: boolean;
   onStatus: (status: PipelineStatus) => void;
 }) {
   const closed = totals.wonCount + totals.lostCount;
@@ -85,8 +87,11 @@ export function PipelineStats({
             {percent(totals.winRate)}
           </span>
           <span className="mt-1 flex flex-wrap items-center gap-x-1 text-caption text-ink-muted">
-            <OutcomeLink active={status === "won"} onClick={() => onStatus("won")}>
-              {totals.wonCount} won
+            <OutcomeLink
+              active={status === "won" || status === "complete"}
+              onClick={() => onStatus(nurturing ? "complete" : "won")}
+            >
+              {totals.wonCount} {nurturing ? "complete" : "won"}
             </OutcomeLink>
             <span aria-hidden>·</span>
             <OutcomeLink active={status === "lost"} onClick={() => onStatus("lost")}>
@@ -100,7 +105,9 @@ export function PipelineStats({
           strokeWidth={3}
           label={
             closed > 0
-              ? `Win rate ${percent(totals.winRate)}: ${totals.wonCount} won of ${closed} closed`
+              ? nurturing
+                ? `Complete rate ${percent(totals.winRate)}: ${totals.wonCount} complete of ${closed} closed`
+                : `Win rate ${percent(totals.winRate)}: ${totals.wonCount} won of ${closed} closed`
               : "Win rate: no closed leads yet"
           }
         />

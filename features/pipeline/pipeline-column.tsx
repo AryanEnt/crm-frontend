@@ -92,7 +92,14 @@ export function PipelineColumn({
               isOver ? "border-brand/50 text-brand-ink" : "border-line text-ink-muted",
             )}
           >
-            {emptyText ?? (stage.isWon ? "Won leads land here" : stage.isLost ? "Lost leads land here" : "Drag a lead here")}
+            {emptyText ??
+              (stage.isWon
+                ? stage.name.toLowerCase() === "complete"
+                  ? "Completed leads land here"
+                  : "Won leads land here"
+                : stage.isLost
+                  ? "Lost leads land here"
+                  : "Drag a lead here")}
           </div>
         ) : (
           stage.leads.map((lead) =>
