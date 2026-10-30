@@ -29,7 +29,7 @@ export function GmailAdminView() {
     <div className="space-y-6">
       <PageHeader
         title="Email sync"
-        description="Health of Google sign-in, mailbox access, and automatic inbox updates. Individual mailboxes stay on each user’s Email accounts page."
+        description="Health of Google sign-in, company IMAP/SMTP, and automatic inbox updates. Individual mailboxes stay on each user’s Email accounts page."
       />
       {!h.configured ? (
         <div className="rounded-xl border border-border bg-surface p-5">
@@ -43,7 +43,8 @@ export function GmailAdminView() {
       ) : null}
       <div className="rounded-xl border border-border bg-surface px-5">
         <Row label="Google sign-in" ok={h.oauthConfigured} />
-        <Row label="Mailbox access" ok={h.gmailApiEnabled} />
+        <Row label="Gmail mailbox access" ok={h.gmailApiEnabled} />
+        <Row label="Company IMAP/SMTP" ok={Boolean(h.imapConfigured)} />
         <Row
           label="Push inbox updates"
           ok={h.pubSubConfigured}

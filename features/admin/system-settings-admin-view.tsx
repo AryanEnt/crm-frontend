@@ -74,6 +74,8 @@ const SECTIONS: Array<{ title: string; description: string; fields: SettingDef[]
       { key: "notifications.activity_reminders", label: "Activity reminders", type: "boolean" },
       { key: "notifications.overdue_alerts", label: "Overdue alerts", type: "boolean" },
       { key: "notifications.automation", label: "Automation notifications", type: "boolean" },
+      { key: "notifications.sla_notify_team_lead", label: "Notify Team Lead of stage SLA breaches", type: "boolean" },
+      { key: "notifications.sla_scan_minutes", label: "Stage SLA scan interval (minutes)", type: "text" },
     ],
   },
   {

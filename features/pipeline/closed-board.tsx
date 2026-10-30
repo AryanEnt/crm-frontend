@@ -67,6 +67,7 @@ export function ClosedBoard({
           requiredFields: [],
           requiredActivities: [],
           requiredDocuments: [],
+          slaHours: null,
           count: 0,
           totalValue: 0,
           hasMore: false,
@@ -149,7 +150,7 @@ function ClosedBoardColumn({
     : total === 0
       ? "Nothing here"
       : value === 0
-        ? "No value recorded"
+        ? "No estimate recorded"
         : hasMore
           ? `${formatLeadMoneyCompact(value, data.currency)} in the first ${leads.length}`
           : formatLeadMoneyCompact(value, data.currency);

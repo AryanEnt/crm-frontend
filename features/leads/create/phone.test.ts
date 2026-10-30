@@ -32,10 +32,15 @@ describe("phone input", () => {
     assert.deepEqual(phoneVariants("0412 345 678", "AU"), ["+61412345678", "0412345678"]);
   });
 
-  it("flags numbers that are clearly too short or too long", () => {
+  it("checks national length against the selected country", () => {
     assert.equal(phoneLengthIssue("0412", "AU"), "short");
     assert.equal(phoneLengthIssue("0412 345 678", "AU"), null);
+    assert.equal(phoneLengthIssue("0412 345 6789", "AU"), "long");
+    assert.equal(phoneLengthIssue("980 123 4567", "NP"), null);
+    assert.equal(phoneLengthIssue("980 123", "NP"), "short");
+    assert.equal(phoneLengthIssue("+61 412 345 678", "AU"), null);
     assert.equal(phoneLengthIssue("1234567890123456", "US"), "long");
+    assert.equal(phoneLengthIssue("415 555 2671", "US"), null);
     assert.equal(phoneLengthIssue("", "AU"), null);
   });
 

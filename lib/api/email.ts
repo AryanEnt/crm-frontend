@@ -4,11 +4,29 @@ export type EmailIntegrationHealth = {
   configured: boolean;
   oauthConfigured: boolean;
   gmailApiEnabled: boolean;
+  imapConfigured?: boolean;
   pubSubConfigured: boolean;
   pushSyncHealthy: boolean;
   connectedAccounts: number;
   needsAttention: number;
   message?: string;
+};
+
+export type TeamMailboxPerson = {
+  userId: string;
+  fullName: string;
+  email: string;
+  mailbox: EmailAccount | null;
+};
+
+export type TeamMailboxesResponse = {
+  overview: {
+    assigned: number;
+    connected: number;
+    disconnected: number;
+    syncFailures: number;
+  };
+  people: TeamMailboxPerson[];
 };
 
 export type EmailAccount = {
@@ -154,6 +172,17 @@ function qs(params: Record<string, string | undefined>) {
 export const emailApi = {
   health: () => api.get<EmailIntegrationHealth>("/email/health"),
   listAccounts: () => api.get<EmailAccountsResponse>("/email/accounts"),
+  listTeamMailboxes: () => api.get<TeamMailboxesResponse>("/email/team/mailboxes"),
+  createInvite: (body: { invitedUserId: string; emailAddress?: string; provider?: string }) =>
+    api.post<{ url: string; expiresAt: string }>("/email/invites", body),
+  peekInvite: (token: string) =>
+    api.get<{ invite: { emailAddress: string; provider: string; expiresAt: string } | null }>(
+      `/email/invites/${token}`,
+    ),
+  testImap: (body: { emailAddress: string; password: string }) =>
+    api.post<{ ok: boolean; inbox: string; sent: string | null }>("/email/imap/test", body),
+  connectImap: (body: { emailAddress: string; password: string; inviteToken?: string }) =>
+    api.post<EmailAccount>("/email/imap/connect", body),
   connectGoogle: (redirectTo?: string) =>
     api.post<{ url: string }>("/email/google/connect", { redirectTo }),
   disconnect: (id: string) =>

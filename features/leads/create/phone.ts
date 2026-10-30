@@ -113,10 +113,33 @@ export function phoneVariants(raw: string, code: string): string[] {
   return Array.from(new Set([e164, national]));
 }
 
+/** Expected national significant digits for a country (sum of display groups). */
+export function expectedNationalLength(code: string): number {
+  return phoneCountry(code).groups.reduce((sum, n) => sum + n, 0);
+}
+
+/**
+ * Validates the national number length for the selected country.
+ * Empty input is allowed (phone is optional); returns short/long when digits are present.
+ */
 export function phoneLengthIssue(raw: string, code: string): "short" | "long" | null {
   if (!phoneDigits(raw)) return null;
   const n = nationalNumber(raw, code).length;
-  if (n < 6) return "short";
-  if (n > 13) return "long";
+  const expected = expectedNationalLength(code);
+  if (n < expected) return "short";
+  if (n > expected) return "long";
   return null;
+}
+
+/** User-facing message for a phone length issue in `code`'s country. */
+export function phoneLengthMessage(raw: string, code: string): string | null {
+  const issue = phoneLengthIssue(raw, code);
+  if (!issue) return null;
+  const c = phoneCountry(code);
+  const expected = expectedNationalLength(code);
+  const n = nationalNumber(raw, code).length;
+  if (issue === "short") {
+    return `${c.name} numbers need ${expected} digits (you entered ${n}).`;
+  }
+  return `${c.name} numbers are ${expected} digits (you entered ${n}).`;
 }

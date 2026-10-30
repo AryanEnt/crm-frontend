@@ -1,5 +1,5 @@
 /** Roles hidden from create/edit pickers and role filters for now. */
-const HIDDEN_ROLE_CODES = new Set(["sales_support"]);
+const HIDDEN_ROLE_CODES = new Set(["sales_support", "super_admin"]);
 
 /** Roles you can assign in the UI. Keeps a hidden role if the user already has it. */
 export function assignableRoles<T extends { id: string; code: string }>(

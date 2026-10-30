@@ -16,9 +16,11 @@ import {
 } from "@/features/teams/team-member-filter";
 import { adminApi } from "@/lib/api/admin";
 
+const ALL = "all";
+
 /**
  * Owner/team filter state for a list, shaped by the caller's data scope:
- * own → nothing, team → team-member chip, organization → owner + team selects.
+ * own → nothing, team → team-member chip, organization → team then individual.
  * Only filters that are shown ever reach the query params.
  */
 export function useScopeFilters(
@@ -28,14 +30,14 @@ export function useScopeFilters(
   const scope = useListFilterScope(viewPermission);
   const teamFilter = team && scope.teamFilter;
   const { salesExecutiveId, setSalesExecutiveId } = useTeamMemberFilter(scope.teamMemberFilter);
-  const [ownerUserId, setOwnerUserId] = React.useState("all");
-  const [teamId, setTeamId] = React.useState("all");
+  const [ownerUserId, setOwnerUserId] = React.useState(ALL);
+  const [teamId, setTeamId] = React.useState(ALL);
 
   const params = React.useMemo(() => {
     const out: [string, string][] = [];
-    if (scope.teamMemberFilter && salesExecutiveId !== "all") out.push(["salesExecutiveId", salesExecutiveId]);
-    if (scope.ownerFilter && ownerUserId !== "all") out.push(["ownerUserId", ownerUserId]);
-    if (teamFilter && teamId !== "all") out.push(["teamId", teamId]);
+    if (scope.teamMemberFilter && salesExecutiveId !== ALL) out.push(["salesExecutiveId", salesExecutiveId]);
+    if (scope.ownerFilter && ownerUserId !== ALL) out.push(["ownerUserId", ownerUserId]);
+    if (teamFilter && teamId !== ALL) out.push(["teamId", teamId]);
     return out;
   }, [scope.teamMemberFilter, scope.ownerFilter, teamFilter, salesExecutiveId, ownerUserId, teamId]);
 
@@ -44,7 +46,7 @@ export function useScopeFilters(
     ? salesExecutiveId
     : scope.ownerFilter
       ? ownerUserId
-      : "all";
+      : ALL;
 
   return {
     ...scope,
@@ -54,14 +56,17 @@ export function useScopeFilters(
     ownerUserId,
     setOwnerUserId,
     teamId,
-    setTeamId,
+    setTeamId: (id: string) => {
+      setTeamId(id);
+      setOwnerUserId(ALL);
+    },
     params,
     ownerId,
     active: params.length > 0,
     reset: () => {
-      setSalesExecutiveId("all");
-      setOwnerUserId("all");
-      setTeamId("all");
+      setSalesExecutiveId(ALL);
+      setOwnerUserId(ALL);
+      setTeamId(ALL);
     },
   };
 }
@@ -69,52 +74,60 @@ export function useScopeFilters(
 export type ScopeFilters = ReturnType<typeof useScopeFilters>;
 
 /** Active sales executives for owner pickers. Team leads are not assignable owners. */
-export function useOwnerOptions(enabled: boolean) {
+export function useOwnerOptions(enabled: boolean, teamId?: string) {
+  const team = teamId && teamId !== ALL ? teamId : "";
   return useQuery({
-    queryKey: ["users", "assignable-owners"],
-    queryFn: () =>
-      adminApi.listUsers(
-        new URLSearchParams({ limit: "100", isActive: "true", roleCode: "sales_executive" }),
-      ),
+    queryKey: ["users", "assignable-owners", team || ALL],
+    queryFn: () => {
+      const params = new URLSearchParams({ limit: "100", isActive: "true", roleCode: "sales_executive" });
+      if (team) params.set("teamId", team);
+      return adminApi.listUsers(params);
+    },
     enabled,
   });
 }
 
-export function ScopeFilterControls({ filters }: { filters: ScopeFilters }) {
-  const owners = useOwnerOptions(filters.ownerFilter);
-  const teams = useQuery({
+export function useTeamOptions(enabled: boolean) {
+  return useQuery({
     queryKey: ["teams", "scope-filter"],
     queryFn: () => adminApi.listTeams(new URLSearchParams({ limit: "100", isActive: "true" })),
-    enabled: filters.teamFilter,
+    enabled,
   });
+}
+
+/** Organization-scope All / Team / Individual selects. Team first so individuals can be that team's members. */
+export function OrgScopeSelects({
+  teamId,
+  ownerUserId,
+  onTeamChange,
+  onOwnerChange,
+  showTeam,
+  showOwner,
+}: {
+  teamId: string;
+  ownerUserId: string;
+  onTeamChange: (id: string) => void;
+  onOwnerChange: (id: string) => void;
+  showTeam: boolean;
+  showOwner: boolean;
+}) {
+  const teamValue = teamId || ALL;
+  const ownerValue = ownerUserId || ALL;
+  const owners = useOwnerOptions(showOwner, teamValue);
+  const teams = useTeamOptions(showTeam);
+  const ownerList = owners.data?.data ?? [];
+
+  if (!showTeam && !showOwner) return null;
 
   return (
     <>
-      {filters.teamMemberFilter ? (
-        <TeamMemberFilterChip value={filters.salesExecutiveId} onChange={filters.setSalesExecutiveId} />
-      ) : null}
-      {filters.ownerFilter ? (
-        <Select value={filters.ownerUserId} onValueChange={filters.setOwnerUserId}>
-          <SelectTrigger className="w-[150px]" aria-label="Owner">
-            <SelectValue placeholder="Owner" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All owners</SelectItem>
-            {(owners.data?.data ?? []).map((u) => (
-              <SelectItem key={u.id} value={u.id}>
-                {u.fullName}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      ) : null}
-      {filters.teamFilter ? (
-        <Select value={filters.teamId} onValueChange={filters.setTeamId}>
-          <SelectTrigger className="w-[140px]" aria-label="Team">
+      {showTeam ? (
+        <Select value={teamValue} onValueChange={(v) => onTeamChange(v === ALL ? "" : v)}>
+          <SelectTrigger className="w-[150px]" aria-label="Team">
             <SelectValue placeholder="Team" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All teams</SelectItem>
+            <SelectItem value={ALL}>All teams</SelectItem>
             {(teams.data?.data ?? []).map((t) => (
               <SelectItem key={t.id} value={t.id}>
                 {t.name}
@@ -123,6 +136,39 @@ export function ScopeFilterControls({ filters }: { filters: ScopeFilters }) {
           </SelectContent>
         </Select>
       ) : null}
+      {showOwner ? (
+        <Select value={ownerValue} onValueChange={(v) => onOwnerChange(v === ALL ? "" : v)}>
+          <SelectTrigger className="w-[170px]" aria-label="Individual">
+            <SelectValue placeholder="Individual" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>{teamValue !== ALL ? "Anyone on team" : "All individuals"}</SelectItem>
+            {ownerList.map((u) => (
+              <SelectItem key={u.id} value={u.id}>
+                {u.fullName}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ) : null}
+    </>
+  );
+}
+
+export function ScopeFilterControls({ filters }: { filters: ScopeFilters }) {
+  return (
+    <>
+      {filters.teamMemberFilter ? (
+        <TeamMemberFilterChip value={filters.salesExecutiveId} onChange={filters.setSalesExecutiveId} />
+      ) : null}
+      <OrgScopeSelects
+        teamId={filters.teamId === ALL ? "" : filters.teamId}
+        ownerUserId={filters.ownerUserId === ALL ? "" : filters.ownerUserId}
+        onTeamChange={(id) => filters.setTeamId(id || ALL)}
+        onOwnerChange={(id) => filters.setOwnerUserId(id || ALL)}
+        showTeam={filters.teamFilter}
+        showOwner={filters.ownerFilter}
+      />
     </>
   );
 }

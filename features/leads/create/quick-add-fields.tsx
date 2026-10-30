@@ -3,16 +3,15 @@
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useController, useFormContext, useWatch } from "react-hook-form";
-import { ChevronDown } from "lucide-react";
-import { AnzscoCombobox } from "@/components/shared/anzsco-combobox";
 import { SmartReferralFields, emptyReferralForm } from "@/features/referrals/smart-referral-fields";
 import { referralsApi } from "@/lib/api/referrals";
 import type { DuplicateMatch } from "@/lib/api/crm";
 import { cn } from "@/lib/utils";
 import { formatAmount, isReferralSource, parseAmount, type CreateLeadInput, type CreateLeadValues } from "./create-lead-schema";
 import { DuplicateNotice } from "./duplicate-notice";
-import { FIELD_CONTROL, LeadField, TRIGGER_CONTROL } from "./field-ui";
-import { PHONE_COUNTRIES, detectDialCountry, formatPhone, phoneCountry } from "./phone";
+import { FIELD_CONTROL, LeadField } from "./field-ui";
+import { detectDialCountry, formatPhone, phoneCountry } from "./phone";
+import { PhoneCountryPicker } from "./phone-country-picker";
 import { PriorityPicker } from "./priority-picker";
 import { ScreenshotField } from "./screenshot-field";
 import { SourcePicker } from "./source-picker";
@@ -26,7 +25,6 @@ export function QuickAddFields({
   onCreateAnyway,
   duplicateBusy,
   editing = false,
-  anzscoLabel = null,
   screenshot,
   onScreenshotChange,
   pasteTarget,
@@ -40,8 +38,6 @@ export function QuickAddFields({
   duplicateBusy?: boolean;
   /** Editing an existing lead: referral details stay as they are. */
   editing?: boolean;
-  /** Label for the ANZSCO occupation already on the lead. */
-  anzscoLabel?: string | null;
   screenshot: File | null;
   onScreenshotChange: (file: File | null) => void;
   pasteTarget: React.RefObject<HTMLElement | null>;
@@ -54,7 +50,7 @@ export function QuickAddFields({
 
   return (
     <div className="flex flex-col gap-5">
-      <LeadField label="Name" error={formState.errors.fullName?.message}>
+      <LeadField label="Name" required error={formState.errors.fullName?.message}>
         {(a11y) => (
           <input
             {...name}
@@ -119,10 +115,8 @@ export function QuickAddFields({
           <ReferralBlock />
         )
       ) : null}
-      <PriorityField />
-
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-[minmax(0,1fr)_11rem] sm:gap-3">
-        <AnzscoField initialLabel={anzscoLabel} />
+        <PriorityField />
         <ValueField />
       </div>
     </div>
@@ -143,24 +137,15 @@ function PhoneField() {
           <label htmlFor={selectId} className="sr-only">
             Country code
           </label>
-          <div className="relative shrink-0">
-            <select
-              id={selectId}
-              value={code}
-              onChange={(e) => {
-                country.field.onChange(e.target.value);
-                if (field.value) field.onChange(formatPhone(field.value, e.target.value));
-              }}
-              className={cn(FIELD_CONTROL, "w-[4.75rem] appearance-none px-2.5 pr-6 text-cell tabular-nums")}
-            >
-              {PHONE_COUNTRIES.map((c) => (
-                <option key={c.code} value={c.code} title={c.name}>
-                  +{c.dial} {c.code}
-                </option>
-              ))}
-            </select>
-            <ChevronDown aria-hidden className="pointer-events-none absolute right-2 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted" />
-          </div>
+          <PhoneCountryPicker
+            id={selectId}
+            value={code}
+            invalid={Boolean(fieldState.error)}
+            onChange={(next) => {
+              country.field.onChange(next);
+              if (field.value) field.onChange(formatPhone(field.value, next));
+            }}
+          />
           <input
             ref={field.ref}
             name={field.name}
@@ -222,34 +207,6 @@ function PriorityField() {
   );
 }
 
-function AnzscoField({ initialLabel }: { initialLabel: string | null }) {
-  const { control, getValues, setValue } = useLeadForm();
-  const { field } = useController({ control, name: "anzscoId" });
-  const [label, setLabel] = React.useState<string | null>(initialLabel);
-  return (
-    <LeadField label="Occupation (ANZSCO)" optional group>
-      {(a11y, labelId) => (
-        <AnzscoCombobox
-          value={field.value}
-          selectedLabel={field.value ? label : null}
-          placeholder="Search a job or code"
-          aria-labelledby={labelId}
-          aria-describedby={a11y["aria-describedby"]}
-          onChange={(id, occupation) => {
-            field.onChange(id);
-            setLabel(occupation ? `${occupation.code} — ${occupation.title}` : null);
-            // Saves typing the same job twice; a title the user already wrote is kept.
-            if (occupation && !getValues("occupation").trim()) {
-              setValue("occupation", occupation.title, { shouldDirty: true });
-            }
-          }}
-          className={cn(TRIGGER_CONTROL, "w-full justify-between font-normal")}
-        />
-      )}
-    </LeadField>
-  );
-}
-
 function ReferralBlock() {
   const { control, formState } = useLeadForm();
   const { field } = useController({ control, name: "referral" });
@@ -274,7 +231,12 @@ function ValueField() {
   const { control } = useLeadForm();
   const { field, fieldState } = useController({ control, name: "potentialValue" });
   return (
-    <LeadField label="Value" optional error={fieldState.error?.message}>
+    <LeadField
+      label="Estimated value"
+      optional
+      hint="Rough estimate — you can update it later as you learn more."
+      error={fieldState.error?.message}
+    >
       {(a11y) => (
         <div className="relative">
           <span aria-hidden className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-body font-medium text-ink-muted">

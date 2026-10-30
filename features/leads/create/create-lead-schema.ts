@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { Lead } from "../../../lib/api/crm.ts";
 import type { ReferralFormState } from "../../referrals/referral-fields.tsx";
 import { fromLocalInput, isoToZonedInput, zonedInputToIso } from "./follow-up.ts";
-import { detectDialCountry, formatPhone, phoneLengthIssue, toE164 } from "./phone.ts";
+import { detectDialCountry, formatPhone, phoneLengthMessage, toE164 } from "./phone.ts";
 
 /** The choices offered for new leads. */
 export const CREATE_LEAD_PRIORITIES = ["low", "medium", "high"] as const;
@@ -29,19 +29,23 @@ export function hasReferrer(r: ReferralFormState | undefined) {
 
 export const MESSAGES = {
   name: "Add a name to continue",
-  email: "Check the email address, for example name@example.com",
-  phoneShort: "This number looks too short. Check it and try again.",
-  phoneLong: "This number looks too long. Check it and try again.",
+  email: "Enter a valid email, for example name@example.com",
+  phoneShort: "This number looks too short for the selected country",
+  phoneLong: "This number looks too long for the selected country",
   source: "Choose where this lead came from",
   value: "Enter a whole amount, like 25,000",
   referrer: "Add who referred this lead",
   followUp: "Pick a follow-up date",
+  country: "Choose their country",
+  nationality: "Add their nationality",
+  location: "Add where they are (city or suburb)",
 } as const;
 
 /**
- * Only the name is required from the user. Source is required by the API, but it
- * always starts filled (last used, org default or "Other"), so nobody has to touch it.
- * Referrer details are only collected on create; an edited lead keeps its referral record.
+ * Name plus where they are (country, nationality, location) are required.
+ * Source is required by the API, but it always starts filled (last used, org default
+ * or "Other"), so nobody has to touch it. Referrer details are only collected on
+ * create; an edited lead keeps its referral record.
  */
 export function leadSheetSchema(mode: "create" | "edit") {
   return z
@@ -63,9 +67,10 @@ export function leadSheetSchema(mode: "create" | "edit") {
       pipelineId: z.string(),
       stageId: z.string(),
       nextActivityAt: z.string().refine((v) => !v || fromLocalInput(v) !== null, MESSAGES.followUp),
-      country: z.string().trim(),
-      nationality: z.string().trim(),
-      location: z.string().trim(),
+      // Create requires client location details; edit keeps blanks so historical leads stay editable.
+      country: mode === "create" ? z.string().trim().min(1, MESSAGES.country) : z.string().trim(),
+      nationality: mode === "create" ? z.string().trim().min(1, MESSAGES.nationality) : z.string().trim(),
+      location: mode === "create" ? z.string().trim().min(1, MESSAGES.location) : z.string().trim(),
       occupation: z.string().trim(),
       jobTitle: z.string().trim(),
       employer: z.string().trim(),
@@ -75,8 +80,8 @@ export function leadSheetSchema(mode: "create" | "edit") {
       referral: z.custom<ReferralFormState>().optional(),
     })
     .superRefine((v, ctx) => {
-      const issue = phoneLengthIssue(v.phone, v.phoneCountry);
-      if (issue) ctx.addIssue({ code: "custom", path: ["phone"], message: issue === "short" ? MESSAGES.phoneShort : MESSAGES.phoneLong });
+      const phoneMsg = phoneLengthMessage(v.phone, v.phoneCountry);
+      if (phoneMsg) ctx.addIssue({ code: "custom", path: ["phone"], message: phoneMsg });
       if (mode === "create" && isReferralSource(v.source) && !hasReferrer(v.referral)) {
         ctx.addIssue({ code: "custom", path: ["referral"], message: MESSAGES.referrer });
       }
@@ -168,10 +173,10 @@ export function valuesForNextLead(prev: CreateLeadInput, d: CreateLeadDefaults):
   return next;
 }
 
-/** Fields that live in the collapsed "More details" sections, by section. Priority and ANZSCO sit up top. */
+/** Fields that live in the collapsed "More details" sections, by section. Country / nationality / location / ANZSCO sit above. */
 export const DETAIL_SECTION_FIELDS = {
   sales: ["ownerUserId", "pipelineId", "stageId", "nextActivityAt"],
-  profile: ["country", "nationality", "location", "occupation", "jobTitle", "employer"],
+  work: ["occupation", "jobTitle", "employer"],
   notes: ["notes", "tags"],
 } as const;
 

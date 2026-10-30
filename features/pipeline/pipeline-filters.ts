@@ -12,7 +12,11 @@ export type PipelineFilters = {
   q: string;
   next: NextActionFilter;
   owner: string;
+  /** Organization-scope team; "" is all teams. */
+  team: string;
   source: string;
+  /** Exact lead.country; "(Unknown)" matches blank. */
+  country: string;
   /** Value range in whole currency units; "" when unset. */
   min: string;
   max: string;
@@ -34,7 +38,9 @@ export const DEFAULT_PIPELINE_FILTERS: PipelineFilters = {
   q: "",
   next: "",
   owner: "",
+  team: "",
   source: "",
+  country: "",
   min: "",
   max: "",
   pipeline: "",
@@ -106,7 +112,9 @@ const FILTER_KEYS = [
   "q",
   "next",
   "owner",
+  "team",
   "source",
+  "country",
   "min",
   "max",
   "pipeline",
@@ -145,7 +153,9 @@ export function parsePipelineFilters(sp: URLSearchParams): PipelineFilters {
     q: (sp.get("q") ?? "").trim(),
     next: oneOf(sp.get("next"), ["", "overdue", "today", "week", "none"] as const, ""),
     owner: sp.get("owner") ?? "",
+    team: sp.get("team") ?? "",
     source: sp.get("source") ?? "",
+    country: (sp.get("country") ?? "").trim(),
     min,
     max,
     pipeline: sp.get("pipeline") ?? "",
@@ -168,7 +178,9 @@ export function writePipelineFilters(f: PipelineFilters, base: URLSearchParams =
   if (f.q.trim()) out.set("q", f.q.trim());
   if (f.next) out.set("next", f.next);
   if (f.owner) out.set("owner", f.owner);
+  if (f.team) out.set("team", f.team);
   if (f.source) out.set("source", f.source);
+  if (f.country.trim()) out.set("country", f.country.trim());
   if (f.min) out.set("min", f.min);
   if (f.max) out.set("max", f.max);
   if (f.pipeline) out.set("pipeline", f.pipeline);
@@ -188,7 +200,9 @@ function sharedParams(pipelineId: string, f: PipelineFilters): URLSearchParams {
   if (pipelineId) p.set("pipelineId", pipelineId);
   if (f.q.trim()) p.set("q", f.q.trim());
   if (f.owner) p.set("ownerUserId", f.owner);
+  if (f.team) p.set("teamId", f.team);
   if (f.source) p.set("source", f.source);
+  if (f.country.trim()) p.set("country", f.country.trim());
   if (f.next) p.set("activity", f.next);
   if (f.min) p.set("minValue", f.min);
   if (f.max) p.set("maxValue", f.max);
@@ -245,15 +259,21 @@ export function closedListParams(
   return closedLeadsParams(pipelineId, stageId, f, interval, pageSize, (f.page - 1) * pageSize, outcome);
 }
 
-export type FilterChipKey = "q" | "next" | "owner" | "source" | "value" | "closed";
+export type FilterChipKey = "q" | "next" | "owner" | "team" | "source" | "country" | "value" | "closed";
 export type FilterChip = { key: FilterChipKey; label: string };
 
 const formatAmount = (v: string) => Number(v).toLocaleString("en-AU");
 
+function countryChipLabel(country: string): string {
+  const raw = country.trim();
+  if (raw === "(Unknown)" || raw === "(none)") return "Unknown";
+  return raw;
+}
+
 /** Removable chips for every active filter except status, which has its own control. */
 export function activeFilterChips(
   f: PipelineFilters,
-  names: { owner?: string; currencySymbol?: string; nurturing?: boolean } = {},
+  names: { owner?: string; team?: string; currencySymbol?: string; nurturing?: boolean } = {},
 ): FilterChip[] {
   const chips: FilterChip[] = [];
   const sym = names.currencySymbol ?? "$";
@@ -266,8 +286,10 @@ export function activeFilterChips(
     const label = NEXT_ACTION_OPTIONS.find((o) => o.value === f.next)?.label ?? f.next;
     chips.push({ key: "next", label: `Next action: ${label.toLowerCase()}` });
   }
-  if (f.owner) chips.push({ key: "owner", label: `Owner: ${names.owner ?? "selected"}` });
+  if (f.team) chips.push({ key: "team", label: `Team: ${names.team ?? "selected"}` });
+  if (f.owner) chips.push({ key: "owner", label: `Individual: ${names.owner ?? "selected"}` });
   if (f.source) chips.push({ key: "source", label: `Source: ${f.source}` });
+  if (f.country.trim()) chips.push({ key: "country", label: `Country: ${countryChipLabel(f.country)}` });
   if (f.min || f.max) {
     const label =
       f.min && f.max
@@ -289,11 +311,27 @@ export function clearFilter(f: PipelineFilters, key: FilterChipKey): PipelineFil
 
 /** Keeps status, pipeline, view and sorting; drops everything that narrows the leads. */
 export function clearAllFilters(f: PipelineFilters): PipelineFilters {
-  return { ...f, q: "", next: "", owner: "", source: "", min: "", max: "", closed: "", closedFrom: "", closedTo: "", page: 1 };
+  return {
+    ...f,
+    q: "",
+    next: "",
+    owner: "",
+    team: "",
+    source: "",
+    country: "",
+    min: "",
+    max: "",
+    closed: "",
+    closedFrom: "",
+    closedTo: "",
+    page: 1,
+  };
 }
 
 /** Whether anything narrows what the current view shows. */
 export function hasNarrowingFilters(f: PipelineFilters): boolean {
-  if (isClosedStatus(f.status)) return Boolean(f.q || f.owner || f.source || f.min || f.max || f.closed);
-  return Boolean(f.q || f.next || f.owner || f.source || f.min || f.max);
+  if (isClosedStatus(f.status)) {
+    return Boolean(f.q || f.owner || f.team || f.source || f.country || f.min || f.max || f.closed);
+  }
+  return Boolean(f.q || f.next || f.owner || f.team || f.source || f.country || f.min || f.max);
 }

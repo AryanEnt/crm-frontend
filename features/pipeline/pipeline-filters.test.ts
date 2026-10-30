@@ -23,7 +23,7 @@ describe("pipeline filters in the URL", () => {
   });
 
   it("round-trips every filter and keeps unrelated params such as leadId", () => {
-    const qs = "status=won&q=acme&next=week&owner=u1&source=Web&min=1000&max=5000&sort=value&order=asc&page=3";
+    const qs = "status=won&q=acme&next=week&owner=u1&team=t1&source=Web&min=1000&max=5000&sort=value&order=asc&page=3";
     const f = parse(qs);
     const out = writePipelineFilters(f, new URLSearchParams("leadId=abc"));
     assert.equal(out.get("leadId"), "abc");
@@ -58,14 +58,21 @@ describe("pipeline filters in the URL", () => {
 });
 
 describe("API params", () => {
-  const f = parse("status=lost&q=%20jo%20&next=overdue&owner=u1&source=Referral&min=100&page=2&sort=name&order=asc");
+  const f = parse("status=lost&q=%20jo%20&next=overdue&owner=u1&team=t1&source=Referral&min=100&page=2&sort=name&order=asc");
 
   it("board and closed views share the same narrowing filters, minus next action", () => {
     const board = boardParams("p1", f);
-    assert.equal(board.toString(), "pipelineId=p1&q=jo&ownerUserId=u1&source=Referral&activity=overdue&minValue=100");
+    assert.equal(board.toString(), "pipelineId=p1&q=jo&ownerUserId=u1&teamId=t1&source=Referral&activity=overdue&minValue=100");
     const closed = closedListParams("p1", "lost-stage", f, 25);
     for (const [k, v] of board) if (k !== "activity") assert.equal(closed.get(k), v, k);
     assert.equal(closed.has("activity"), false);
+  });
+
+  it("sends country on the board and closed list params", () => {
+    const withCountry = parse("country=Australia&q=jo");
+    assert.equal(boardParams("p1", withCountry).get("country"), "Australia");
+    assert.equal(closedListParams("p1", "lost-stage", withCountry, 25).get("country"), "Australia");
+    assert.equal(writePipelineFilters(withCountry).get("country"), "Australia");
   });
 
   it("narrows closed leads to the date range, and each kanban column to its own", () => {
@@ -114,10 +121,10 @@ describe("API params", () => {
 
 describe("filter chips", () => {
   it("lists active filters with readable labels", () => {
-    const f = parse("next=week&owner=u1&source=Web&min=1000&max=5000");
+    const f = parse("next=week&owner=u1&team=t1&source=Web&min=1000&max=5000");
     assert.deepEqual(
-      activeFilterChips(f, { owner: "Asha Rai" }).map((c) => c.label),
-      ["Next action: this week", "Owner: Asha Rai", "Source: Web", "Value: $1,000–$5,000"],
+      activeFilterChips(f, { owner: "Asha Rai", team: "Sydney" }).map((c) => c.label),
+      ["Next action: this week", "Team: Sydney", "Individual: Asha Rai", "Source: Web", "Value: $1,000–$5,000"],
     );
     assert.deepEqual(activeFilterChips(parse("min=500")).map((c) => c.label), ["Value: $500+"]);
     assert.deepEqual(activeFilterChips(parse("max=500")).map((c) => c.label), ["Value: Up to $500"]);
@@ -133,7 +140,7 @@ describe("filter chips", () => {
   });
 
   it("clear all keeps the status view but drops every narrowing filter", () => {
-    const f = clearAllFilters(parse("status=won&q=x&next=today&owner=u&source=s&min=1&closed=7d&view=table"));
+    const f = clearAllFilters(parse("status=won&q=x&next=today&owner=u&team=t1&source=s&min=1&closed=7d&view=table"));
     assert.equal(f.status, "won");
     assert.equal(f.view, "table");
     assert.equal(f.closed, "");

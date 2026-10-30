@@ -54,6 +54,25 @@ export function formatClock(minutes: number): string {
   return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(d);
 }
 
+/** First three words of an activity title for compact calendar chips. */
+export function shortTitle(title: string | null | undefined, maxWords = 3): string {
+  const words = (title ?? "").trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return "Activity";
+  if (words.length <= maxWords) return words.join(" ");
+  return words.slice(0, maxWords).join(" ");
+}
+
+export function relatedName(a: Pick<Activity, "leadName" | "dealTitle" | "customerName">): string {
+  return a.leadName || a.dealTitle || a.customerName || "";
+}
+
+/** Compact calendar label: short title + lead/related name. */
+export function calendarEventLabel(a: Pick<Activity, "title" | "leadName" | "dealTitle" | "customerName">): string {
+  const title = shortTitle(a.title);
+  const related = relatedName(a);
+  return related ? `${title} · ${related}` : title;
+}
+
 /** Moves the activity so it starts at `start`, keeping its duration and due offset. */
 export function rescheduleFields(a: Activity, start: Date): Partial<Activity> {
   const delta = start.getTime() - eventInstant(a).getTime();

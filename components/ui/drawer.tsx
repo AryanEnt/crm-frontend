@@ -13,10 +13,16 @@ export const DrawerContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
     side?: "right" | "left";
+    overlayClassName?: string;
   }
->(({ className, children, side = "right", ...props }, ref) => (
+>(({ className, children, side = "right", overlayClassName, ...props }, ref) => (
   <DialogPrimitive.Portal>
-    <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-foreground/20 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+    <DialogPrimitive.Overlay
+      className={cn(
+        "fixed inset-0 z-50 bg-foreground/20 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+        overlayClassName,
+      )}
+    />
     <DialogPrimitive.Content
       ref={ref}
       className={cn(

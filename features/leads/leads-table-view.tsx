@@ -33,10 +33,13 @@ import { Button as ConsoleButton } from "@/components/ui/console/button";
 import { useColumnVisibility } from "@/lib/column-visibility";
 import { LEAD_PRIORITIES } from "@/validations/lead";
 import { leadFilterParams, type LeadFilters } from "@/features/leads/lead-board-state";
-import { formatLeadMoney } from "@/features/leads/lead-format";
+import { countryFilterLabel, formatLeadCountry, formatLeadCount, formatLeadMoney } from "@/features/leads/lead-format";
 import { cn } from "@/lib/utils";
 
 const PRIORITY_OPTIONS = LEAD_PRIORITIES.map((p) => ({ value: p, label: p[0].toUpperCase() + p.slice(1) }));
+
+/** Optional date columns — off by default; turn on from the Columns menu. */
+const LEADS_DEFAULT_HIDDEN_COLUMNS = ["lastActivityAt", "createdAt"];
 
 /** Table column id -> API sort key. */
 const SORT_KEYS: Record<string, string> = {
@@ -112,7 +115,6 @@ export function LeadsListView({
 
   const params = React.useMemo(() => {
     const p = leadFilterParams("", filters);
-    if (filters.stageId) p.set("stageId", filters.stageId);
     const statusParam = STATUS_PARAM[status];
     if (statusParam) p.set("status", statusParam);
     const sort = sorting[0];
@@ -188,6 +190,18 @@ export function LeadsListView({
         },
       },
       {
+        accessorKey: "country",
+        header: "Country",
+        cell: ({ row }) => {
+          const label = formatLeadCountry(row.original.country);
+          return label === "—" ? (
+            <span className="text-ink-muted">—</span>
+          ) : (
+            <span className="block max-w-[140px] truncate text-ink-secondary">{label}</span>
+          );
+        },
+      },
+      {
         id: "stage",
         header: "Stage",
         cell: ({ row }) => {
@@ -207,11 +221,11 @@ export function LeadsListView({
       },
       {
         accessorKey: "potentialValue",
-        header: ({ column }) => <SortableHeader column={column} title="Value" />,
-        meta: { label: "Value", align: "right" },
+        header: ({ column }) => <SortableHeader column={column} title="Est. value" />,
+        meta: { label: "Estimated value", align: "right" },
         cell: ({ row }) =>
           row.original.potentialValue != null ? (
-            <span className="tabular-nums text-ink">
+            <span className="tabular-nums text-ink" title="Estimated value">
               {formatLeadMoney(row.original.potentialValue, row.original.currency)}
             </span>
           ) : (
@@ -308,13 +322,17 @@ export function LeadsListView({
     ],
     [canAssignLeads, canEditLeads, ownerOptions, ownersQuery.isLoading, pipelines, refreshLeads],
   );
-  const columnPrefs = useColumnVisibility("leads", columns);
+  const columnPrefs = useColumnVisibility("leads", columns, {
+    defaultHidden: LEADS_DEFAULT_HIDDEN_COLUMNS,
+  });
 
   if (leadsQuery.isError) {
     return <ErrorState onRetry={() => void leadsQuery.refetch()} />;
   }
 
   const hasFilters = Object.values(filters).some((v) => v.trim() !== "") || status !== "all";
+  const total = leadsQuery.data?.total ?? 0;
+  const countLabel = `${countryFilterLabel(filters.country)} — ${formatLeadCount(total)}`;
 
   return (
     <div className="space-y-3">
@@ -343,6 +361,13 @@ export function LeadsListView({
             </button>
           ))}
         </div>
+        <p
+          className="min-h-5 text-xs text-ink-muted tabular-nums"
+          aria-live="polite"
+          data-loading={leadsQuery.isFetching ? "true" : undefined}
+        >
+          {leadsQuery.isLoading && !leadsQuery.data ? "Counting…" : countLabel}
+        </p>
         <div className="ml-auto">
           <ColumnsMenu {...columnPrefs.menu} />
         </div>

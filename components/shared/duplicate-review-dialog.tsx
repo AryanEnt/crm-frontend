@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import {
   Modal,
   ModalContent,
@@ -8,8 +9,7 @@ import {
   ModalHeader,
   ModalTitle,
 } from "@/components/ui/modal";
-import { Button } from "@/components/ui/button";
-import { StatusBadge } from "@/components/ui/status-badge";
+import { DuplicateMatchList } from "@/components/shared/duplicate-match-list";
 import type { DuplicateMatch } from "@/lib/api/crm";
 
 export function DuplicateReviewDialog({
@@ -18,48 +18,46 @@ export function DuplicateReviewDialog({
   duplicates,
   onConfirm,
   loading,
+  confirmLabel = "Create anyway",
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   duplicates: DuplicateMatch[];
   onConfirm: () => void;
   loading?: boolean;
+  confirmLabel?: string;
 }) {
+  const first = duplicates[0];
+  const titleName = first?.fullName?.trim() || "This person";
+
   return (
     <Modal open={open} onOpenChange={onOpenChange}>
-      <ModalContent className="max-w-lg">
+      <ModalContent className="max-w-md">
         <ModalHeader>
-          <ModalTitle>Potential duplicates found</ModalTitle>
+          <ModalTitle>Already in your CRM?</ModalTitle>
           <ModalDescription>
-            Review these matches before continuing. Nothing will be merged or deleted
-            automatically.
+            <span className="font-medium text-foreground">{titleName}</span> looks similar to{" "}
+            {duplicates.length === 1 ? "someone you already have" : "people you already have"}. Check
+            before creating a duplicate — you can still continue if this is a different person.
           </ModalDescription>
         </ModalHeader>
-        <ul className="max-h-64 space-y-2 overflow-y-auto">
-          {duplicates.map((d) => (
-            <li
-              key={`${d.entity}-${d.id}`}
-              className="rounded-md border border-border px-3 py-2 text-sm"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <p className="font-medium">{d.fullName}</p>
-                <div className="flex gap-1">
-                  <StatusBadge tone="brand">{d.entity}</StatusBadge>
-                  <StatusBadge tone="warning">{d.reason}</StatusBadge>
-                </div>
-              </div>
-              <p className="mt-1 text-xs text-foreground-muted">
-                {[d.email, d.phone].filter(Boolean).join(" · ") || "No contact details"}
-              </p>
-            </li>
-          ))}
-        </ul>
-        <ModalFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
-            Cancel
+        <DuplicateMatchList matches={duplicates} />
+        <ModalFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-between">
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={loading}
+            className="w-full sm:w-auto"
+          >
+            Keep editing
           </Button>
-          <Button loading={loading} onClick={onConfirm}>
-            Create anyway
+          <Button
+            variant="ghost"
+            loading={loading}
+            onClick={onConfirm}
+            className="w-full text-foreground-muted sm:w-auto"
+          >
+            {confirmLabel}
           </Button>
         </ModalFooter>
       </ModalContent>

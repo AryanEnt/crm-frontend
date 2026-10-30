@@ -17,8 +17,9 @@ function read(key: string): string | null {
 
 function write(key: string, hidden: string[]) {
   try {
-    if (hidden.length) window.localStorage.setItem(PREFIX + key, JSON.stringify(hidden));
-    else window.localStorage.removeItem(PREFIX + key);
+    // Always persist, including `[]`, so “show everything” is distinct from “no preference yet”
+    // (missing key still means apply the table’s defaultHidden).
+    window.localStorage.setItem(PREFIX + key, JSON.stringify(hidden));
   } catch {
     // ignore
   }
@@ -34,8 +35,9 @@ function subscribe(onChange: () => void) {
   };
 }
 
-function parse(raw: string | null): string[] {
-  if (!raw) return [];
+/** `null` = no saved preference (use defaults). `[]` = user chose to show every column. */
+function parse(raw: string | null): string[] | null {
+  if (raw == null) return null;
   try {
     const value: unknown = JSON.parse(raw);
     return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
@@ -60,9 +62,11 @@ export function useColumnVisibility<TData>(
   storageKey: string,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   columns: ColumnDef<TData, any>[],
+  opts?: { defaultHidden?: string[] },
 ) {
+  const defaultHidden = opts?.defaultHidden ?? [];
   const raw = React.useSyncExternalStore(subscribe, () => read(storageKey), () => null);
-  const hidden = React.useMemo(() => parse(raw), [raw]);
+  const hidden = React.useMemo(() => parse(raw) ?? defaultHidden, [raw, defaultHidden]);
 
   const options = React.useMemo<ColumnOption[]>(
     () =>

@@ -496,7 +496,7 @@ function LeadFormBody({
                   <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                     <TextField
                       name="potentialValue"
-                      label="Value (optional)"
+                      label="Estimated value (optional)"
                       type="number"
                       inputMode="decimal"
                       min={0}
@@ -534,7 +534,7 @@ function LeadFormBody({
                     ) : null}
                     <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                       {isEdit ? (
-                        <TextField name="potentialValue" label="Value" type="number" inputMode="decimal" min={0} step="0.01" />
+                        <TextField name="potentialValue" label="Estimated value" type="number" inputMode="decimal" min={0} step="0.01" />
                       ) : null}
                       <DateTimeField name="nextActivityAt" label="Next follow-up" placeholder="No follow-up set" />
                     </div>

@@ -4,6 +4,47 @@ const DAY_MS = 86_400_000;
 
 const MONEY_LOCALE = "en-AU";
 
+/** Canonical display names for common residence countries (case-insensitive lookup). */
+const COUNTRY_LABELS = new Map(
+  [
+    "Australia",
+    "Nepal",
+    "India",
+    "New Zealand",
+    "United Kingdom",
+    "United States",
+    "Canada",
+    "Philippines",
+    "China",
+    "Sri Lanka",
+    "Bangladesh",
+    "Pakistan",
+    "Indonesia",
+    "Vietnam",
+    "South Africa",
+  ].map((name) => [name.toLowerCase(), name]),
+);
+
+/** Table / chip label for `lead.country`; blank → em dash. */
+export function formatLeadCountry(country?: string | null): string {
+  const raw = country?.trim() ?? "";
+  if (!raw || raw === "(Unknown)" || raw === "(none)") return "—";
+  return COUNTRY_LABELS.get(raw.toLowerCase()) ?? raw;
+}
+
+/** Filter / summary label; keeps "(Unknown)" readable. */
+export function countryFilterLabel(country: string): string {
+  const raw = country.trim();
+  if (!raw) return "All Countries";
+  if (raw === "(Unknown)" || raw === "(none)") return "Unknown";
+  return formatLeadCountry(raw);
+}
+
+export function formatLeadCount(total: number): string {
+  const n = Number.isFinite(total) ? Math.max(0, Math.floor(total)) : 0;
+  return `${n.toLocaleString(MONEY_LOCALE)} ${n === 1 ? "lead" : "leads"}`;
+}
+
 function resolvedTimeZone(timeZone?: string): string {
   return resolveTimezone(timeZone);
 }

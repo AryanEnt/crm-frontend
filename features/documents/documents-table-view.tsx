@@ -21,6 +21,7 @@ import { ColumnsMenu } from "@/components/ui/console/toolbar";
 import { ErrorState } from "@/components/ui/error-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/console/textarea";
 import {
   Modal,
   ModalContent,
@@ -44,9 +45,15 @@ import {
 import { DatePicker } from "@/components/ui/date-picker";
 import { leadHref } from "@/features/activities/activity-href";
 import { useAuth } from "@/features/auth/auth-provider";
-import { DocumentVisibilityPicker } from "@/features/documents/document-visibility-picker";
+import {
+  DocumentVisibilityPicker,
+  defaultShareValue,
+  type DocumentShareValue,
+} from "@/features/documents/document-visibility-picker";
+import { adminApi } from "@/lib/api/admin";
 import { crmApi, type CrmDocument } from "@/lib/api/crm";
 import { useColumnVisibility } from "@/lib/column-visibility";
+import { formatRelative } from "@/lib/relative-time";
 import { DocumentViewer } from "./document-viewer";
 import { bulkMessage, runBulk } from "@/lib/bulk";
 
@@ -61,6 +68,57 @@ const DOC_STATUSES = [
 
 type DocumentLink = { leadId?: string; customerId?: string; dealId?: string };
 
+function uploaderRoleLabel(role: string | null | undefined) {
+  if (role === "sales_manager") return "Team Lead";
+  if (role === "super_admin") return "Admin";
+  if (role === "sales_executive") return "Sales Executive";
+  return role || null;
+}
+
+function shareSummary(d: CrmDocument): string {
+  switch (d.shareScope) {
+    case "all_teams":
+      return "All teams";
+    case "selected_teams":
+      return d.sharedTeamNames?.length
+        ? d.sharedTeamNames.join(", ")
+        : `${d.sharedTeamIds?.length ?? 0} team(s)`;
+    case "all_team_ses":
+      return d.sharedTeamNames?.length
+        ? `All SEs · ${d.sharedTeamNames.join(", ")}`
+        : "All SEs on team";
+    case "selected_ses":
+      return `${d.sharedUserIds?.length ?? d.viewerUserIds?.length ?? 0} SE(s)`;
+    default:
+      return "Private";
+  }
+}
+
+function canDeleteDocument(
+  doc: CrmDocument,
+  opts: { canDeletePerm: boolean; roleCode?: string; userId?: string },
+): boolean {
+  if (!opts.canDeletePerm) return false;
+  if (opts.roleCode === "sales_manager") return doc.uploadedBy === opts.userId;
+  return true;
+}
+
+function validateShare(share: DocumentShareValue, roleCode: string | undefined): string | null {
+  if (roleCode === "super_admin" && share.shareScope === "selected_teams" && share.teamIds.length === 0) {
+    return "Select at least one team";
+  }
+  if (roleCode === "sales_manager" && share.shareScope === "selected_ses" && share.viewerUserIds.length === 0) {
+    return "Select at least one Sales Executive";
+  }
+  return null;
+}
+
+function appendShareFields(form: FormData, share: DocumentShareValue) {
+  form.append("shareScope", share.shareScope);
+  if (share.teamIds.length > 0) form.append("teamIds", JSON.stringify(share.teamIds));
+  if (share.viewerUserIds.length > 0) form.append("viewerUserIds", JSON.stringify(share.viewerUserIds));
+}
+
 export function DocumentsTableView({
   leadId,
   customerId,
@@ -68,9 +126,16 @@ export function DocumentsTableView({
   compact,
 }: DocumentLink & { compact?: boolean } = {}) {
   const fixedLink: DocumentLink = { leadId, customerId, dealId };
-  const { can } = useAuth();
+  const { can, user } = useAuth();
+  const isAdmin = user?.roleCode === "super_admin";
+  const isTeamLead = user?.roleCode === "sales_manager";
   const qc = useQueryClient();
   const [status, setStatus] = React.useState("all");
+  const [source, setSource] = React.useState("all");
+  const [shareScopeFilter, setShareScopeFilter] = React.useState("all");
+  const [teamFilter, setTeamFilter] = React.useState("all");
+  const [typeFilter, setTypeFilter] = React.useState("");
+  const [createdFrom, setCreatedFrom] = React.useState("");
   const [search, setSearch] = React.useState("");
   const [requestOpen, setRequestOpen] = React.useState(false);
   const [uploadOpen, setUploadOpen] = React.useState(false);
@@ -79,12 +144,18 @@ export function DocumentsTableView({
   const [bulkPending, setBulkPending] = React.useState(false);
   const [viewing, setViewing] = React.useState<CrmDocument | null>(null);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
+  const now = Date.now();
+
+  const teamsQuery = useQuery({
+    queryKey: ["document-filters", "teams"],
+    enabled: isAdmin,
+    queryFn: () => adminApi.listTeams(new URLSearchParams({ limit: "100", isActive: "true" })),
+  });
 
   const params = React.useMemo(() => {
     const p = new URLSearchParams({
       limit: "50",
       offset: "0",
-      // Lead screenshots live under the lead Files tab only.
       excludeScreenshots: "1",
     });
     if (status !== "all") p.set("status", status);
@@ -92,8 +163,27 @@ export function DocumentsTableView({
     if (customerId) p.set("customerId", customerId);
     if (dealId) p.set("dealId", dealId);
     if (search) p.set("q", search);
+    if (typeFilter.trim()) p.set("type", typeFilter.trim());
+    if (shareScopeFilter !== "all") p.set("shareScope", shareScopeFilter);
+    if (isAdmin && teamFilter !== "all") p.set("teamId", teamFilter);
+    if (createdFrom) p.set("createdFrom", createdFrom);
+    if (isAdmin && source === "team_lead") p.set("uploadedByRole", "sales_manager");
+    if (isAdmin && source === "me" && user?.id) p.set("uploadedBy", user.id);
     return p;
-  }, [status, leadId, customerId, dealId, search]);
+  }, [
+    status,
+    leadId,
+    customerId,
+    dealId,
+    search,
+    isAdmin,
+    source,
+    user?.id,
+    shareScopeFilter,
+    teamFilter,
+    typeFilter,
+    createdFrom,
+  ]);
 
   const query = useQuery({
     queryKey: ["documents", params.toString()],
@@ -112,33 +202,83 @@ export function DocumentsTableView({
     onSettled: () => setDeletingId(null),
   });
 
-  const canDelete = can("documents:delete");
+  const canDeletePerm = can("documents:delete");
+  const canCreate = can("documents:create");
+  const deleteOpts = { canDeletePerm, roleCode: user?.roleCode, userId: user?.id };
 
   const columns = React.useMemo<ColumnDef<CrmDocument>[]>(
     () => [
-      ...(canDelete ? [createSelectColumn<CrmDocument>()] : []),
+      ...(canDeletePerm ? [createSelectColumn<CrmDocument>()] : []),
       {
         accessorKey: "name",
-        header: ({ column }) => <SortableHeader column={column} title="Name" />,
+        header: ({ column }) => <SortableHeader column={column} title="Title" />,
         enableHiding: false,
+        cell: ({ row }) => {
+          const d = row.original;
+          const filename = d.originalFilename || d.name;
+          return (
+            <div>
+              {d.fileKey ? (
+                <button
+                  type="button"
+                  onClick={() => setViewing(d)}
+                  className="rounded-sm text-left font-medium hover:text-brand hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {d.name}
+                </button>
+              ) : (
+                <p className="font-medium">{d.name}</p>
+              )}
+              <p className="text-[11px] text-foreground-muted">
+                {filename}
+                {d.mimeType ? ` · ${d.mimeType}` : ""}
+                {d.sizeBytes ? ` · ${formatFileSize(d.sizeBytes)}` : ""}
+              </p>
+            </div>
+          );
+        },
+      },
+      {
+        id: "type",
+        header: "Type",
         cell: ({ row }) => (
-          <div>
-            {row.original.fileKey ? (
-              <button
-                type="button"
-                onClick={() => setViewing(row.original)}
-                className="rounded-sm text-left font-medium hover:text-brand hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                {row.original.name}
-              </button>
-            ) : (
-              <p className="font-medium">{row.original.name}</p>
-            )}
-            <p className="text-[11px] text-foreground-muted">
-              {row.original.type || row.original.category || "—"}
-            </p>
-          </div>
+          <span className="text-[13px] text-foreground">
+            {row.original.type || row.original.category || "—"}
+          </span>
         ),
+      },
+      {
+        id: "share",
+        header: "Sharing",
+        cell: ({ row }) => (
+          <span className="text-[13px] text-foreground">{shareSummary(row.original)}</span>
+        ),
+      },
+      {
+        id: "people",
+        header: "Uploaded by",
+        cell: ({ row }) => {
+          const d = row.original;
+          const role = uploaderRoleLabel(d.uploadedByRole);
+          return (
+            <div>
+              <p className="text-[13px] text-foreground">{d.uploadedByName ?? "—"}</p>
+              {role ? <p className="text-[11px] text-foreground-muted">{role}</p> : null}
+            </div>
+          );
+        },
+      },
+      {
+        id: "uploaded",
+        header: "Uploaded",
+        cell: ({ row }) => {
+          const at = row.original.uploadedDate || row.original.createdAt;
+          return (
+            <span className="text-[13px] text-foreground-muted" title={at}>
+              {at ? formatRelative(at, now) : "—"}
+            </span>
+          );
+        },
       },
       {
         id: "lead",
@@ -156,29 +296,25 @@ export function DocumentsTableView({
         },
       },
       {
-        id: "people",
-        header: "By",
-        cell: ({ row }) => (
-          <div className="text-[11px] text-foreground-muted">
-            {row.original.uploadedByName ?? "—"}
-          </div>
-        ),
-      },
-      {
         id: "actions",
         header: "",
         cell: ({ row }) => {
           const d = row.original;
+          const showDelete = canDeleteDocument(d, deleteOpts);
           return (
             <div className="flex flex-wrap justify-end gap-1">
               {d.fileKey ? (
                 <Button size="sm" variant="ghost" asChild>
-                  <a href={crmApi.downloadDocumentUrl(d.id)} download={d.name} aria-label={`Download ${d.name}`}>
+                  <a
+                    href={crmApi.downloadDocumentUrl(d.id)}
+                    download={d.originalFilename || d.name}
+                    aria-label={`Download ${d.name}`}
+                  >
                     <Download className="size-3.5" aria-hidden />
                   </a>
                 </Button>
               ) : null}
-              {canDelete ? (
+              {showDelete ? (
                 <Button
                   size="sm"
                   variant="ghost"
@@ -199,15 +335,20 @@ export function DocumentsTableView({
         },
       },
     ],
-    [canDelete, deleteMutation, deletingId],
+    [canDeletePerm, deleteMutation, deletingId, deleteOpts, now],
   );
 
   const columnPrefs = useColumnVisibility("documents", columns);
 
   const deleteSelected = async () => {
-    if (!window.confirm(`Delete ${selected.length} document${selected.length === 1 ? "" : "s"}?`)) return;
+    const deletable = selected.filter((d) => canDeleteDocument(d, deleteOpts));
+    if (deletable.length === 0) {
+      toast.error("You can only delete documents you are allowed to remove");
+      return;
+    }
+    if (!window.confirm(`Delete ${deletable.length} document${deletable.length === 1 ? "" : "s"}?`)) return;
     setBulkPending(true);
-    const result = await runBulk(selected, (d) => crmApi.deleteDocument(d.id));
+    const result = await runBulk(deletable, (d) => crmApi.deleteDocument(d.id));
     setBulkPending(false);
     if (result.ok > 0) {
       invalidate();
@@ -222,21 +363,29 @@ export function DocumentsTableView({
     return <ErrorState onRetry={() => void query.refetch()} />;
   }
 
+  const description = isAdmin
+    ? "Upload and share files with teams, and review documents Team Leads upload."
+    : isTeamLead
+      ? "Share files with your Sales Executives, and open files Admin shared with your team."
+      : "View and download documents shared with you or your team.";
+
   return (
     <div className="space-y-4">
       {!compact ? (
         <PageHeader
           breadcrumbs={[{ label: "Workspace", href: "/" }, { label: "Documents" }]}
           title="Documents"
-          description="Team Lead documents shared with your team. Lead screenshots stay on each lead’s Files tab."
+          description={description}
           actions={
             <div className="flex gap-2">
-              {can("documents:create") ? (
+              {canCreate ? (
                 <>
-                  <Button size="sm" variant="outline" onClick={() => setRequestOpen(true)}>
-                    <Plus className="size-3.5" />
-                    Request
-                  </Button>
+                  {hasFixedLink(fixedLink) ? (
+                    <Button size="sm" variant="outline" onClick={() => setRequestOpen(true)}>
+                      <Plus className="size-3.5" />
+                      Request
+                    </Button>
+                  ) : null}
                   <Button size="sm" onClick={() => setUploadOpen(true)}>
                     <FileUp className="size-3.5" />
                     Upload
@@ -246,7 +395,7 @@ export function DocumentsTableView({
             </div>
           }
         />
-      ) : can("documents:create") ? (
+      ) : canCreate ? (
         <div className="flex justify-end gap-2">
           <Button size="sm" variant="outline" onClick={() => setRequestOpen(true)}>
             Request
@@ -260,7 +409,7 @@ export function DocumentsTableView({
       <FilterBar
         search={search}
         onSearchChange={setSearch}
-        searchPlaceholder="Search documents…"
+        searchPlaceholder="Search title or filename…"
         trailing={<ColumnsMenu {...columnPrefs.menu} />}
       >
         <Select value={status} onValueChange={setStatus}>
@@ -276,9 +425,62 @@ export function DocumentsTableView({
             ))}
           </SelectContent>
         </Select>
+        <Select value={shareScopeFilter} onValueChange={setShareScopeFilter}>
+          <SelectTrigger className="w-[160px]">
+            <SelectValue placeholder="Sharing" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All sharing</SelectItem>
+            <SelectItem value="all_teams">All teams</SelectItem>
+            <SelectItem value="selected_teams">Selected teams</SelectItem>
+            <SelectItem value="all_team_ses">All team SEs</SelectItem>
+            <SelectItem value="selected_ses">Selected SEs</SelectItem>
+            <SelectItem value="none">Private</SelectItem>
+          </SelectContent>
+        </Select>
+        <Input
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value)}
+          placeholder="Type"
+          className="h-8 w-[120px]"
+        />
+        {isAdmin ? (
+          <>
+            <Select value={source} onValueChange={setSource}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="From" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Everyone</SelectItem>
+                <SelectItem value="team_lead">From Team Leads</SelectItem>
+                <SelectItem value="me">Shared by me</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={teamFilter} onValueChange={setTeamFilter}>
+              <SelectTrigger className="w-[160px]">
+                <SelectValue placeholder="Team" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All teams</SelectItem>
+                {(teamsQuery.data?.data ?? []).map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </>
+        ) : null}
+        <DatePicker
+          aria-label="Uploaded from"
+          value={createdFrom}
+          onChange={setCreatedFrom}
+          placeholder="From date"
+          clearable
+        />
       </FilterBar>
 
-      {canDelete ? (
+      {canDeletePerm ? (
         <BulkActionBar count={selected.length} onClear={() => setSelectionResetKey((k) => k + 1)}>
           <ConsoleButton
             size="sm"
@@ -302,6 +504,14 @@ export function DocumentsTableView({
         onRowSelectionChange={setSelected}
         selectionResetKey={selectionResetKey}
         itemLabel="documents"
+        emptyTitle="No documents yet"
+        emptyDescription={
+          canCreate
+            ? "Upload a file and choose who on your teams can access it."
+            : "Documents shared with you will appear here."
+        }
+        emptyActionLabel={canCreate ? "Upload document" : undefined}
+        onEmptyAction={canCreate ? () => setUploadOpen(true) : undefined}
       />
 
       <DocumentViewer doc={viewing} onClose={() => setViewing(null)} />
@@ -339,10 +549,11 @@ function RequestDocumentDialog({
   fixedLink: DocumentLink;
   onDone: () => void;
 }) {
+  const { user } = useAuth();
   const [name, setName] = React.useState("");
   const [type, setType] = React.useState("");
   const [expiryDate, setExpiryDate] = React.useState("");
-  const [viewerUserIds, setViewerUserIds] = React.useState<string[]>([]);
+  const [share, setShare] = React.useState<DocumentShareValue>(() => defaultShareValue(user?.roleCode));
   const [loading, setLoading] = React.useState(false);
   const [openedAt, setOpenedAt] = React.useState(open);
 
@@ -352,7 +563,7 @@ function RequestDocumentDialog({
       setName("");
       setType("");
       setExpiryDate("");
-      setViewerUserIds([]);
+      setShare(defaultShareValue(user?.roleCode));
     }
   }
 
@@ -384,6 +595,11 @@ function RequestDocumentDialog({
                   toast.error("Name and type are required");
                   return;
                 }
+                const shareError = validateShare(share, user?.roleCode);
+                if (shareError) {
+                  toast.error(shareError);
+                  return;
+                }
                 const link = linkBody(fixedLink, "");
                 setLoading(true);
                 try {
@@ -394,7 +610,9 @@ function RequestDocumentDialog({
                     customerId: link.customerId ?? null,
                     dealId: link.dealId ?? null,
                     expiryDate: expiryDate || null,
-                    viewerUserIds,
+                    shareScope: share.shareScope,
+                    teamIds: share.teamIds,
+                    viewerUserIds: share.viewerUserIds,
                   });
                   onOpenChange(false);
                   onDone();
@@ -443,8 +661,8 @@ function RequestDocumentDialog({
             />
           </FormFieldSlot>
         </CrmFormSection>
-        <CrmFormSection title="Visible to" divided>
-          <DocumentVisibilityPicker value={viewerUserIds} onChange={setViewerUserIds} />
+        <CrmFormSection title="Who can see this" divided>
+          <DocumentVisibilityPicker value={share} onChange={setShare} />
         </CrmFormSection>
       </div>
     </QuickCreateDrawer>
@@ -539,7 +757,9 @@ function UploadFileDropzone({
         </span>
         <span className="min-w-0">
           <span className="block text-[13px] font-medium text-foreground">Drop a file here or browse</span>
-          <span className="block text-[12px] text-foreground-subtle">PDF, images, Word, Excel — any file type</span>
+          <span className="block text-[12px] text-foreground-subtle">
+            PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX, TXT, and images
+          </span>
         </span>
       </button>
       <input
@@ -548,6 +768,7 @@ function UploadFileDropzone({
         className="hidden"
         tabIndex={-1}
         aria-hidden
+        accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,image/*"
         onChange={(e) => take(e.target.files?.[0] ?? null)}
       />
     </>
@@ -565,9 +786,11 @@ function UploadDocumentDialog({
   fixedLink: DocumentLink;
   onDone: () => void;
 }) {
+  const { user } = useAuth();
   const [name, setName] = React.useState("");
   const [type, setType] = React.useState("");
-  const [viewerUserIds, setViewerUserIds] = React.useState<string[]>([]);
+  const [description, setDescription] = React.useState("");
+  const [share, setShare] = React.useState<DocumentShareValue>(() => defaultShareValue(user?.roleCode));
   const [file, setFile] = React.useState<File | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [openedAt, setOpenedAt] = React.useState(open);
@@ -575,17 +798,18 @@ function UploadDocumentDialog({
   if (open !== openedAt) {
     setOpenedAt(open);
     if (open) {
-      setViewerUserIds([]);
+      setShare(defaultShareValue(user?.roleCode));
       setFile(null);
       setName("");
       setType("");
+      setDescription("");
     }
   }
   const link = linkBody(fixedLink, "");
 
   return (
     <Modal open={open} onOpenChange={onOpenChange}>
-      <ModalContent>
+      <ModalContent className="sm:max-w-lg">
         <ModalHeader>
           <ModalTitle>Upload document</ModalTitle>
         </ModalHeader>
@@ -596,16 +820,25 @@ function UploadDocumentDialog({
               file={file}
               onChange={(next) => {
                 setFile(next);
-                if (next && !name.trim()) setName(next.name);
+                if (next && !name.trim()) setName(next.name.replace(/\.[^.]+$/, "") || next.name);
               }}
             />
           </div>
           <div className="space-y-1.5">
-            <Label>Name</Label>
+            <Label required>Title</Label>
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder={file?.name ?? "Document name"}
+              placeholder={file?.name ?? "Document title"}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Description</Label>
+            <Textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Optional notes for recipients"
+              rows={2}
             />
           </div>
           <div className="space-y-1.5">
@@ -613,12 +846,12 @@ function UploadDocumentDialog({
             <Input
               value={type}
               onChange={(e) => setType(e.target.value)}
-              placeholder="passport, contract…"
+              placeholder="policy, handbook, contract…"
             />
           </div>
           <div className="space-y-1.5">
-            <Label>Visible to</Label>
-            <DocumentVisibilityPicker value={viewerUserIds} onChange={setViewerUserIds} />
+            <Label>Sharing</Label>
+            <DocumentVisibilityPicker value={share} onChange={setShare} />
           </div>
         </div>
         <ModalFooter>
@@ -631,22 +864,33 @@ function UploadDocumentDialog({
             onClick={() => {
               void (async () => {
                 if (!file) return;
+                if (!name.trim()) {
+                  toast.error("Title is required");
+                  return;
+                }
+                const shareError = validateShare(share, user?.roleCode);
+                if (shareError) {
+                  toast.error(shareError);
+                  return;
+                }
                 setLoading(true);
                 try {
                   const form = new FormData();
                   form.append("file", file);
-                  form.append("name", name || file.name);
+                  form.append("name", name.trim() || file.name);
                   form.append("type", type);
+                  form.append("notes", description.trim());
                   if (link.leadId) form.append("leadId", link.leadId);
                   if (link.customerId) form.append("customerId", link.customerId);
                   if (link.dealId) form.append("dealId", link.dealId);
-                  form.append("viewerUserIds", JSON.stringify(viewerUserIds));
+                  appendShareFields(form, share);
                   await crmApi.uploadDocument(form);
                   onOpenChange(false);
                   setFile(null);
                   setName("");
                   setType("");
-                  setViewerUserIds([]);
+                  setDescription("");
+                  setShare(defaultShareValue(user?.roleCode));
                   onDone();
                   toast.success("Document uploaded");
                 } catch (err) {

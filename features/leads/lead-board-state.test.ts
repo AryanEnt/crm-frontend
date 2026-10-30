@@ -205,6 +205,17 @@ describe("leadFilterParams", () => {
     assert.equal(leadFilterParams("", EMPTY_LEAD_FILTERS).toString(), "");
   });
 
+  it("sends an exact country filter, including Unknown for blanks", () => {
+    assert.equal(
+      leadFilterParams("", { ...EMPTY_LEAD_FILTERS, country: " Australia " }).get("country"),
+      "Australia",
+    );
+    assert.equal(
+      leadFilterParams("", { ...EMPTY_LEAD_FILTERS, country: "(Unknown)" }).get("country"),
+      "(Unknown)",
+    );
+  });
+
   it("counts active filters", () => {
     assert.equal(activeFilterCount(EMPTY_LEAD_FILTERS), 0);
     assert.equal(activeFilterCount({ ...EMPTY_LEAD_FILTERS, source: "Web", tag: "vip" }), 2);

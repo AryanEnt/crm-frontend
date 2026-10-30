@@ -5,6 +5,7 @@ import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Modal,
@@ -49,13 +50,16 @@ export type LeadMoveRequest = {
   lostReason?: string | null;
   /** Already-captured YYYY-MM-DD; when set, moving to Won skips the prompt. */
   documentDeadline?: string | null;
+  /** Already-captured closed value; when set with a deadline, moving to Won skips the prompt. */
+  closingAmount?: number | null;
 };
 
-type MoveVars = Omit<LeadMoveRequest, "lostReason" | "documentDeadline"> & {
+type MoveVars = Omit<LeadMoveRequest, "lostReason" | "documentDeadline" | "closingAmount"> & {
   force?: boolean;
   reopen?: boolean;
   lostReason?: string;
   documentDeadline?: string;
+  closingAmount?: number;
 };
 
 type Pending =
@@ -102,6 +106,7 @@ export function useLeadMove({
         reopen: vars.reopen,
         lostReason: vars.lostReason,
         documentDeadline: vars.documentDeadline,
+        closingAmount: vars.closingAmount,
       }),
     onMutate: (vars) => ({ rollback: onOptimistic?.(vars) ?? undefined }),
     onSuccess: (result, vars) => {
@@ -128,9 +133,12 @@ export function useLeadMove({
     onError: (err, vars, ctx) => {
       ctx?.rollback?.();
       if (err instanceof ApiError && err.status === 400 && isStageMoveError(err.details)) {
-        if ((err.details as StageMoveError).reason === "document_deadline_required") {
+        if (
+          (err.details as StageMoveError).reason === "document_deadline_required" ||
+          (err.details as StageMoveError).reason === "closing_amount_required"
+        ) {
           setPending({ kind: "won", req: vars });
-          setAnnounce("Set a document send deadline to mark as won.");
+          setAnnounce("Enter the closing amount and document send deadline to mark as won.");
           return;
         }
         setPending({ kind: "blocked", vars, details: err.details });
@@ -151,9 +159,10 @@ export function useLeadMove({
   });
 
   const request = React.useCallback(
-    ({ lostReason: captured, documentDeadline: deadline, ...req }: LeadMoveRequest) => {
+    ({ lostReason: captured, documentDeadline: deadline, closingAmount: amount, ...req }: LeadMoveRequest) => {
       const known = captured?.trim() || undefined;
       const knownDeadline = deadline?.trim() || undefined;
+      const knownAmount = amount != null && Number.isFinite(amount) && amount >= 0 && Number.isInteger(amount) ? amount : undefined;
       const intent = classifyMove({ stageId: req.fromStageId, status: req.status }, req.to, {
         pipelineId: req.pipelineId,
       });
@@ -165,8 +174,9 @@ export function useLeadMove({
           else setPending({ kind: "lost", req });
           return;
         case "won_deadline":
-          if (knownDeadline) mutation.mutate({ ...req, documentDeadline: knownDeadline });
-          else setPending({ kind: "won", req });
+          if (knownDeadline && knownAmount != null) {
+            mutation.mutate({ ...req, documentDeadline: knownDeadline, closingAmount: knownAmount });
+          } else setPending({ kind: "won", req: { ...req, closingAmount: knownAmount } });
           return;
         case "reopen":
           setPending({ kind: "reopen", req: { ...req, lostReason: known }, needsReason: intent.lostReason && !known });
@@ -193,10 +203,11 @@ export function useLeadMove({
       <WonDeadlineDialog
         open={pending?.kind === "won"}
         leadName={pending?.kind === "won" ? pending.req.leadName : ""}
+        initialAmount={pending?.kind === "won" ? pending.req.closingAmount : undefined}
         loading={mutation.isPending}
         onCancel={() => setPending(null)}
-        onConfirm={(documentDeadline) =>
-          pending?.kind === "won" && mutation.mutate({ ...pending.req, documentDeadline })
+        onConfirm={(documentDeadline, closingAmount) =>
+          pending?.kind === "won" && mutation.mutate({ ...pending.req, documentDeadline, closingAmount })
         }
       />
       <ReopenModal
@@ -227,44 +238,71 @@ export function useLeadMove({
 function WonDeadlineDialog({
   open,
   leadName,
+  initialAmount,
   loading,
   onCancel,
   onConfirm,
 }: {
   open: boolean;
   leadName: string;
+  initialAmount?: number;
   loading: boolean;
   onCancel: () => void;
-  onConfirm: (documentDeadline: string) => void;
+  onConfirm: (documentDeadline: string, closingAmount: number) => void;
 }) {
   const [deadline, setDeadline] = React.useState("");
+  const [amount, setAmount] = React.useState("");
   const [wasOpen, setWasOpen] = React.useState(open);
   if (open !== wasOpen) {
     setWasOpen(open);
-    if (open) setDeadline("");
+    if (open) {
+      setDeadline("");
+      setAmount(initialAmount != null ? String(initialAmount) : "");
+    }
   }
   const today = React.useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const parsed = amount.trim() === "" ? null : Number(amount.trim());
+  const amountOk = parsed != null && Number.isInteger(parsed) && parsed >= 0;
   return (
     <Modal open={open} onOpenChange={(o) => !o && onCancel()}>
       <ModalContent>
         <ModalHeader>
-          <ModalTitle>Mark {leadName || "this lead"} as won</ModalTitle>
+          <ModalTitle>Close deal for {leadName || "this lead"}</ModalTitle>
           <ModalDescription>
-            Choose when documents must be sent. We&apos;ll move the lead into Nurturing and track that send-by date
-            there.
+            Enter the closing amount, then choose when documents must be sent. We&apos;ll move the lead into Nurturing
+            and track that send-by date there.
           </ModalDescription>
         </ModalHeader>
-        <div className="space-y-1.5">
-          <Label required>Send documents by</Label>
-          <DatePicker value={deadline} onChange={setDeadline} min={today} placeholder="Pick a send-by date" />
-          <p className="text-meta text-ink-muted">Shown on the Nurturing board so the team can chase on time.</p>
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="closing-amount" required>
+              Closing amount
+            </Label>
+            <Input
+              id="closing-amount"
+              inputMode="numeric"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ""))}
+              placeholder="e.g. 25000"
+              autoFocus={!amount}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label required>Send documents by</Label>
+            <DatePicker value={deadline} onChange={setDeadline} min={today} placeholder="Pick a send-by date" />
+            <p className="text-meta text-ink-muted">Shown on the Nurturing board so the team can chase on time.</p>
+          </div>
         </div>
         <ModalFooter>
           <Button variant="outline" onClick={onCancel}>
             Cancel
           </Button>
-          <Button loading={loading} disabled={!deadline} onClick={() => onConfirm(deadline)}>
-            Won — move to Nurturing
+          <Button
+            loading={loading}
+            disabled={!deadline || !amountOk}
+            onClick={() => amountOk && onConfirm(deadline, parsed)}
+          >
+            Deal Close — move to Nurturing
           </Button>
         </ModalFooter>
       </ModalContent>

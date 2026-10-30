@@ -2,10 +2,28 @@
 
 import * as React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { GripVertical, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { ErrorState } from "@/components/ui/error-state";
 import { LoadingState } from "@/components/ui/loading-state";
@@ -28,40 +46,156 @@ import {
 } from "@/components/ui/modal";
 import { useAuth } from "@/features/auth/auth-provider";
 import { crmApi, type Pipeline, type PipelineStage } from "@/lib/api/crm";
+import { cn } from "@/lib/utils";
 
-type StageOutcome = "open" | "won" | "lost";
+const HOURS_PER_DAY = 24;
 
-const outcomeOf = (stage: Pick<PipelineStage, "isWon" | "isLost">): StageOutcome =>
-  stage.isWon ? "won" : stage.isLost ? "lost" : "open";
+const STAGE_COLORS = [
+  { value: "neutral", label: "Gray" },
+  { value: "slate", label: "Slate" },
+  { value: "blue", label: "Blue" },
+  { value: "teal", label: "Teal" },
+  { value: "green", label: "Green" },
+  { value: "amber", label: "Amber" },
+  { value: "orange", label: "Orange" },
+  { value: "rose", label: "Rose" },
+  { value: "violet", label: "Violet" },
+] as const;
 
-const outcomeFlags = (outcome: StageOutcome) => ({
-  isWon: outcome === "won",
-  isLost: outcome === "lost",
-});
+const colorLabel = (value: string) =>
+  STAGE_COLORS.find((c) => c.value === value)?.label ?? value;
 
-function StageOutcomeField({
-  value,
+/** Admin UI edits follow-up limit in days; the API stores hours. */
+function slaDaysLabel(slaHours: number | null | undefined): string {
+  if (!slaHours || slaHours <= 0) return "";
+  const days = slaHours / HOURS_PER_DAY;
+  return Number.isInteger(days) ? String(days) : String(Math.round(days * 10) / 10);
+}
+
+function slaHoursFromDaysInput(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const days = Number(trimmed);
+  if (!Number.isFinite(days) || days <= 0) return null;
+  return Math.round(days * HOURS_PER_DAY);
+}
+
+function stageSummary(stage: PipelineStage): string {
+  const parts: string[] = [];
+  if (stage.slaHours) {
+    const days = slaDaysLabel(stage.slaHours);
+    parts.push(days === "1" ? "Follow up after 1 day" : `Follow up after ${days} days`);
+  } else {
+    parts.push("No follow-up timer");
+  }
+  parts.push(`${stage.probability}% win chance`);
+  parts.push(colorLabel(stage.visualAccent));
+  return parts.join(" · ");
+}
+
+type StageFormValues = {
+  name: string;
+  probability: string;
+  slaDays: string;
+  accent: string;
+};
+
+function StageFormFields({
+  values,
   onChange,
+  showActive,
+  active,
+  onActiveChange,
 }: {
-  value: StageOutcome;
-  onChange: (value: StageOutcome) => void;
+  values: StageFormValues;
+  onChange: (patch: Partial<StageFormValues>) => void;
+  showActive?: boolean;
+  active?: boolean;
+  onActiveChange?: (v: boolean) => void;
 }) {
   return (
-    <div className="space-y-1.5">
-      <Label>Outcome</Label>
-      <Select value={value} onValueChange={(v) => onChange(v as StageOutcome)}>
-        <SelectTrigger>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="open">Open: deal is still in progress</SelectItem>
-          <SelectItem value="won">Won: the Won button moves deals here</SelectItem>
-          <SelectItem value="lost">Lost: the Lost button moves deals here</SelectItem>
-        </SelectContent>
-      </Select>
-      <p className="text-[11px] text-foreground-muted">
-        Each pipeline has one Won and one Lost stage. Choosing one here replaces the current one.
-      </p>
+    <div className="grid gap-4">
+      <div className="space-y-1.5">
+        <Label required>Stage name</Label>
+        <Input
+          value={values.name}
+          onChange={(e) => onChange({ name: e.target.value })}
+          placeholder="e.g. Cold lead, Contacted"
+          required
+          aria-required="true"
+        />
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="stage-follow-up-days">Follow up after (days)</Label>
+        <Input
+          id="stage-follow-up-days"
+          type="number"
+          min="0"
+          step="1"
+          inputMode="numeric"
+          placeholder="e.g. 5"
+          value={values.slaDays}
+          onChange={(e) => onChange({ slaDays: e.target.value })}
+        />
+        <p className="text-[11px] leading-relaxed text-foreground-muted">
+          How many days a lead can sit here before the team should act. Near the limit the card
+          turns amber; after it, red. Leave empty if you don’t want a timer.
+        </p>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="stage-win-chance">Win chance (%)</Label>
+        <Input
+          id="stage-win-chance"
+          type="number"
+          min="0"
+          max="100"
+          step="1"
+          inputMode="numeric"
+          placeholder="e.g. 10"
+          value={values.probability}
+          onChange={(e) => onChange({ probability: e.target.value })}
+        />
+        <p className="text-[11px] leading-relaxed text-foreground-muted">
+          Rough chance a lead in this stage will eventually win. Early stages are low (10–20%);
+          later stages are higher. Used for pipeline value estimates.
+        </p>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label>Column color</Label>
+        <Select value={values.accent} onValueChange={(accent) => onChange({ accent })}>
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {STAGE_COLORS.map((c) => (
+              <SelectItem key={c.value} value={c.value}>
+                {c.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-[11px] text-foreground-muted">Color used for this stage on the pipeline board.</p>
+      </div>
+
+      {showActive ? (
+        <label className="flex items-start gap-2.5 rounded-md border border-border bg-surface-muted/40 px-3 py-2.5 text-sm">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={active}
+            onChange={(e) => onActiveChange?.(e.target.checked)}
+          />
+          <span>
+            <span className="font-medium">Show on pipeline</span>
+            <span className="mt-0.5 block text-[11px] text-foreground-muted">
+              Turn off to hide this stage from the board without deleting it.
+            </span>
+          </span>
+        </label>
+      ) : null}
     </div>
   );
 }
@@ -111,7 +245,7 @@ export function PipelinesAdminView() {
           { label: "Pipelines & Stages" },
         ]}
         title="Pipelines & Stages"
-        description="Configure pipeline definitions and stages. Moving deals through stages is a sales operating action."
+        description="Set up pipeline columns, follow-up timers, and win chances for your team’s board."
         actions={
           <Button size="sm" onClick={() => setCreatePipeOpen(true)}>
             <Plus className="size-3.5" />
@@ -194,6 +328,10 @@ export function PipelinesAdminView() {
   );
 }
 
+function sortedStages(stages: PipelineStage[]): PipelineStage[] {
+  return stages.slice().sort((a, b) => a.position - b.position);
+}
+
 function PipelineEditor({
   pipeline,
   onAddStage,
@@ -209,6 +347,81 @@ function PipelineEditor({
 }) {
   const [description, setDescription] = React.useState(pipeline.description);
   const [saving, setSaving] = React.useState(false);
+  const [stages, setStages] = React.useState(() => sortedStages(pipeline.stages));
+  const [reordering, setReordering] = React.useState(false);
+  const [busyStageId, setBusyStageId] = React.useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = React.useState<PipelineStage | null>(null);
+  const [deleting, setDeleting] = React.useState(false);
+
+  React.useEffect(() => {
+    setDescription(pipeline.description);
+    setStages(sortedStages(pipeline.stages));
+  }, [pipeline]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const onDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id || reordering) return;
+    const oldIndex = stages.findIndex((s) => s.id === active.id);
+    const newIndex = stages.findIndex((s) => s.id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+    const next = arrayMove(stages, oldIndex, newIndex);
+    const prev = stages;
+    setStages(next);
+    setReordering(true);
+    void (async () => {
+      try {
+        await crmApi.reorderStages(
+          pipeline.id,
+          next.map((s) => s.id),
+        );
+        onSaved();
+        toast.success("Stage order saved");
+      } catch (err) {
+        setStages(prev);
+        toast.error(err instanceof Error ? err.message : "Couldn't reorder stages. Try again.");
+      } finally {
+        setReordering(false);
+      }
+    })();
+  };
+
+  const toggleStageVisibility = (stage: PipelineStage) => {
+    if (busyStageId) return;
+    setBusyStageId(stage.id);
+    void (async () => {
+      try {
+        await crmApi.updateStage(stage.id, { isActive: !stage.isActive });
+        onSaved();
+        toast.success(stage.isActive ? "Stage hidden from the board" : "Stage shown on the board");
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Couldn't update the stage. Try again.");
+      } finally {
+        setBusyStageId(null);
+      }
+    })();
+  };
+
+  const confirmDelete = () => {
+    if (!deleteTarget || deleting) return;
+    setDeleting(true);
+    void (async () => {
+      try {
+        await crmApi.deleteStage(deleteTarget.id);
+        setDeleteTarget(null);
+        onSaved();
+        toast.success(`“${deleteTarget.name}” deleted`);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Couldn't delete the stage. Try again.");
+      } finally {
+        setDeleting(false);
+      }
+    })();
+  };
 
   return (
     <section className="space-y-3 rounded-lg border border-border bg-surface p-4">
@@ -262,39 +475,120 @@ function PipelineEditor({
         </div>
       </div>
 
-      <ul className="divide-y divide-border rounded-md border border-border">
-        {pipeline.stages
-          .slice()
-          .sort((a, b) => a.position - b.position)
-          .map((s) => (
-            <li key={s.id} className="flex items-center justify-between gap-3 px-3 py-2">
-              <div className="min-w-0">
-                <p className="flex items-center gap-2 text-sm font-medium">
-                  {s.position}. {s.name}
-                  {s.isWon ? <StatusBadge tone="success">Won</StatusBadge> : null}
-                  {s.isLost ? <StatusBadge tone="danger">Lost</StatusBadge> : null}
-                  {!s.isActive ? (
-                    <span className="ml-2 text-[11px] text-foreground-subtle">inactive</span>
-                  ) : null}
-                </p>
-                <p className="truncate text-[11px] text-foreground-muted">
-                  {s.probability}% · {s.visualAccent}
-                  {s.slaHours ? ` · SLA ${s.slaHours}h` : ""}
-                  {s.requiredFields.length
-                    ? ` · fields: ${s.requiredFields.join(", ")}`
-                    : ""}
-                  {s.requiredDocuments.length
-                    ? ` · docs: ${s.requiredDocuments.join(", ")}`
-                    : ""}
-                </p>
-              </div>
-              <Button size="sm" variant="ghost" onClick={() => onEditStage(s)}>
-                Edit
-              </Button>
-            </li>
-          ))}
-      </ul>
+      <div className="space-y-1.5">
+        <p className="text-[11px] text-foreground-muted">
+          Drag the handle to change column order on the board. Hide removes a column from the board;
+          Delete removes it for good.
+        </p>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+          <SortableContext items={stages.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+            <ul
+              className={cn(
+                "divide-y divide-border rounded-md border border-border",
+                reordering && "pointer-events-none opacity-70",
+              )}
+            >
+              {stages.map((s, index) => (
+                <SortableStageRow
+                  key={s.id}
+                  stage={s}
+                  index={index + 1}
+                  busy={busyStageId === s.id}
+                  onEdit={() => onEditStage(s)}
+                  onToggleVisibility={() => toggleStageVisibility(s)}
+                  onDelete={() => setDeleteTarget(s)}
+                />
+              ))}
+            </ul>
+          </SortableContext>
+        </DndContext>
+      </div>
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && !deleting && setDeleteTarget(null)}
+        title={`Delete “${deleteTarget?.name ?? "stage"}”?`}
+        description="This permanently removes the stage. Prefer Hide if you might need it again."
+        confirmLabel="Delete stage"
+        destructive
+        loading={deleting}
+        onConfirm={confirmDelete}
+      />
     </section>
+  );
+}
+
+function SortableStageRow({
+  stage,
+  index,
+  busy,
+  onEdit,
+  onToggleVisibility,
+  onDelete,
+}: {
+  stage: PipelineStage;
+  index: number;
+  busy?: boolean;
+  onEdit: () => void;
+  onToggleVisibility: () => void;
+  onDelete: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: stage.id,
+  });
+  const locked = stage.isWon || stage.isLost;
+
+  return (
+    <li
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+      }}
+      className={cn(
+        "flex items-center gap-2 bg-surface px-2 py-2",
+        isDragging && "relative z-10 rounded-md shadow-lift ring-1 ring-brand/30",
+        !stage.isActive && "opacity-70",
+      )}
+    >
+      <button
+        type="button"
+        className="inline-flex size-8 shrink-0 cursor-grab items-center justify-center rounded-md text-foreground-muted hover:bg-surface-muted hover:text-foreground active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        aria-label={`Drag to reorder ${stage.name}`}
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical className="size-4" aria-hidden />
+      </button>
+      <div className="min-w-0 flex-1">
+        <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
+          <span>
+            {index}. {stage.name}
+          </span>
+          {stage.isWon ? <StatusBadge tone="success">Won</StatusBadge> : null}
+          {stage.isLost ? <StatusBadge tone="danger">Lost</StatusBadge> : null}
+          {!stage.isActive ? (
+            <span className="text-[11px] text-foreground-subtle">hidden</span>
+          ) : null}
+        </p>
+        <p className="truncate text-[11px] text-foreground-muted">{stageSummary(stage)}</p>
+      </div>
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
+        <Button size="sm" variant="ghost" onClick={onEdit}>
+          Edit
+        </Button>
+        {!locked ? (
+          <>
+            <Button size="sm" variant="outline" loading={busy} onClick={onToggleVisibility}>
+              {stage.isActive ? "Hide" : "Show"}
+            </Button>
+            <Button size="sm" variant="ghost" className="text-danger hover:bg-danger/10 hover:text-danger" onClick={onDelete}>
+              Delete
+            </Button>
+          </>
+        ) : null}
+      </div>
+    </li>
   );
 }
 
@@ -382,57 +676,25 @@ function CreateStageDialog({
   pipelineId: string;
   onCreated: () => void;
 }) {
-  const [name, setName] = React.useState("");
-  const [probability, setProbability] = React.useState("0");
-  const [accent, setAccent] = React.useState("neutral");
-  const [slaHours, setSlaHours] = React.useState("");
-  const [outcome, setOutcome] = React.useState<StageOutcome>("open");
+  const [values, setValues] = React.useState<StageFormValues>({
+    name: "",
+    probability: "10",
+    slaDays: "",
+    accent: "neutral",
+  });
   const [loading, setLoading] = React.useState(false);
-  const changeOutcome = (next: StageOutcome) => {
-    setOutcome(next);
-    if (next === "won") setProbability("100");
-    if (next === "lost") setProbability("0");
-  };
+  const patch = (next: Partial<StageFormValues>) => setValues((v) => ({ ...v, ...next }));
+
   return (
     <Modal open={open} onOpenChange={onOpenChange}>
       <ModalContent>
         <ModalHeader>
           <ModalTitle>Add stage</ModalTitle>
+          <ModalDescription>
+            A stage is a column on the pipeline board. Set a follow-up timer so leads don’t sit untouched.
+          </ModalDescription>
         </ModalHeader>
-        <div className="grid gap-3">
-          <div className="space-y-1.5">
-            <Label required>Name</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} required aria-required="true" />
-          </div>
-          <StageOutcomeField value={outcome} onChange={changeOutcome} />
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label>Probability</Label>
-              <Input value={probability} onChange={(e) => setProbability(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>SLA hours</Label>
-              <Input value={slaHours} onChange={(e) => setSlaHours(e.target.value)} />
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Accent</Label>
-            <Select value={accent} onValueChange={setAccent}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {["neutral", "slate", "blue", "teal", "green", "amber", "orange", "rose", "violet"].map(
-                  (a) => (
-                    <SelectItem key={a} value={a}>
-                      {a}
-                    </SelectItem>
-                  ),
-                )}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
+        <StageFormFields values={values} onChange={patch} />
         <ModalFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
@@ -444,15 +706,15 @@ function CreateStageDialog({
                 setLoading(true);
                 try {
                   await crmApi.createStage(pipelineId, {
-                    name,
-                    probability: Number(probability) || 0,
-                    visualAccent: accent,
-                    slaHours: slaHours ? Number(slaHours) : null,
-                    ...outcomeFlags(outcome),
+                    name: values.name,
+                    probability: Number(values.probability) || 0,
+                    visualAccent: values.accent,
+                    slaHours: slaHoursFromDaysInput(values.slaDays),
+                    isWon: false,
+                    isLost: false,
                   });
                   onOpenChange(false);
-                  setName("");
-                  setOutcome("open");
+                  setValues({ name: "", probability: "10", slaDays: "", accent: "neutral" });
                   onCreated();
                   toast.success("Stage added");
                 } catch (err) {
@@ -482,84 +744,32 @@ function EditStageDialog({
   onOpenChange: (v: boolean) => void;
   onSaved: () => void;
 }) {
-  const [name, setName] = React.useState(stage.name);
-  const [probability, setProbability] = React.useState(String(stage.probability));
-  const [accent, setAccent] = React.useState(stage.visualAccent);
-  const [slaHours, setSlaHours] = React.useState(stage.slaHours?.toString() ?? "");
-  const [fields, setFields] = React.useState(stage.requiredFields.join(", "));
-  const [activities, setActivities] = React.useState(stage.requiredActivities.join(", "));
-  const [documents, setDocuments] = React.useState(stage.requiredDocuments.join(", "));
+  const [values, setValues] = React.useState<StageFormValues>({
+    name: stage.name,
+    probability: String(stage.probability),
+    slaDays: slaDaysLabel(stage.slaHours),
+    accent: stage.visualAccent,
+  });
   const [active, setActive] = React.useState(stage.isActive);
-  const [outcome, setOutcome] = React.useState<StageOutcome>(() => outcomeOf(stage));
   const [loading, setLoading] = React.useState(false);
-  const changeOutcome = (next: StageOutcome) => {
-    setOutcome(next);
-    if (next === "won") setProbability("100");
-    if (next === "lost") setProbability("0");
-  };
-
-  const split = (v: string) =>
-    v
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
+  const patch = (next: Partial<StageFormValues>) => setValues((v) => ({ ...v, ...next }));
 
   return (
     <Modal open={open} onOpenChange={onOpenChange}>
       <ModalContent className="max-w-lg">
         <ModalHeader>
           <ModalTitle>Edit stage</ModalTitle>
+          <ModalDescription>
+            Change how this column works on the board — name, follow-up timer, win chance, and color.
+          </ModalDescription>
         </ModalHeader>
-        <div className="grid gap-3">
-          <div className="space-y-1.5">
-            <Label required>Name</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} required aria-required="true" />
-          </div>
-          <StageOutcomeField value={outcome} onChange={changeOutcome} />
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label>Probability</Label>
-              <Input value={probability} onChange={(e) => setProbability(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>SLA hours</Label>
-              <Input value={slaHours} onChange={(e) => setSlaHours(e.target.value)} />
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Accent</Label>
-            <Select value={accent} onValueChange={setAccent}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {["neutral", "slate", "blue", "teal", "green", "amber", "orange", "rose", "violet"].map(
-                  (a) => (
-                    <SelectItem key={a} value={a}>
-                      {a}
-                    </SelectItem>
-                  ),
-                )}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Required fields</Label>
-            <Input value={fields} onChange={(e) => setFields(e.target.value)} placeholder="value, source, expectedCloseAt" />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Required activities</Label>
-            <Input value={activities} onChange={(e) => setActivities(e.target.value)} placeholder="call, email" />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Required documents</Label>
-            <Input value={documents} onChange={(e) => setDocuments(e.target.value)} placeholder="passport, resume" />
-          </div>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
-            Active
-          </label>
-        </div>
+        <StageFormFields
+          values={values}
+          onChange={patch}
+          showActive
+          active={active}
+          onActiveChange={setActive}
+        />
         <ModalFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
@@ -570,17 +780,14 @@ function EditStageDialog({
               void (async () => {
                 setLoading(true);
                 try {
+                  const slaHours = slaHoursFromDaysInput(values.slaDays);
                   await crmApi.updateStage(stage.id, {
-                    name,
-                    probability: Number(probability) || 0,
-                    visualAccent: accent,
-                    requiredFields: split(fields),
-                    requiredActivities: split(activities),
-                    requiredDocuments: split(documents),
-                    slaHours: slaHours ? Number(slaHours) : null,
-                    clearSla: !slaHours,
+                    name: values.name,
+                    probability: Number(values.probability) || 0,
+                    visualAccent: values.accent,
+                    slaHours,
+                    clearSla: slaHours == null,
                     isActive: active,
-                    ...outcomeFlags(outcome),
                   });
                   onSaved();
                   toast.success("Stage saved");

@@ -19,6 +19,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Avatar } from "@/components/ui/console/avatar";
 import {
   Drawer,
@@ -51,6 +53,7 @@ import { CommunicationActions } from "@/features/communications/communication-ac
 import { EmailComposer } from "@/features/email/email-composer";
 import { LeadAttachments } from "@/features/leads/lead-attachments";
 import { CreateLeadSheet } from "@/features/leads/create/create-lead-sheet";
+import { EstimatedValueEditor } from "@/features/leads/estimated-value-editor";
 import {
   daysSince,
   documentDeadlineCopy,
@@ -117,26 +120,66 @@ export function LeadDetailPanel({
   leadId: string | null;
   onOpenChange: (open: boolean) => void;
 }) {
+  const [editOpen, setEditOpen] = React.useState(false);
+  React.useEffect(() => {
+    setEditOpen(false);
+  }, [leadId]);
+
   return (
-    <Drawer open={!!leadId} onOpenChange={onOpenChange}>
+    <Drawer
+      open={!!leadId}
+      onOpenChange={(open) => {
+        if (!open && editOpen) return;
+        onOpenChange(open);
+      }}
+    >
       <DrawerContent
         className="max-w-full bg-surface shadow-[-12px_0_32px_rgba(42,40,56,0.08)] sm:max-w-[600px]"
         aria-describedby={undefined}
+        onInteractOutside={(e) => {
+          if (editOpen) e.preventDefault();
+        }}
+        onFocusOutside={(e) => {
+          if (editOpen) e.preventDefault();
+        }}
+        onPointerDownOutside={(e) => {
+          if (editOpen) e.preventDefault();
+        }}
       >
-        {leadId ? <PanelBody key={leadId} leadId={leadId} onClose={() => onOpenChange(false)} /> : null}
+        {leadId ? (
+          <PanelBody
+            key={leadId}
+            leadId={leadId}
+            editOpen={editOpen}
+            onEditOpenChange={setEditOpen}
+            onClose={() => onOpenChange(false)}
+          />
+        ) : null}
       </DrawerContent>
     </Drawer>
   );
 }
 
-function PanelBody({ leadId, onClose }: { leadId: string; onClose: () => void }) {
+function PanelBody({
+  leadId,
+  editOpen,
+  onEditOpenChange,
+  onClose,
+}: {
+  leadId: string;
+  editOpen: boolean;
+  onEditOpenChange: (open: boolean) => void;
+  onClose: () => void;
+}) {
   const { can, user } = useAuth();
   const qc = useQueryClient();
   const [activityOpen, setActivityOpen] = React.useState<null | { type?: string }>(null);
-  const [editOpen, setEditOpen] = React.useState(false);
   const [emailOpen, setEmailOpen] = React.useState(false);
   const [messagingOpen, setMessagingOpen] = React.useState(false);
   const [detailTab, setDetailTab] = React.useState("timeline");
+  const [closingAmount, setClosingAmount] = React.useState("");
+  const [closingError, setClosingError] = React.useState(false);
+  const closingInputRef = React.useRef<HTMLInputElement>(null);
 
   const leadQuery = useQuery({ queryKey: ["lead", leadId], queryFn: () => crmApi.getLead(leadId) });
   const pipelinesQuery = useQuery({
@@ -151,6 +194,12 @@ function PanelBody({ leadId, onClose }: { leadId: string; onClose: () => void })
     enabled: can("email:send") || can("email:view"),
     staleTime: 60_000,
   });
+
+  React.useEffect(() => {
+    const estimate = leadQuery.data?.potentialValue;
+    if (estimate == null) return;
+    setClosingAmount((prev) => (prev === "" ? String(Math.round(estimate)) : prev));
+  }, [leadQuery.data?.id, leadQuery.data?.potentialValue]);
 
   const refresh = React.useCallback(() => {
     void qc.invalidateQueries({ queryKey: ["lead", leadId] });
@@ -217,8 +266,13 @@ function PanelBody({ leadId, onClose }: { leadId: string; onClose: () => void })
   const closed = lead.status === "won" || lead.status === "lost";
   const canEdit = can("leads:edit");
   const emailAccount = accountsQuery.data?.accounts?.[0] ?? null;
+  const wonStage = stages.find((s) => s.isWon);
+  const lostStage = stages.find((s) => s.isLost);
+  const nurturing = isNurturingPipeline(lead.pipelineId);
+  const parsedClosing = closingAmount.trim() === "" ? null : Number(closingAmount.trim());
+  const closingOk = parsedClosing != null && Number.isInteger(parsedClosing) && parsedClosing >= 0;
 
-  const requestStage = (to: PipelineStage) =>
+  const requestStage = (to: PipelineStage, extra?: { closingAmount?: number }) =>
     move.request({
       leadId: lead.id,
       leadName: lead.fullName,
@@ -226,7 +280,20 @@ function PanelBody({ leadId, onClose }: { leadId: string; onClose: () => void })
       fromStageId: lead.stageId ?? null,
       to,
       pipelineId: lead.pipelineId ?? undefined,
+      closingAmount: extra?.closingAmount,
     });
+
+  const handleDealClose = () => {
+    if (!wonStage) return;
+    if (!nurturing && !closingOk) {
+      setClosingError(true);
+      closingInputRef.current?.focus();
+      toast.error("Enter the closing amount before closing this deal.");
+      return;
+    }
+    setClosingError(false);
+    requestStage(wonStage, closingOk ? { closingAmount: parsedClosing } : undefined);
+  };
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -247,9 +314,14 @@ function PanelBody({ leadId, onClose }: { leadId: string; onClose: () => void })
               Won {formatDate(lead.wonAt)}
             </span>
           ) : null}
-          <span className="text-numeral-sm text-ink">
-            {lead.potentialValue != null ? formatLeadMoney(lead.potentialValue, lead.currency) : "No value"}
-          </span>
+          <EstimatedValueEditor
+            leadId={lead.id}
+            value={lead.potentialValue}
+            currency={lead.currency}
+            canEdit={canEdit}
+            onSaved={refresh}
+            compact
+          />
           <span aria-hidden className="text-ink-subtle">
             ·
           </span>
@@ -305,6 +377,12 @@ function PanelBody({ leadId, onClose }: { leadId: string; onClose: () => void })
               Add activity
             </Button>
           ) : null}
+          {canEdit ? (
+            <Button size="sm" variant="outline" onClick={() => onEditOpenChange(true)}>
+              <Pencil className="size-3.5" />
+              Edit details
+            </Button>
+          ) : null}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button size="sm" variant="ghost" aria-label="More actions">
@@ -314,7 +392,7 @@ function PanelBody({ leadId, onClose }: { leadId: string; onClose: () => void })
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
               {canEdit ? (
-                <DropdownMenuItem onSelect={() => setEditOpen(true)}>
+                <DropdownMenuItem onSelect={() => onEditOpenChange(true)}>
                   <Pencil className="size-3.5" />
                   Edit details
                 </DropdownMenuItem>
@@ -351,6 +429,7 @@ function PanelBody({ leadId, onClose }: { leadId: string; onClose: () => void })
             lead={lead}
             canEdit={canEdit}
             busy={move.isPending}
+            showCloseActions={false}
             onSelect={requestStage}
           />
         ) : null}
@@ -380,8 +459,44 @@ function PanelBody({ leadId, onClose }: { leadId: string; onClose: () => void })
           />
         ) : null}
 
+        {canEdit && !closed && wonStage && !nurturing ? (
+          <div className="space-y-1.5 rounded-card border border-line p-4">
+            <Label htmlFor="lead-closing-amount" required>
+              Closing amount
+            </Label>
+            <Input
+              ref={closingInputRef}
+              id="lead-closing-amount"
+              inputMode="numeric"
+              value={closingAmount}
+              error={closingError}
+              onChange={(e) => {
+                setClosingAmount(e.target.value.replace(/[^\d]/g, ""));
+                setClosingError(false);
+              }}
+              placeholder={lead.potentialValue != null ? String(Math.round(lead.potentialValue)) : "e.g. 25000"}
+            />
+            <p className="text-meta text-ink-muted">
+              Required before Deal Close. Saved as this lead’s closed value
+              {lead.potentialValue != null ? ` (estimate ${formatLeadMoney(lead.potentialValue, lead.currency)})` : ""}.
+            </p>
+          </div>
+        ) : closed && lead.status === "won" && lead.potentialValue != null ? (
+          <dl>
+            <Fact label="Closing amount" value={formatLeadMoney(lead.potentialValue, lead.currency)} />
+          </dl>
+        ) : null}
+
         <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3">
-          <Fact label="Value" value={lead.potentialValue != null ? formatLeadMoney(lead.potentialValue, lead.currency) : "—"} />
+          <div className="min-w-0 sm:col-span-1">
+            <EstimatedValueEditor
+              leadId={lead.id}
+              value={lead.potentialValue}
+              currency={lead.currency}
+              canEdit={canEdit}
+              onSaved={refresh}
+            />
+          </div>
           <Fact label="Probability" value={lead.probability != null ? `${lead.probability}%` : "—"} />
           <Fact label="Expected close" value={formatDate(lead.expectedCloseAt)} />
           <Fact label="Source" value={lead.source || "—"} />
@@ -409,6 +524,27 @@ function PanelBody({ leadId, onClose }: { leadId: string; onClose: () => void })
         </Tabs>
       </div>
 
+      {canEdit && !closed && (wonStage || lostStage) ? (
+        <div className="flex shrink-0 items-center justify-end gap-2 border-t border-line bg-surface px-5 py-3">
+          {lostStage ? (
+            <Button size="sm" variant="outline" disabled={move.isPending} onClick={() => requestStage(lostStage)}>
+              Mark lost
+            </Button>
+          ) : null}
+          {wonStage ? (
+            <Button
+              size="sm"
+              className="bg-success text-white hover:bg-success/90"
+              disabled={move.isPending}
+              onClick={handleDealClose}
+            >
+              <Check className="size-3.5" />
+              {nurturing ? wonStage.name?.trim() || "Complete" : "Deal Close"}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+
       {move.dialogs}
       <ActivityQuickCreateDialog
         open={!!activityOpen}
@@ -421,7 +557,7 @@ function PanelBody({ leadId, onClose }: { leadId: string; onClose: () => void })
           refresh();
         }}
       />
-      <CreateLeadSheet open={editOpen} onOpenChange={setEditOpen} lead={lead} onSaved={() => refresh()} />
+      <CreateLeadSheet open={editOpen} onOpenChange={onEditOpenChange} lead={lead} onSaved={() => refresh()} />
       {emailOpen ? (
         <EmailComposer
           open={emailOpen}
@@ -472,6 +608,7 @@ function StageStepper({
   lead,
   canEdit,
   busy,
+  showCloseActions = true,
   onSelect,
 }: {
   stages: PipelineStage[];
@@ -479,6 +616,7 @@ function StageStepper({
   lead: Lead;
   canEdit: boolean;
   busy: boolean;
+  showCloseActions?: boolean;
   onSelect: (stage: PipelineStage) => void;
 }) {
   const open = stages.filter((s) => !s.isWon && !s.isLost);
@@ -559,7 +697,7 @@ function StageStepper({
             </Button>
           ) : null}
         </div>
-      ) : canEdit && (won || lost) ? (
+      ) : showCloseActions && canEdit && (won || lost) ? (
         <div className="flex gap-2">
           {won ? (
             <Button

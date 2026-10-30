@@ -30,6 +30,7 @@ import { PipelineHeader } from "./pipeline-header";
 import { PipelineBoardSkeleton } from "./pipeline-skeleton";
 import { PipelineStats, PipelineStatsSkeleton } from "./pipeline-stats";
 import { PipelineToolbar } from "./pipeline-toolbar";
+import { SlaAgeLegend } from "./sla-age-legend";
 import { CLOSED_PAGE_SIZE, usePipelineLeads } from "./use-pipeline-leads";
 
 /**
@@ -180,6 +181,10 @@ export function PipelinePage() {
             nurturing={nurturing}
             onChange={setFilters}
           />
+
+          {!data.isLoading && !isClosedStatus(filters.status) && data.openStages.some((s) => (s.slaHours ?? 0) > 0) ? (
+            <SlaAgeLegend />
+          ) : null}
 
           <div aria-busy={data.isFetching || undefined}>
             {data.isLoading ? (

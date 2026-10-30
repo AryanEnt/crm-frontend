@@ -10,7 +10,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  daysSince,
   formatDocumentDeadline,
   formatLeadMoney,
   formatNextAction,
@@ -21,6 +20,7 @@ import type { LeadBoardCard, LeadBoardStage } from "@/lib/api/crm";
 import { cn } from "@/lib/utils";
 import { formatDate } from "./pipeline-format";
 import { OwnerAvatar } from "./pipeline-ui";
+import { stageAge, type StageAgeTone } from "./stage-age";
 
 const TONE_CLASS = {
   overdue: "text-danger",
@@ -28,6 +28,41 @@ const TONE_CLASS = {
   upcoming: "text-ink-secondary",
   none: "text-ink-muted",
 } as const;
+
+const AGE_BORDER: Record<StageAgeTone, string> = {
+  none: "border-line/70",
+  ok: "border-success/55",
+  warn: "border-warning/70",
+  over: "border-danger/80",
+};
+
+const AGE_SURFACE: Record<StageAgeTone, string> = {
+  none: "",
+  ok: "bg-success-soft/50",
+  warn: "bg-warning-soft/70",
+  over: "bg-danger-soft/60",
+};
+
+const AGE_DAYS: Record<StageAgeTone, string> = {
+  none: "text-ink-muted",
+  ok: "text-success font-medium",
+  warn: "text-warning font-semibold",
+  over: "text-danger font-semibold",
+};
+
+const AGE_BAR: Record<StageAgeTone, string> = {
+  none: "bg-transparent",
+  ok: "bg-success",
+  warn: "bg-warning",
+  over: "bg-danger",
+};
+
+const AGE_TITLE: Record<StageAgeTone, string> = {
+  none: "Days in this stage",
+  ok: "On track — within stage time limit",
+  warn: "Near limit — follow up soon",
+  over: "Overdue — past stage time limit",
+};
 
 export function LeadCard({
   lead,
@@ -56,20 +91,31 @@ export function LeadCard({
   const lost = lead.status === "lost";
   const closed = won || lost;
   const tone = nextActionTone(lead.nextActivityAt, timezone);
-  const days = daysSince(lead.stageEnteredAt);
+  const stage = stages?.find((s) => s.id === lead.stageId);
+  const age = stageAge(lead.stageEnteredAt, stage?.slaHours, { closed });
   const showMenu = !overlay && canEdit && !!stages?.length;
 
   return (
     <article
       onClick={overlay ? undefined : onOpen}
       className={cn(
-        "relative rounded-card border border-line/70 bg-surface p-3 shadow-card",
-        "transition-[box-shadow,border-color,opacity] duration-150 motion-reduce:transition-none",
+        "relative overflow-hidden rounded-card border bg-surface p-3 shadow-card",
+        "transition-[box-shadow,border-color,background-color,opacity] duration-150 motion-reduce:transition-none",
         "group-hover/card:border-line-strong group-hover/card:shadow-lift",
+        AGE_BORDER[age.tone],
+        AGE_SURFACE[age.tone],
         overlay && "cursor-grabbing border-line-strong shadow-lift",
         dragging && "opacity-40",
       )}
     >
+      {age.tone !== "none" ? (
+        <span aria-hidden className="absolute inset-x-0 top-0 h-1 bg-surface-muted/80">
+          <span
+            className={cn("block h-full transition-[width] duration-300 motion-reduce:transition-none", AGE_BAR[age.tone])}
+            style={{ width: `${Math.max(12, age.fillPercent)}%` }}
+          />
+        </span>
+      ) : null}
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
           <p className="truncate text-[0.875rem] font-semibold leading-5 text-ink">{lead.fullName}</p>
@@ -88,11 +134,25 @@ export function LeadCard({
       </div>
 
       <div className="mt-2.5 flex items-center gap-2">
-        <span className={cn("text-[0.875rem] font-semibold tabular-nums", lead.potentialValue == null && "font-normal text-ink-muted")}>
-          {lead.potentialValue != null ? formatLeadMoney(lead.potentialValue, lead.currency) : "No value"}
+        <span
+          className={cn("text-[0.875rem] font-semibold tabular-nums", lead.potentialValue == null && "font-normal text-ink-muted")}
+          title={lead.potentialValue != null ? "Estimated value" : "No estimate yet"}
+        >
+          {lead.potentialValue != null ? formatLeadMoney(lead.potentialValue, lead.currency) : "No estimate"}
         </span>
-        <span className="ml-auto text-caption tabular-nums text-ink-muted" title="Days in this stage">
-          {days}d
+        <span className="ml-auto flex min-w-0 items-center gap-1.5">
+          {age.tone === "over" ? (
+            <span className="inline-flex shrink-0 items-center rounded-full bg-danger-soft px-1.5 py-px text-[0.625rem] font-semibold uppercase tracking-wide text-danger">
+              Overdue
+            </span>
+          ) : age.tone === "warn" ? (
+            <span className="inline-flex shrink-0 items-center rounded-full bg-warning-soft px-1.5 py-px text-[0.625rem] font-semibold uppercase tracking-wide text-warning">
+              Soon
+            </span>
+          ) : null}
+          <span className={cn("text-caption tabular-nums", AGE_DAYS[age.tone])} title={AGE_TITLE[age.tone]}>
+            {age.days}d
+          </span>
         </span>
         <OwnerAvatar id={lead.ownerUserId} name={lead.ownerName} />
       </div>

@@ -62,11 +62,14 @@ import { leadMovedMessage } from "./lead-moved";
 import {
   colorOf,
   eventInstant,
+  calendarEventLabel,
   formatClock,
   instantAt,
   isOpen,
   minutesInTimezone,
+  relatedName,
   rescheduleFields,
+  shortTitle,
   statusTone,
   typeDot,
   typeDotClass,
@@ -680,7 +683,7 @@ function StatusIcon({ status }: { status: string }) {
   return null;
 }
 
-/** One line: type dot, status, time, title. Status is carried by icon and colour, never strikethrough. */
+/** One line: type dot, status, time, short title · lead. Status by icon/colour, never strikethrough. */
 function EventChip({
   activity: a,
   timezone,
@@ -691,11 +694,13 @@ function EventChip({
   const status = a.displayStatus;
   const time = formatClock(minutesInTimezone(eventInstant(a), timezone));
   const label = STATUS_LABEL[status] ?? status;
+  const chip = calendarEventLabel(a);
+  const related = relatedName(a);
   return (
     <button
       type="button"
-      title={`${a.title} · ${label} · ${time}`}
-      aria-label={`${a.title}, ${label}, ${time}`}
+      title={`${a.title}${related ? ` · ${related}` : ""} · ${label} · ${time}`}
+      aria-label={`${chip}, ${label}, ${time}`}
       className={cn(
         "flex w-full min-w-0 items-center gap-1 rounded-sm px-1 text-left transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         roomy ? "py-1 text-xs" : "py-px text-[11px] leading-4",
@@ -720,7 +725,7 @@ function EventChip({
       </span>
       <span
         className={cn(
-          "truncate",
+          "min-w-0 truncate",
           status === "completed"
             ? "text-foreground-muted"
             : status === "cancelled"
@@ -728,7 +733,8 @@ function EventChip({
               : "text-foreground",
         )}
       >
-        {a.title}
+        <span className="font-medium">{shortTitle(a.title)}</span>
+        {related ? <span className="text-foreground-muted"> · {related}</span> : null}
       </span>
     </button>
   );
@@ -1079,14 +1085,14 @@ function AgendaList({
                         <div className="flex items-center gap-2">
                           <span className={cn("size-2 shrink-0 rounded-full", colorOf(typeDot, a.typeColor))} />
                           <p className={cn("truncate text-sm font-medium", !open && "text-foreground-muted line-through")}>
-                            {a.title}
+                            {shortTitle(a.title)}
+                            {relatedName(a) ? (
+                              <span className="font-normal text-foreground-muted"> · {relatedName(a)}</span>
+                            ) : null}
                           </p>
                         </div>
                         <p className="mt-0.5 truncate pl-4 text-xs text-foreground-muted">
                           {a.typeName ?? a.kind}
-                          {a.customerName ? ` · ${a.customerName}` : ""}
-                          {a.dealTitle ? ` · ${a.dealTitle}` : ""}
-                          {!a.customerName && !a.dealTitle && a.leadName ? ` · ${a.leadName}` : ""}
                         </p>
                       </div>
                       <div className="shrink-0 text-right">

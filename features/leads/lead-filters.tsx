@@ -12,9 +12,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { EMPTY_LEAD_FILTERS, type LeadFilters } from "@/features/leads/lead-board-state";
+import { EMPTY_LEAD_FILTERS, leadFilterParams, type LeadFilters } from "@/features/leads/lead-board-state";
+import { countryFilterLabel } from "@/features/leads/lead-format";
 import { ScopeFilterControls, useScopeFilters } from "@/features/teams/scope-filters";
 import { crmApi } from "@/lib/api/crm";
+import { cn } from "@/lib/utils";
 
 const ACTIVITY_OPTIONS = [
   { value: "overdue", label: "Overdue" },
@@ -36,12 +38,12 @@ function useDebounced<T>(value: T, ms: number): T {
   return debounced;
 }
 
-/** Filter state shared by the Leads table and the Pipeline board; `?q=` and `?activity=` seed it. */
+/** Filter state shared by the Leads table and the Pipeline board; URL query seeds it. */
 export function useLeadFilterState() {
   const searchParams = useSearchParams();
   const [searchInput, setSearchInput] = React.useState(() => searchParams.get("q") ?? "");
   const search = useDebounced(searchInput, 300);
-  const [stageId, setStageId] = React.useState("");
+  const [stageId, setStageId] = React.useState(() => searchParams.get("stageId") ?? "");
   const [priority, setPriority] = React.useState("");
   const [source, setSource] = React.useState("");
   const [activity, setActivity] = React.useState(() => {
@@ -49,6 +51,9 @@ export function useLeadFilterState() {
     return ACTIVITY_OPTIONS.some((o) => o.value === v) ? v : "";
   });
   const [tag, setTag] = React.useState("");
+  const [country, setCountry] = React.useState(() => searchParams.get("country") ?? "");
+  const [createdFrom, setCreatedFrom] = React.useState(() => searchParams.get("createdFrom") ?? "");
+  const [createdTo, setCreatedTo] = React.useState(() => searchParams.get("createdTo") ?? "");
   const scope = useScopeFilters("leads:view");
 
   const filters = React.useMemo<LeadFilters>(() => {
@@ -64,11 +69,14 @@ export function useLeadFilterState() {
       source,
       activity,
       tag,
+      country,
+      createdFrom,
+      createdTo,
     };
-  }, [scope.params, search, stageId, priority, source, activity, tag]);
+  }, [scope.params, search, stageId, priority, source, activity, tag, country, createdFrom, createdTo]);
 
-  const moreCount = [stageId, priority, source, tag].filter(Boolean).length;
-  const anyFilter = !!searchInput || scope.active || !!activity || moreCount > 0;
+  const moreCount = [stageId, priority, source, tag, createdFrom, createdTo].filter(Boolean).length;
+  const anyFilter = !!searchInput || scope.active || !!activity || !!country || moreCount > 0;
 
   const clear = () => {
     setSearchInput("");
@@ -77,6 +85,9 @@ export function useLeadFilterState() {
     setSource("");
     setActivity("");
     setTag("");
+    setCountry("");
+    setCreatedFrom("");
+    setCreatedTo("");
     scope.reset();
   };
 
@@ -94,6 +105,12 @@ export function useLeadFilterState() {
     setActivity,
     tag,
     setTag,
+    country,
+    setCountry,
+    createdFrom,
+    setCreatedFrom,
+    createdTo,
+    setCreatedTo,
     scope,
     moreCount,
     anyFilter,
@@ -103,7 +120,67 @@ export function useLeadFilterState() {
 
 export type LeadFilterState = ReturnType<typeof useLeadFilterState>;
 
-/** Search, owner scope and next-action up front; stage (when offered), priority, source and tag under "More". */
+function CountryFilterSelect({
+  value,
+  onChange,
+  filters,
+}: {
+  value: string;
+  onChange: (country: string) => void;
+  filters: LeadFilters;
+}) {
+  // Facet counts ignore the country filter itself so every option stays visible while selected.
+  const facetParams = React.useMemo(() => {
+    const p = leadFilterParams("", { ...filters, country: "" });
+    p.set("status", "all");
+    return p;
+  }, [filters]);
+
+  const countriesQuery = useQuery({
+    queryKey: ["leads", "countries", facetParams.toString()],
+    queryFn: () => crmApi.listLeadCountries(facetParams),
+    staleTime: 30_000,
+    placeholderData: (prev) => prev,
+  });
+
+  const options = countriesQuery.data ?? [];
+  const selectedStillPresent = !value || options.some((o) => o.country === value);
+  const totalAll = options.reduce((sum, o) => sum + o.count, 0);
+
+  return (
+    <Select
+      value={value || "all"}
+      onValueChange={(v) => onChange(v === "all" ? "" : v)}
+    >
+      <SelectTrigger
+        className={cn("h-8 w-[180px] text-xs", value && "border-brand-border bg-brand-soft text-brand")}
+        aria-label="Country"
+      >
+        <SelectValue placeholder="All Countries" />
+      </SelectTrigger>
+      <SelectContent className="max-h-72">
+        <SelectItem value="all">
+          {countriesQuery.isSuccess
+            ? `All Countries (${totalAll.toLocaleString("en-AU")})`
+            : "All Countries"}
+        </SelectItem>
+        {!selectedStillPresent && value ? (
+          <SelectItem value={value}>{countryFilterLabel(value)}</SelectItem>
+        ) : null}
+        {options.map((o) => (
+          <SelectItem key={o.country} value={o.country}>
+            {`${countryFilterLabel(o.country)} (${o.count.toLocaleString("en-AU")})`}
+          </SelectItem>
+        ))}
+        {countriesQuery.isSuccess && options.length === 0 ? (
+          <div className="px-2 py-1.5 text-xs text-ink-muted">No countries in this view</div>
+        ) : null}
+      </SelectContent>
+    </Select>
+  );
+}
+
+/** Search, owner scope, next-action and country up front; stage/priority/source/tag under "More". */
 export function LeadFilterBar({ state, stageOptions }: { state: LeadFilterState; stageOptions?: StageOption[] }) {
   const sourcesQuery = useQuery({
     queryKey: ["lead-sources", "filter"],
@@ -185,6 +262,23 @@ export function LeadFilterBar({ state, stageOptions }: { state: LeadFilterState;
           ))}
         </SelectContent>
       </Select>
+      <CountryFilterSelect value={state.country} onChange={state.setCountry} filters={state.filters} />
+      {state.createdFrom || state.createdTo ? (
+        <button
+          type="button"
+          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-surface-muted px-2 text-xs text-ink"
+          onClick={() => {
+            state.setCreatedFrom("");
+            state.setCreatedTo("");
+          }}
+          title="Clear date range"
+        >
+          Created: {[state.createdFrom, state.createdTo].filter(Boolean).join(" → ")}
+          <span className="text-ink-muted" aria-hidden>
+            ×
+          </span>
+        </button>
+      ) : null}
     </FilterBar>
   );
 }

@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import {
   DAY_MINUTES,
   DEFAULT_DURATION_MIN,
+  calendarEventLabel,
   colorOf,
   eventEnd,
   eventInstant,
@@ -16,8 +17,9 @@ import {
   isOpen,
   layoutDay,
   minutesInTimezone,
+  relatedName,
+  shortTitle,
   typeBlock,
-  typeDot,
 } from "./calendar-utils";
 
 const HOUR_PX = 52;
@@ -290,7 +292,8 @@ export function TimeGrid({
                           setDraggingId(null);
                         }}
                         onClick={() => onSelect(a)}
-                        title={`${a.title} · ${formatClock(minutesInTimezone(eventInstant(a), timezone))}`}
+                        title={`${a.title}${relatedName(a) ? ` · ${relatedName(a)}` : ""} · ${formatClock(minutesInTimezone(eventInstant(a), timezone))}`}
+                        aria-label={calendarEventLabel(a)}
                         className={cn(
                           "absolute z-[2] overflow-hidden rounded-md border border-l-[3px] border-border/40 px-1.5 py-0.5 text-left shadow-[0_1px_2px_rgba(42,40,56,0.08)] transition-[box-shadow,opacity] hover:z-[4] hover:shadow-md focus-visible:z-[4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand",
                           colorOf(typeBlock, a.typeColor),
@@ -307,18 +310,15 @@ export function TimeGrid({
                         }}
                       >
                         <span className={cn("block truncate text-[11px] font-semibold leading-tight text-foreground", !open && "line-through")}>
-                          {a.title}
+                          {shortTitle(a.title)}
+                          {relatedName(a) ? (
+                            <span className="font-normal text-foreground-muted"> · {relatedName(a)}</span>
+                          ) : null}
                         </span>
                         {height >= 34 ? (
                           <span className="block truncate text-[10px] tabular-nums leading-tight text-foreground-muted">
                             {formatClock(minutesInTimezone(eventInstant(a), timezone))} –{" "}
                             {formatClock(minutesInTimezone(eventEnd(a), timezone))}
-                          </span>
-                        ) : null}
-                        {height >= 50 && (a.leadName || a.customerName || a.dealTitle) ? (
-                          <span className="mt-0.5 flex items-center gap-1 truncate text-[10px] leading-tight text-foreground-muted">
-                            <span className={cn("size-1.5 shrink-0 rounded-full", colorOf(typeDot, a.typeColor))} />
-                            <span className="truncate">{a.leadName || a.customerName || a.dealTitle}</span>
                           </span>
                         ) : null}
                       </button>

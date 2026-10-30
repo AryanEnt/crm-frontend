@@ -30,6 +30,7 @@ export type FieldA11y = {
 export function LeadField({
   label,
   optional,
+  required,
   hint,
   error,
   className,
@@ -39,6 +40,8 @@ export function LeadField({
 }: {
   label: string;
   optional?: boolean;
+  /** Shows a red asterisk; use for fields the schema rejects when blank. */
+  required?: boolean;
   hint?: React.ReactNode;
   error?: string;
   className?: string;
@@ -53,6 +56,12 @@ export function LeadField({
   const text = (
     <>
       {label}
+      {required ? (
+        <span className="text-danger" aria-hidden>
+          {" "}
+          *
+        </span>
+      ) : null}
       {optional ? <span className="font-normal text-ink-muted"> (optional)</span> : null}
     </>
   );

@@ -27,6 +27,7 @@ export type ComposerContext = {
   subject?: string;
   threadId?: string;
   inReplyTo?: string;
+  quoteHtml?: string;
   mode?: "compose" | "reply" | "forward";
 };
 
@@ -81,9 +82,13 @@ export function EmailComposer({
     setSaveState("idle");
     setShowPreview(false);
     window.setTimeout(() => {
-      if (editorRef.current) editorRef.current.innerHTML = "";
+      if (editorRef.current) {
+        editorRef.current.innerHTML = context.quoteHtml
+          ? `<p><br/></p><blockquote class="border-l-2 border-border pl-3 text-foreground-muted">${context.quoteHtml}</blockquote>`
+          : "";
+      }
     }, 0);
-  }, [open, context.to, context.subject, context.threadId, context.inReplyTo]);
+  }, [open, context.to, context.subject, context.threadId, context.inReplyTo, context.quoteHtml]);
 
   const html = () => editorRef.current?.innerHTML ?? "";
 
@@ -173,7 +178,7 @@ export function EmailComposer({
     onSuccess: (msg: EmailMessage) => {
       if (msg.status === "failed") {
         toast.error(
-          "Couldn't send the email. Reconnect Gmail in Email accounts, then try again.",
+          "Couldn't send the email. Reconnect your mailbox in Email accounts, then try again.",
         );
         return;
       }
@@ -214,7 +219,7 @@ export function EmailComposer({
 
   const fromLabel = account
     ? `${account.displayName || "Me"} <${account.emailAddress}>`
-    : "Connect Gmail to send";
+    : "Connect a mailbox to send";
 
   return (
     <Modal open={open} onOpenChange={onOpenChange}>
@@ -234,7 +239,7 @@ export function EmailComposer({
                 : "Compose email"}
           </ModalTitle>
           <ModalDescription className="text-xs">
-            Sends from your connected Gmail identity. Password is never stored.
+            Sends from your connected mailbox. The From address cannot be changed.
           </ModalDescription>
         </ModalHeader>
 
@@ -387,7 +392,7 @@ export function EmailComposer({
         <ModalFooter className="border-t border-border px-4 py-3">
           <div className="mr-auto flex items-center gap-2 text-xs text-foreground-muted">
             <Paperclip className="size-3.5" />
-            Attachments sync from Gmail after send
+            Attachments from Thunderbird appear after mailbox sync
           </div>
           <Button
             type="button"

@@ -19,6 +19,7 @@ import {
 import { toast } from "sonner";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
+import { TablePagination } from "@/components/ui/console/data-table";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
@@ -41,6 +42,8 @@ const FOLDERS = [
   { id: "archived", label: "Archived", icon: Archive },
 ] as const;
 
+const PAGE_SIZES = [10, 25, 50];
+
 function formatWhen(iso?: string | null) {
   if (!iso) return "";
   const d = new Date(iso);
@@ -58,7 +61,18 @@ export function EmailWorkspace() {
   const [folder, setFolder] = React.useState(params.get("folder") || "inbox");
   const [selectedId, setSelectedId] = React.useState(params.get("thread") || "");
   const [q, setQ] = React.useState("");
+  const [qDebounced, setQDebounced] = React.useState("");
   const [direction, setDirection] = React.useState("");
+  const [page, setPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState(25);
+
+  React.useEffect(() => {
+    const t = window.setTimeout(() => {
+      setQDebounced(q.trim());
+      setPage(1);
+    }, 300);
+    return () => window.clearTimeout(t);
+  }, [q]);
   const [compose, setCompose] = React.useState<ComposerContext | null>(null);
   const [assocLead, setAssocLead] = React.useState("");
   const accountsQ = useQuery({
@@ -70,16 +84,18 @@ export function EmailWorkspace() {
 
   const listParams = {
     folder,
-    q: q || undefined,
+    q: qDebounced || undefined,
     direction: direction || undefined,
     leadId: params.get("leadId") || undefined,
     customerId: params.get("customerId") || undefined,
     salesExecutiveId: can("email:view") && user?.roleCode === "sales_manager" ? params.get("se") || undefined : undefined,
-    limit: "50",
+    limit: String(pageSize),
+    offset: String((page - 1) * pageSize),
   };
   const list = useQuery({
     queryKey: ["email-threads", listParams],
     queryFn: () => emailApi.listThreads(listParams),
+    placeholderData: (prev) => prev,
   });
 
   const detail = useQuery({
@@ -105,8 +121,23 @@ export function EmailWorkspace() {
 
   const counts = list.data?.counts;
   const threads = list.data?.threads ?? [];
+  const total = list.data?.total ?? 0;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const thread = detail.data?.thread;
   const messages = detail.data?.messages ?? [];
+
+  React.useEffect(() => {
+    setPage(1);
+  }, [folder, direction, pageSize]);
+
+  React.useEffect(() => {
+    if (page > pageCount) setPage(pageCount);
+  }, [page, pageCount]);
+
+  // Team leads can open SE threads without connecting their own mailbox (read-only).
+  const canBrowseTeamMail =
+    can("email:view") && (user?.roleCode === "sales_manager" || can("email:manage"));
+  const teamOnly = !account && canBrowseTeamMail;
 
   if (accountsQ.isLoading) return <LoadingState label="Loading mailbox…" />;
 
@@ -123,15 +154,15 @@ export function EmailWorkspace() {
     );
   }
 
-  if (!account) {
+  if (!account && !canBrowseTeamMail) {
     return (
       <div className="space-y-4">
         <PageHeader title="Email" />
         <EmptyState
           icon={Mail}
-          title="Connect your Gmail"
-          description="Send and receive emails directly from Aurora."
-          actionLabel="Connect Gmail"
+          title="Connect your mailbox"
+          description="Connect Gmail or your company email in Email accounts, then send from the CRM."
+          actionLabel="Connect mailbox"
           onAction={() => {
             window.location.href = "/settings/email";
           }}
@@ -144,9 +175,19 @@ export function EmailWorkspace() {
     <div className="flex min-h-[calc(100vh-6rem)] flex-col gap-3">
       <PageHeader
         title="Email"
-        description={account.emailAddress}
+        description={
+          teamOnly
+            ? "Viewing team mailboxes — connect your own mailbox to send or reply"
+            : account?.emailAddress
+        }
         actions={
-          <Button onClick={() => setCompose({ mode: "compose" })}>Compose email</Button>
+          account ? (
+            <Button onClick={() => setCompose({ mode: "compose" })}>Compose email</Button>
+          ) : (
+            <Button variant="outline" onClick={() => (window.location.href = "/settings/email")}>
+              Connect your mailbox
+            </Button>
+          )
         }
       />
 
@@ -194,6 +235,7 @@ export function EmailWorkspace() {
                 onClick={() => {
                   setFolder(f.id);
                   setSelectedId("");
+                  setPage(1);
                 }}
                 className={cn(
                   "flex w-full items-center justify-between rounded-md px-2 py-1.5 text-sm",
@@ -214,8 +256,13 @@ export function EmailWorkspace() {
           })}
         </nav>
 
-        <div className={cn("min-h-[320px] border-border md:border-r", selectedId ? "hidden md:block" : "block")}>
-          {list.isLoading ? (
+        <div
+          className={cn(
+            "flex min-h-[320px] min-w-0 flex-col border-border md:border-r",
+            selectedId ? "hidden md:flex" : "flex",
+          )}
+        >
+          {list.isLoading && threads.length === 0 ? (
             <LoadingState />
           ) : list.isError ? (
             <ErrorState onRetry={() => void list.refetch()} />
@@ -229,16 +276,30 @@ export function EmailWorkspace() {
               onAction={() => setCompose({ mode: "compose" })}
             />
           ) : (
-            <ul className="divide-y divide-border">
-              {threads.map((t) => (
-                <ThreadRow
-                  key={t.id}
-                  thread={t}
-                  active={t.id === selectedId}
-                  onClick={() => setSelectedId(t.id)}
-                />
-              ))}
-            </ul>
+            <>
+              <ul className="min-h-0 flex-1 divide-y divide-border overflow-y-auto">
+                {threads.map((t) => (
+                  <ThreadRow
+                    key={t.id}
+                    thread={t}
+                    active={t.id === selectedId}
+                    onClick={() => setSelectedId(t.id)}
+                  />
+                ))}
+              </ul>
+              <TablePagination
+                page={page}
+                pageSize={pageSize}
+                total={total}
+                onPageChange={setPage}
+                onPageSizeChange={(size) => {
+                  setPageSize(size);
+                  setPage(1);
+                }}
+                pageSizes={PAGE_SIZES}
+                itemLabel="emails"
+              />
+            </>
           )}
         </div>
 
@@ -329,25 +390,28 @@ export function EmailWorkspace() {
                         <Paperclip className="size-3" /> Attachments
                       </p>
                     ) : null}
-                    <div className="mt-2 flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() =>
-                          setCompose({
-                            mode: "reply",
-                            threadId: thread.id,
-                            inReplyTo: m.id,
-                            to: m.direction === "inbound" ? [m.from] : m.to,
-                            subject: m.subject.startsWith("Re:") ? m.subject : `Re: ${m.subject}`,
-                            leadId: thread.leadId ?? undefined,
-                            customerId: thread.customerId ?? undefined,
-                          })
-                        }
-                      >
-                        Reply
-                      </Button>
-                    </div>
+                    {account ? (
+                      <div className="mt-2 flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            setCompose({
+                              mode: "reply",
+                              threadId: thread.id,
+                              inReplyTo: m.id,
+                              to: m.direction === "inbound" ? [m.from] : m.to,
+                              subject: m.subject.startsWith("Re:") ? m.subject : `Re: ${m.subject}`,
+                              quoteHtml: m.bodyHtml || m.bodyText.replace(/\n/g, "<br/>"),
+                              leadId: thread.leadId ?? undefined,
+                              customerId: thread.customerId ?? undefined,
+                            })
+                          }
+                        >
+                          Reply
+                        </Button>
+                      </div>
+                    ) : null}
                   </article>
                 ))}
               </div>
@@ -356,15 +420,17 @@ export function EmailWorkspace() {
         </section>
       </div>
 
-      <EmailComposer
-        open={!!compose}
-        onOpenChange={(o) => {
-          if (!o) setCompose(null);
-        }}
-        context={compose ?? {}}
-        account={account}
-        fullscreen
-      />
+      {account ? (
+        <EmailComposer
+          open={!!compose}
+          onOpenChange={(o) => {
+            if (!o) setCompose(null);
+          }}
+          context={compose ?? {}}
+          account={account}
+          fullscreen
+        />
+      ) : null}
     </div>
   );
 }

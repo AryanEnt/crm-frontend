@@ -140,6 +140,10 @@ export type LeadFilters = {
   source: string;
   activity: string;
   tag: string;
+  /** Exact lead.country; "(Unknown)" matches blank. */
+  country: string;
+  createdFrom: string;
+  createdTo: string;
 };
 
 export const EMPTY_LEAD_FILTERS: LeadFilters = {
@@ -152,6 +156,9 @@ export const EMPTY_LEAD_FILTERS: LeadFilters = {
   source: "",
   activity: "",
   tag: "",
+  country: "",
+  createdFrom: "",
+  createdTo: "",
 };
 
 /** Query params shared by the board and the list; empty filters are left out. */
@@ -163,11 +170,15 @@ export function leadFilterParams(pipelineId: string, f: LeadFilters): URLSearchP
   if (f.salesExecutiveId) p.set("salesExecutiveId", f.salesExecutiveId);
   if (f.ownerUserId) p.set("ownerUserId", f.ownerUserId);
   if (f.teamId) p.set("teamId", f.teamId);
+  if (f.stageId) p.set("stageId", f.stageId);
   if (f.priority) p.set("priority", f.priority);
   if (f.source) p.set("source", f.source);
   if (f.activity) p.set("activity", f.activity);
   const tag = f.tag.trim();
   if (tag) p.set("tag", tag);
+  if (f.country.trim()) p.set("country", f.country.trim());
+  if (f.createdFrom.trim()) p.set("createdFrom", f.createdFrom.trim());
+  if (f.createdTo.trim()) p.set("createdTo", f.createdTo.trim());
   return p;
 }
 

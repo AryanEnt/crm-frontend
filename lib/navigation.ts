@@ -18,10 +18,10 @@ import {
   Activity,
   Building2,
   Share2,
-  ListTree,
   Mail,
   Phone,
   Columns3,
+  Globe2,
   type LucideIcon,
 } from "lucide-react";
 import type { RoleCode } from "@/features/auth/types";
@@ -70,6 +70,7 @@ export const crmNav: NavSection[] = [
     title: "Insights",
     items: [
       { label: "Sales Funnel", href: "/sales-funnel", icon: Filter },
+      { label: "Lead Population", href: "/lead-population", icon: Globe2 },
       // { label: "Analytics", href: "/analytics", icon: BarChart3 },
       { label: "Targets", href: "/targets", icon: Target },
       // { label: "Forecasts", href: "/forecasts", icon: TrendingUp },
@@ -81,6 +82,7 @@ export const crmNav: NavSection[] = [
     items: [
       // Team Leads only see their own team, so there is no cross-team Teams page here.
       { label: "My team", href: "/admin/users", icon: UsersRound },
+      { label: "Team email", href: "/email/team", icon: Mail },
       { label: "Referrals", href: "/admin/referrals", icon: Building2 },
     ],
   },
@@ -113,8 +115,7 @@ export const controlCenterNav: NavSection[] = [
   {
     title: "Setup",
     items: [
-      // { label: "Pipelines", href: "/admin/pipelines", icon: Layers },
-      // { label: "Stages", href: "/admin/pipelines?tab=stages", icon: ListTree },
+      { label: "Pipelines", href: "/admin/pipelines", icon: Layers },
       // { label: "Custom fields", href: "/admin/custom-fields", icon: FormInput },
       { label: "Lead sources", href: "/admin/lead-sources", icon: Share2 },
       { label: "Activity types", href: "/admin/activity-types", icon: ListChecks },
@@ -127,7 +128,9 @@ export const controlCenterNav: NavSection[] = [
     items: [
       // { label: "Audit log", href: "/admin/audit-logs", icon: ScrollText },
       { label: "Activity log", href: "/admin/system-activity", icon: Activity },
+      { label: "Documents", href: "/documents", icon: FileText },
       { label: "Org analytics", href: "/admin/org-analytics", icon: BarChart3 },
+      { label: "Lead Population", href: "/lead-population", icon: Globe2 },
     ],
   },
   {
@@ -146,8 +149,24 @@ export function isSuperAdminRole(roleCode: string | undefined): boolean {
   return roleCode === ("super_admin" satisfies RoleCode);
 }
 
+const HIDDEN_FROM_SE = new Set(["/lead-population", "/email/team"]);
+const TL_ONLY = new Set(["/email/team"]);
+
 export function getNavForRole(roleCode: string | undefined): NavSection[] {
-  return isSuperAdminRole(roleCode) ? controlCenterNav : crmNav;
+  if (isSuperAdminRole(roleCode)) return controlCenterNav;
+  const hide = new Set<string>(
+    roleCode === ("sales_manager" satisfies RoleCode) ? [] : [...TL_ONLY],
+  );
+  if (roleCode === ("sales_executive" satisfies RoleCode)) {
+    for (const h of HIDDEN_FROM_SE) hide.add(h);
+  }
+  if (hide.size === 0) return crmNav;
+  return crmNav
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => !hide.has(item.href.split("?")[0] ?? item.href)),
+    }))
+    .filter((section) => section.items.length > 0);
 }
 
 export function isNavActive(pathname: string, href: string): boolean {

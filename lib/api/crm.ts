@@ -9,6 +9,19 @@ export type AnzscoOccupation = {
   skillLevel: number;
 };
 
+export type InAppNotification = {
+  id: string;
+  recipientUserId: string;
+  type: string;
+  title: string;
+  body: string;
+  leadId: string | null;
+  payload: Record<string, unknown> | null;
+  dedupeKey: string;
+  readAt: string | null;
+  createdAt: string;
+};
+
 export type PipelineStage = {
   id: string;
   pipelineId: string;
@@ -177,6 +190,12 @@ export type Lead = {
   updatedAt: string;
 };
 
+/** Facet row from GET /leads/countries — blank residence maps to "(Unknown)". */
+export type LeadCountryFacet = {
+  country: string;
+  count: number;
+};
+
 export type LeadBoardCard = {
   id: string;
   fullName: string;
@@ -215,6 +234,8 @@ export type LeadBoardStage = {
   requiredFields: string[];
   requiredActivities: string[];
   requiredDocuments: string[];
+  /** Max hours a lead should stay in this stage; drives board age coloring. */
+  slaHours?: number | null;
   count: number;
   totalValue: number;
   hasMore: boolean;
@@ -234,6 +255,8 @@ export type LeadMoveInput = {
   lostReason?: string;
   /** YYYY-MM-DD; required when marking Sales Won. */
   documentDeadline?: string;
+  /** Whole amount stored as the lead value when marking Sales Won. */
+  closingAmount?: number;
   nextActivity?: { title?: string; dueAt: string; typeCode?: string };
 };
 
@@ -543,10 +566,14 @@ export const crmApi = {
     api.post<PipelineStage>(`/pipelines/${pipelineId}/stages`, body),
   updateStage: (stageId: string, body: unknown) =>
     api.patch<PipelineStage>(`/pipeline-stages/${stageId}`, body),
+  deleteStage: (stageId: string) => api.delete<{ deleted: boolean }>(`/pipeline-stages/${stageId}`),
   reorderStages: (pipelineId: string, stageIds: string[]) =>
     api.post<Pipeline>(`/pipelines/${pipelineId}/stages/reorder`, { stageIds }),
 
   listLeads: (params: URLSearchParams) => listWithMeta<Lead>(`/leads?${params}`),
+  /** Distinct countries (+ counts) for the leads filter; scoped like listLeads. */
+  listLeadCountries: (params: URLSearchParams) =>
+    api.get<LeadCountryFacet[]>(`/leads/countries?${params}`),
   getLead: (id: string) => api.get<Lead>(`/leads/${id}`),
   createLead: (body: unknown) => mutateWithDuplicateCheck<Lead>("POST", "/leads", body),
   checkLeadDuplicates: (
@@ -580,6 +607,12 @@ export const crmApi = {
   leadMyDay: (params: URLSearchParams) => api.get<LeadMyDay>(`/leads/insights/my-day?${params}`),
   leadForecast: (params: URLSearchParams) => api.get<LeadForecast>(`/leads/insights/forecast?${params}`),
   leadOwners: (params: URLSearchParams) => api.get<LeadOwnerBreakdown>(`/leads/insights/owners?${params}`),
+
+  listNotifications: (params: URLSearchParams) => listWithMeta<InAppNotification>(`/notifications?${params}`),
+  unreadNotificationCount: () => api.get<{ unread: number }>("/notifications/unread-count"),
+  markNotificationRead: (id: string) => api.post<InAppNotification>(`/notifications/${id}/read`, {}),
+  markNotificationUnread: (id: string) => api.post<InAppNotification>(`/notifications/${id}/unread`, {}),
+  markAllNotificationsRead: () => api.post<{ updated: number }>("/notifications/mark-all-read", {}),
 
   listCustomers: (params: URLSearchParams) => listWithMeta<Customer>(`/customers?${params}`),
   getCustomerProfile: (id: string) => api.get<CustomerProfile>(`/customers/${id}/profile`),
@@ -738,6 +771,8 @@ export const crmApi = {
     api.get<TeamAnalyticsModule>(`/analytics/teams?${params}`),
   analyticsSources: (params: URLSearchParams) =>
     api.get<SourceAnalyticsModule>(`/analytics/sources?${params}`),
+  analyticsCountries: (params: URLSearchParams) =>
+    api.get<CountryPopulationAnalytics>(`/analytics/countries?${params}`),
 
   listTargetMetrics: () =>
     api.get<Array<{ code: string; label: string }>>("/targets/metrics"),
@@ -804,6 +839,13 @@ export const crmApi = {
     api.post<WhatsAppCall>(`/communications/whatsapp/calls/${id}/terminate`, {}),
 };
 
+export type DocumentShareScope =
+  | "all_teams"
+  | "selected_teams"
+  | "all_team_ses"
+  | "selected_ses"
+  | "none";
+
 export type CrmDocument = {
   id: string;
   name: string;
@@ -815,6 +857,9 @@ export type CrmDocument = {
   fileKey: string;
   storageProvider: string;
   notes: string;
+  description?: string;
+  originalFilename?: string;
+  shareScope?: DocumentShareScope | string;
   rejectedReason: string;
   leadId?: string | null;
   leadName?: string | null;
@@ -824,6 +869,7 @@ export type CrmDocument = {
   dealTitle?: string | null;
   uploadedBy?: string | null;
   uploadedByName?: string | null;
+  uploadedByRole?: string | null;
   verifiedBy?: string | null;
   verifiedByName?: string | null;
   requestedDate?: string | null;
@@ -832,8 +878,11 @@ export type CrmDocument = {
   verifiedAt?: string | null;
   createdAt: string;
   updatedAt: string;
-  /** Sales Executives explicitly allowed to see this document. */
+  /** Selected SE user IDs (and legacy viewers). */
   viewerUserIds?: string[];
+  sharedUserIds?: string[];
+  sharedTeamIds?: string[];
+  sharedTeamNames?: string[];
 };
 
 export type TimelineEvent = {
@@ -1110,6 +1159,39 @@ export type SourceAnalyticsModule = {
     conversionRate: number;
   }>;
   question: string;
+};
+
+export type CountryPopulationRow = {
+  country: string;
+  totalLeads: number;
+  newLeads: number;
+  contactedLeads: number;
+  qualifiedLeads: number;
+  unqualifiedLeads: number;
+  wonLeads: number;
+  lostLeads: number;
+  sharePct: number;
+  conversionRate: number;
+};
+
+export type CountryPopulationKpis = {
+  totalLeads: number;
+  newLeads: number;
+  qualifiedLeads: number;
+  conversionRate: number;
+  wonLeads: number;
+  lostLeads: number;
+};
+
+export type CountryPopulationAnalytics = {
+  countries: CountryPopulationRow[];
+  kpis: CountryPopulationKpis;
+  previousKpis: CountryPopulationKpis | null;
+  from: string;
+  to: string;
+  question: string;
+  countryField: string;
+  countryFieldLabel: string;
 };
 
 export type CrmTarget = {

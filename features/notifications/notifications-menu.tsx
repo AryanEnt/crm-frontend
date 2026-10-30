@@ -1,273 +1,234 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
-import { AlarmClock, Bell, CircleAlert, UserPlus, type LucideIcon } from "lucide-react";
-import { useAuth } from "@/features/auth/auth-provider";
-import { activityHref } from "@/features/activities/activity-href";
-import { crmApi, type Activity } from "@/lib/api/crm";
-import { formatRelative } from "@/lib/relative-time";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Bell, CircleAlert } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/console/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/console/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAuth } from "@/features/auth/auth-provider";
+import { notificationHref, slaPayload } from "@/features/notifications/notification-copy";
+import { crmApi, type InAppNotification } from "@/lib/api/crm";
+import { formatRelative } from "@/lib/relative-time";
+import { cn } from "@/lib/utils";
 
-const PREFIX = "aurora.notifications.seen.";
-const EVENT = "aurora-notifications";
-const MAX_SEEN = 500;
-const MAX_SHOWN = 8;
-const REFRESH_MS = 60_000;
-const HOUR = 3_600_000;
-const DUE_SOON_MS = 24 * HOUR;
-const ASSIGNED_WINDOW_MS = 7 * 24 * HOUR;
+const REFRESH_MS = 30_000;
+const PREVIEW = 8;
+const TOAST_SEEN_KEY = "aurora.notifications.toasted";
 
-type Kind = "overdue" | "due" | "assigned";
-
-type Notification = {
-  /** Includes the kind and due time, so a rescheduled or newly overdue item counts as unread again. */
-  key: string;
-  kind: Kind;
-  title: string;
-  detail: string;
-  href: string;
-};
-
-const KIND_ICON: Record<Kind, LucideIcon> = {
-  overdue: CircleAlert,
-  due: AlarmClock,
-  assigned: UserPlus,
-};
-
-function read(userId: string): string | null {
-  try {
-    return window.localStorage.getItem(PREFIX + userId);
-  } catch {
-    return null;
-  }
+function inboxParams(unread: boolean, limit = PREVIEW): URLSearchParams {
+  const p = new URLSearchParams({ limit: String(limit), offset: "0" });
+  if (unread) p.set("unread", "true");
+  return p;
 }
 
-function write(userId: string, keys: string[]) {
+function readToastSeen(): string[] {
   try {
-    window.localStorage.setItem(PREFIX + userId, JSON.stringify(keys.slice(-MAX_SEEN)));
-  } catch {
-    // ignore
-  }
-  window.dispatchEvent(new Event(EVENT));
-}
-
-function subscribe(onChange: () => void) {
-  window.addEventListener("storage", onChange);
-  window.addEventListener(EVENT, onChange);
-  return () => {
-    window.removeEventListener("storage", onChange);
-    window.removeEventListener(EVENT, onChange);
-  };
-}
-
-function parse(raw: string | null): string[] {
-  if (!raw) return [];
-  try {
-    const value: unknown = JSON.parse(raw);
-    return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+    const raw = sessionStorage.getItem(TOAST_SEEN_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : [];
   } catch {
     return [];
   }
 }
 
-function formatUntil(value: string, now: number) {
-  const diff = new Date(value).getTime() - now;
-  if (diff < HOUR) return `in ${Math.max(1, Math.round(diff / 60_000))}m`;
-  return `in ${Math.round(diff / HOUR)}h`;
-}
-
-function related(a: Activity) {
-  return a.leadName || a.dealTitle || a.customerName || "";
-}
-
-function withRelated(text: string, a: Activity) {
-  const name = related(a);
-  return name ? `${name} · ${text}` : text;
-}
-
-function buildNotifications(
-  overdue: Activity[],
-  upcoming: Activity[],
-  userId: string,
-  now: number,
-): Notification[] {
-  const items: Notification[] = [];
-  const seen = new Set<string>();
-
-  for (const a of [...overdue].sort((x, y) => (y.dueAt ?? "").localeCompare(x.dueAt ?? ""))) {
-    seen.add(a.id);
-    items.push({
-      key: `activity:${a.id}:overdue:${a.dueAt ?? ""}`,
-      kind: "overdue",
-      title: a.title,
-      detail: withRelated(`Overdue, due ${a.dueAt ? formatRelative(a.dueAt, now) : "earlier"}`, a),
-      href: activityHref(a),
-    });
+function writeToastSeen(ids: string[]) {
+  try {
+    sessionStorage.setItem(TOAST_SEEN_KEY, JSON.stringify(ids.slice(-200)));
+  } catch {
+    /* ignore */
   }
-
-  for (const a of upcoming) {
-    if (seen.has(a.id) || !a.dueAt) continue;
-    const dueIn = new Date(a.dueAt).getTime() - now;
-    if (dueIn < 0 || dueIn > DUE_SOON_MS) continue;
-    seen.add(a.id);
-    items.push({
-      key: `activity:${a.id}:due:${a.dueAt}`,
-      kind: "due",
-      title: a.title,
-      detail: withRelated(`Due ${formatUntil(a.dueAt, now)}`, a),
-      href: activityHref(a),
-    });
-  }
-
-  for (const a of upcoming) {
-    if (seen.has(a.id) || !a.createdByUserId || a.createdByUserId === userId) continue;
-    if (now - new Date(a.createdAt).getTime() > ASSIGNED_WINDOW_MS) continue;
-    seen.add(a.id);
-    items.push({
-      key: `activity:${a.id}:assigned`,
-      kind: "assigned",
-      title: a.title,
-      detail: withRelated(`Assigned by ${a.createdByName ?? "a teammate"} ${formatRelative(a.createdAt, now)}`, a),
-      href: activityHref(a),
-    });
-  }
-
-  return items;
 }
 
-/** Bell menu built from the signed-in user's open follow-ups; read state is kept per user in this browser. */
 export function NotificationsMenu() {
-  const { user, can } = useAuth();
+  const { user } = useAuth();
   const router = useRouter();
-  const userId = user?.id ?? "";
-  const enabled = Boolean(userId) && can("activities:view");
+  const qc = useQueryClient();
+  const enabled = Boolean(user?.id);
+  const [open, setOpen] = React.useState(false);
+  const [tab, setTab] = React.useState<"all" | "unread">("unread");
 
-  const overdueQuery = useQuery({
-    queryKey: ["notifications", "overdue", userId],
-    queryFn: () =>
-      crmApi.listActivities(
-        new URLSearchParams({ status: "overdue", ownerUserId: userId, limit: "20", offset: "0" }),
-      ),
+  const countQuery = useQuery({
+    queryKey: ["notifications", "unread-count"],
+    queryFn: () => crmApi.unreadNotificationCount(),
     enabled,
     refetchInterval: REFRESH_MS,
-  });
-  const upcomingQuery = useQuery({
-    queryKey: ["notifications", "upcoming", userId],
-    queryFn: () =>
-      crmApi.listActivities(
-        new URLSearchParams({ status: "upcoming", ownerUserId: userId, limit: "50", offset: "0" }),
-      ),
-    enabled,
-    refetchInterval: REFRESH_MS,
+    refetchOnWindowFocus: true,
   });
 
-  const now = Math.max(overdueQuery.dataUpdatedAt, upcomingQuery.dataUpdatedAt);
-  const notifications = React.useMemo(
-    () =>
-      buildNotifications(
-        overdueQuery.data?.data ?? [],
-        upcomingQuery.data?.data ?? [],
-        userId,
-        now,
-      ),
-    [overdueQuery.data, upcomingQuery.data, userId, now],
-  );
+  const listQuery = useQuery({
+    queryKey: ["notifications", "preview", tab],
+    queryFn: () => crmApi.listNotifications(inboxParams(tab === "unread")),
+    enabled: enabled && open,
+    refetchInterval: open ? REFRESH_MS : false,
+  });
 
-  const raw = React.useSyncExternalStore(
-    subscribe,
-    () => (userId ? read(userId) : null),
-    () => null,
-  );
-  const seenKeys = React.useMemo(() => parse(raw), [raw]);
-  const unread = React.useMemo(() => {
-    const seen = new Set(seenKeys);
-    return notifications.filter((n) => !seen.has(n.key));
-  }, [notifications, seenKeys]);
+  const unread = countQuery.data?.unread ?? 0;
+  const items = listQuery.data?.data ?? [];
 
-  // Items that were unread when the menu opened keep their highlight until it closes.
-  const [highlighted, setHighlighted] = React.useState<ReadonlySet<string>>(new Set());
+  const markRead = useMutation({
+    mutationFn: (id: string) => crmApi.markNotificationRead(id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["notifications"] });
+    },
+  });
+  const markAll = useMutation({
+    mutationFn: () => crmApi.markAllNotificationsRead(),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["notifications"] });
+    },
+  });
 
-  const onOpenChange = (open: boolean) => {
-    if (!open || !userId) return;
-    setHighlighted(new Set(unread.map((n) => n.key)));
-    if (unread.length > 0) write(userId, [...seenKeys, ...unread.map((n) => n.key)]);
+  const prevUnread = React.useRef<number | null>(null);
+  React.useEffect(() => {
+    if (!enabled) return;
+    const next = countQuery.data?.unread;
+    if (next == null) return;
+    const prev = prevUnread.current;
+    prevUnread.current = next;
+    if (prev == null || next <= prev || document.visibilityState !== "visible") return;
+    const seen = new Set(readToastSeen());
+    const newest = items.find((n) => !n.readAt && !seen.has(n.id));
+    if (newest) {
+      writeToastSeen([...seen, newest.id]);
+      toast.info(newest.title, { description: newest.body, duration: 5_000 });
+    } else if (next > prev) {
+      toast.info("New notification", { description: "A lead has exceeded its stage SLA.", duration: 5_000 });
+    }
+  }, [countQuery.data?.unread, enabled, items]);
+
+  const openLead = (n: InAppNotification) => {
+    const href = notificationHref(n);
+    if (!n.readAt) markRead.mutate(n.id);
+    setOpen(false);
+    if (href) router.push(href);
   };
 
-  const unreadCount = unread.length;
-  const shown = notifications.slice(0, MAX_SHOWN);
-
   return (
-    <DropdownMenu onOpenChange={onOpenChange}>
-      <DropdownMenuTrigger>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
         <IconButton
-          label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications"}
+          label={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}
           tooltip={false}
           className="relative"
         >
           <Bell />
-          {unreadCount > 0 ? (
+          {unread > 0 ? (
             <span
               aria-hidden
               className="absolute -right-0.5 -top-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-brand px-1 text-[10px] font-semibold leading-none tabular-nums text-primary-foreground"
             >
-              {unreadCount > 9 ? "9+" : unreadCount}
+              {unread > 9 ? "9+" : unread}
             </span>
           ) : null}
         </IconButton>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" aria-label="Notifications" className="w-80">
-        <div className="flex items-center justify-between px-2 pb-1 pt-1.5">
-          <span className="text-overline text-ink-muted">Notifications</span>
-          {notifications.length > 0 ? (
-            <span className="text-caption tabular-nums text-ink-muted">{notifications.length}</span>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        sideOffset={8}
+        className="flex w-[min(24rem,calc(100vw-1.5rem))] flex-col gap-0 p-0"
+        aria-label="Notifications"
+      >
+        <div className="flex items-start justify-between gap-2 border-b border-line px-3 py-2.5">
+          <div>
+            <p className="text-sm font-semibold text-ink">Notifications</p>
+            <p className="text-caption text-ink-muted">
+              {unread > 0 ? `${unread} unread` : "You're all caught up"}
+            </p>
+          </div>
+          {unread > 0 ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => markAll.mutate()}
+              disabled={markAll.isPending}
+            >
+              Mark all as read
+            </Button>
           ) : null}
         </div>
-        <DropdownMenuSeparator />
-        {shown.length === 0 ? (
-          <p className="px-2 py-3 text-center text-caption text-ink-muted">
-            {overdueQuery.isPending && enabled ? "Loading…" : "You're all caught up."}
-          </p>
-        ) : (
-          shown.map((n) => (
-            <DropdownMenuItem
-              key={n.key}
-              icon={KIND_ICON[n.kind]}
-              onSelect={() => router.push(n.href)}
-              className="h-auto items-start py-1.5"
-            >
-              <span className="flex items-start gap-2">
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate font-medium text-ink">{n.title}</span>
-                  <span className="block truncate text-caption text-ink-muted">{n.detail}</span>
-                </span>
-                {highlighted.has(n.key) ? (
-                  <span aria-label="Unread" className="mt-1.5 size-1.5 shrink-0 rounded-full bg-brand" />
-                ) : null}
-              </span>
-            </DropdownMenuItem>
-          ))
+        <div className="px-3 pt-2">
+          <Tabs value={tab} onValueChange={(v) => setTab(v as "all" | "unread")}>
+            <TabsList aria-label="Notification filters">
+              <TabsTrigger value="unread">Unread</TabsTrigger>
+              <TabsTrigger value="all">All</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
+        <div className="max-h-[min(24rem,60vh)] overflow-y-auto px-1 py-1">
+          {listQuery.isPending ? (
+            <p className="px-2 py-6 text-center text-caption text-ink-muted">Loading…</p>
+          ) : listQuery.isError ? (
+            <p className="px-2 py-6 text-center text-caption text-danger">Couldn't load notifications.</p>
+          ) : items.length === 0 ? (
+            <p className="px-2 py-6 text-center text-caption text-ink-muted">
+              {tab === "unread" ? "No unread notifications." : "No notifications yet."}
+            </p>
+          ) : (
+            <ul className="space-y-0.5">
+              {items.map((n) => (
+                <NotificationPreview key={n.id} n={n} onOpen={() => openLead(n)} />
+              ))}
+            </ul>
+          )}
+        </div>
+        <div className="border-t border-line px-3 py-2">
+          <Link
+            href="/notifications"
+            className="block rounded-sm py-1 text-center text-caption font-medium text-ink-secondary hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => setOpen(false)}
+          >
+            View all notifications
+          </Link>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function NotificationPreview({ n, onOpen }: { n: InAppNotification; onOpen: () => void }) {
+  const sla = slaPayload(n);
+  const unread = !n.readAt;
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onOpen}
+        className={cn(
+          "flex w-full gap-2.5 rounded-md px-2 py-2 text-left transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          unread && "bg-brand-soft/40",
         )}
-        {enabled ? (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onSelect={() => router.push("/activities?status=overdue")}
-              className="justify-center text-caption text-ink-secondary"
-            >
-              View all follow-ups
-            </DropdownMenuItem>
-          </>
-        ) : null}
-      </DropdownMenuContent>
-    </DropdownMenu>
+      >
+        <span
+          className={cn(
+            "mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full",
+            unread ? "bg-danger-soft text-danger" : "bg-surface-muted text-ink-muted",
+          )}
+          aria-hidden
+        >
+          <CircleAlert className="size-3.5" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="flex items-start justify-between gap-2">
+            <span className="truncate text-sm font-medium text-ink">{n.title}</span>
+            {unread ? (
+              <span className="mt-1 size-1.5 shrink-0 rounded-full bg-brand" aria-label="Unread" />
+            ) : null}
+          </span>
+          <span className="mt-0.5 line-clamp-2 text-caption text-ink-muted">{n.body}</span>
+          <span className="mt-1 block text-caption text-ink-muted">
+            {sla.leadName}
+            {sla.stageName ? ` · ${sla.stageName}` : ""}
+            {" · "}
+            {formatRelative(n.createdAt, Date.now())}
+          </span>
+        </span>
+      </button>
+    </li>
   );
 }

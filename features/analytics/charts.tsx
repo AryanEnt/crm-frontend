@@ -123,6 +123,61 @@ export function SoftIndigoBarChart({
   );
 }
 
+/** Horizontal bars for ranked category comparisons (e.g. countries by lead count). */
+export function SoftIndigoHorizontalBarChart({
+  data,
+  nameKey = "label",
+  valueKey = "value",
+  valueFormatter,
+  height,
+  onBarClick,
+}: {
+  data: Array<Record<string, string | number>>;
+  nameKey?: string;
+  valueKey?: string;
+  valueFormatter?: (v: number) => string;
+  height?: number;
+  onBarClick?: (row: Record<string, string | number>) => void;
+}) {
+  const fmt = valueFormatter ?? ((v: number) => String(v));
+  const h = height ?? Math.max(220, data.length * 36 + 48);
+  return (
+    <div style={{ width: "100%", height: h }}>
+      <ResponsiveContainer>
+        <BarChart
+          data={data}
+          layout="vertical"
+          margin={{ top: 4, right: 16, left: 8, bottom: 4 }}
+        >
+          <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} horizontal={false} />
+          <XAxis type="number" tick={{ fontSize: 11, fill: CHART_COLORS.tick }} />
+          <YAxis
+            type="category"
+            dataKey={nameKey}
+            width={110}
+            tick={{ fontSize: 11, fill: CHART_COLORS.tick }}
+          />
+          <Tooltip
+            contentStyle={tooltipStyle()}
+            formatter={(value: number) => [fmt(value), "Leads"]}
+          />
+          <Bar
+            dataKey={valueKey}
+            fill={CHART_COLORS.brand}
+            radius={[0, 4, 4, 0]}
+            isAnimationActive={false}
+            cursor={onBarClick ? "pointer" : undefined}
+            onClick={(entry) => {
+              if (!onBarClick || !entry?.payload) return;
+              onBarClick(entry.payload as Record<string, string | number>);
+            }}
+          />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
 export function SoftIndigoLineChart({
   data,
   xKey = "label",

@@ -75,11 +75,11 @@ export function ClosedLeadsTable({
       {
         id: "value",
         accessorKey: "potentialValue",
-        header: ({ column }) => <SortableHeader column={column} title="Value" />,
-        meta: { label: "Value", align: "right" },
+        header: ({ column }) => <SortableHeader column={column} title="Est. value" />,
+        meta: { label: "Estimated value", align: "right" },
         cell: ({ row }) =>
           row.original.potentialValue != null ? (
-            <span className="font-medium tabular-nums text-ink">
+            <span className="font-medium tabular-nums text-ink" title="Estimated value">
               {formatLeadMoney(row.original.potentialValue, row.original.currency)}
             </span>
           ) : (

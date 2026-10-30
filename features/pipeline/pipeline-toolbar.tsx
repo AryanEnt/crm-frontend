@@ -17,8 +17,9 @@ import {
 } from "@/components/ui/select";
 import { useAuth } from "@/features/auth/auth-provider";
 import { useListFilterScope } from "@/features/auth/list-scope";
-import { useOwnerOptions } from "@/features/teams/scope-filters";
-import { adminApi } from "@/lib/api/admin";
+import { OrgScopeSelects, useOwnerOptions, useTeamOptions } from "@/features/teams/scope-filters";
+import { TeamMemberFilterChip } from "@/features/teams/team-member-filter";
+import { countryFilterLabel } from "@/features/leads/lead-format";
 import { crmApi } from "@/lib/api/crm";
 import { cn } from "@/lib/utils";
 import {
@@ -38,24 +39,78 @@ import type { PipelineStatus } from "./pipeline-totals";
 
 const ANY = "any";
 
-/** Owners the caller may filter by: their team's executives (team scope) or everyone (organisation scope). */
-function useOwnerChoices() {
+function PipelineCountryFilter({
+  filters,
+  onChange,
+}: {
+  filters: PipelineFilters;
+  onChange: (next: PipelineFilters) => void;
+}) {
+  const facetParams = React.useMemo(() => {
+    const p = new URLSearchParams();
+    if (filters.pipeline) p.set("pipelineId", filters.pipeline);
+    if (filters.q.trim()) p.set("q", filters.q.trim());
+    if (filters.owner) p.set("ownerUserId", filters.owner);
+    if (filters.team) p.set("teamId", filters.team);
+    if (filters.source) p.set("source", filters.source);
+    if (filters.next) p.set("activity", filters.next);
+    if (filters.min) p.set("minValue", filters.min);
+    if (filters.max) p.set("maxValue", filters.max);
+    p.set("status", "all");
+    return p;
+  }, [filters.pipeline, filters.q, filters.owner, filters.team, filters.source, filters.next, filters.min, filters.max]);
+
+  const countriesQuery = useQuery({
+    queryKey: ["leads", "countries", "pipeline", facetParams.toString()],
+    queryFn: () => crmApi.listLeadCountries(facetParams),
+    staleTime: 30_000,
+    placeholderData: (prev) => prev,
+  });
+
+  const options = countriesQuery.data ?? [];
+  const value = filters.country;
+  const selectedStillPresent = !value || options.some((o) => o.country === value);
+  const totalAll = options.reduce((sum, o) => sum + o.count, 0);
+
+  return (
+    <Select value={value || "all"} onValueChange={(v) => onChange({ ...filters, country: v === "all" ? "" : v, page: 1 })}>
+      <SelectTrigger
+        className={cn("h-9 w-[180px] text-xs", value && "border-brand-border bg-brand-soft text-brand")}
+        aria-label="Country"
+      >
+        <SelectValue placeholder="All Countries" />
+      </SelectTrigger>
+      <SelectContent className="max-h-72">
+        <SelectItem value="all">
+          {countriesQuery.isSuccess ? `All Countries (${totalAll.toLocaleString("en-AU")})` : "All Countries"}
+        </SelectItem>
+        {!selectedStillPresent && value ? (
+          <SelectItem value={value}>{countryFilterLabel(value)}</SelectItem>
+        ) : null}
+        {options.map((o) => (
+          <SelectItem key={o.country} value={o.country}>
+            {`${countryFilterLabel(o.country)} (${o.count.toLocaleString("en-AU")})`}
+          </SelectItem>
+        ))}
+        {countriesQuery.isSuccess && options.length === 0 ? (
+          <div className="px-2 py-1.5 text-xs text-ink-muted">No countries in this view</div>
+        ) : null}
+      </SelectContent>
+    </Select>
+  );
+}
+
+/** Names for active filter chips; list is scoped to the selected team when one is set. */
+function useFilterNames(filters: PipelineFilters) {
   const { user } = useAuth();
   const scope = useListFilterScope("leads:view");
-  const teamId = user?.teamIds?.[0];
-  const org = useOwnerOptions(scope.ownerFilter);
-  const team = useQuery({
-    queryKey: ["team-members", "se", teamId],
-    queryFn: () =>
-      adminApi.listUsers(
-        new URLSearchParams({ limit: "100", isActive: "true", roleCode: "sales_executive", teamId: teamId ?? "" }),
-      ),
-    enabled: scope.teamMemberFilter && !!teamId,
-  });
-  const users = scope.ownerFilter ? org.data?.data : scope.teamMemberFilter ? team.data?.data : undefined;
+  const teamId = filters.team || (scope.teamMemberFilter ? user?.teamIds?.[0] : "") || "";
+  const owners = useOwnerOptions(scope.ownerFilter || scope.teamMemberFilter, teamId || undefined);
+  const teams = useTeamOptions(scope.teamFilter);
   return {
-    enabled: scope.ownerFilter || scope.teamMemberFilter,
-    options: (users ?? []).map((u) => ({ id: u.id, name: u.fullName })),
+    scope,
+    ownerName: owners.data?.data.find((u) => u.id === filters.owner)?.fullName,
+    teamName: teams.data?.data.find((t) => t.id === filters.team)?.name,
   };
 }
 
@@ -78,10 +133,10 @@ export function PipelineToolbar({
   nurturing?: boolean;
   onChange: (next: PipelineFilters) => void;
 }) {
-  const owners = useOwnerChoices();
-  const ownerName = owners.options.find((o) => o.id === filters.owner)?.name;
+  const names = useFilterNames(filters);
   const chips = activeFilterChips(filters, {
-    owner: ownerName,
+    owner: names.ownerName,
+    team: names.teamName,
     currencySymbol: currencySymbol(currency),
     nurturing,
   });
@@ -97,6 +152,21 @@ export function PipelineToolbar({
           onChange={(status) => onChange({ ...filters, status, page: 1 })}
           options={statusOptions(nurturing).map((o) => ({ ...o, count: counts?.[o.value] }))}
         />
+        {names.scope.teamMemberFilter ? (
+          <TeamMemberFilterChip
+            value={filters.owner || "all"}
+            onChange={(id) => onChange({ ...filters, owner: id === "all" ? "" : id, page: 1 })}
+          />
+        ) : (
+          <OrgScopeSelects
+            teamId={filters.team}
+            ownerUserId={filters.owner}
+            onTeamChange={(team) => onChange({ ...filters, team, owner: "", page: 1 })}
+            onOwnerChange={(owner) => onChange({ ...filters, owner, page: 1 })}
+            showTeam={names.scope.teamFilter}
+            showOwner={names.scope.ownerFilter}
+          />
+        )}
         {closedView ? (
           <>
             <ClosedDateFilter filters={filters} onChange={onChange} />
@@ -120,7 +190,8 @@ export function PipelineToolbar({
             </SelectContent>
           </Select>
         )}
-        <MoreFilters filters={filters} owners={owners} currency={currency} onChange={onChange} />
+        <PipelineCountryFilter filters={filters} onChange={onChange} />
+        <MoreFilters filters={filters} currency={currency} onChange={onChange} />
         {closedView ? (
           <div className="ml-auto">
             <ClosedViewToggle filters={filters} onChange={onChange} />
@@ -241,22 +312,20 @@ function SearchField({ filters, onChange }: { filters: PipelineFilters; onChange
   );
 }
 
-type Draft = { owner: string; source: string; min: string; max: string };
+type Draft = { source: string; min: string; max: string };
 
 function MoreFilters({
   filters,
-  owners,
   currency,
   onChange,
 }: {
   filters: PipelineFilters;
-  owners: ReturnType<typeof useOwnerChoices>;
   currency: string;
   onChange: (next: PipelineFilters) => void;
 }) {
   const id = React.useId();
   const [open, setOpen] = React.useState(false);
-  const [draft, setDraft] = React.useState<Draft>({ owner: "", source: "", min: "", max: "" });
+  const [draft, setDraft] = React.useState<Draft>({ source: "", min: "", max: "" });
   const sources = useQuery({
     queryKey: ["lead-sources", "filter"],
     queryFn: () => crmApi.listLeadSources({ activeOnly: true }),
@@ -264,7 +333,7 @@ function MoreFilters({
     enabled: open,
   });
 
-  const active = [filters.owner, filters.source, filters.min || filters.max].filter(Boolean).length;
+  const active = [filters.source, filters.min || filters.max].filter(Boolean).length;
   const min = cleanAmount(draft.min);
   const max = cleanAmount(draft.max);
   const invalidAmount = (draft.min.trim() !== "" && min === "") || (draft.max.trim() !== "" && max === "");
@@ -272,7 +341,7 @@ function MoreFilters({
   const sym = currencySymbol(currency);
 
   const onOpenChange = (next: boolean) => {
-    if (next) setDraft({ owner: filters.owner, source: filters.source, min: filters.min, max: filters.max });
+    if (next) setDraft({ source: filters.source, min: filters.min, max: filters.max });
     setOpen(next);
   };
 
@@ -295,28 +364,10 @@ function MoreFilters({
           onSubmit={(e) => {
             e.preventDefault();
             if (invalidAmount || reversed) return;
-            onChange({ ...filters, owner: draft.owner, source: draft.source, min, max, page: 1 });
+            onChange({ ...filters, source: draft.source, min, max, page: 1 });
             setOpen(false);
           }}
         >
-          {owners.enabled ? (
-            <div className="space-y-1.5">
-              <Label htmlFor={`${id}-owner`}>Owner</Label>
-              <Select value={draft.owner || ANY} onValueChange={(v) => setDraft((d) => ({ ...d, owner: v === ANY ? "" : v }))}>
-                <SelectTrigger id={`${id}-owner`} className="h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ANY}>Anyone</SelectItem>
-                  {owners.options.map((o) => (
-                    <SelectItem key={o.id} value={o.id}>
-                      {o.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          ) : null}
           <div className="space-y-1.5">
             <Label htmlFor={`${id}-source`}>Source</Label>
             <Select value={draft.source || ANY} onValueChange={(v) => setDraft((d) => ({ ...d, source: v === ANY ? "" : v }))}>
@@ -367,7 +418,7 @@ function MoreFilters({
             <Button
               type="button"
               variant="ghost"
-              onClick={() => setDraft({ owner: "", source: "", min: "", max: "" })}
+              onClick={() => setDraft({ source: "", min: "", max: "" })}
             >
               Reset
             </Button>

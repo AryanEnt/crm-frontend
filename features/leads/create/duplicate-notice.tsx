@@ -2,8 +2,19 @@
 
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ExternalLink, Info } from "lucide-react";
+import { Users } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Modal,
+  ModalContent,
+  ModalDescription,
+  ModalFooter,
+  ModalHeader,
+  ModalTitle,
+} from "@/components/ui/modal";
+import { DuplicateMatchList } from "@/components/shared/duplicate-match-list";
 import { crmApi, type DuplicateMatch } from "@/lib/api/crm";
+import { cn } from "@/lib/utils";
 import { isValidEmail } from "./create-lead-schema";
 import { formatPhone, phoneLengthIssue, phoneVariants } from "./phone";
 
@@ -71,14 +82,10 @@ export function useDuplicateCheck({
   return query.data ?? [];
 }
 
-function matchedOn(reason: string) {
-  const r = reason.toLowerCase();
-  if (r.includes("email") && r.includes("phone")) return "Same phone and email";
-  if (r.includes("email")) return "Same email";
-  if (r.includes("phone")) return "Same phone";
-  return null;
-}
-
+/**
+ * Friendly popup when phone/email matches someone already in the CRM.
+ * Dismissing keeps a compact reminder so the user can reopen without blocking the form.
+ */
 export function DuplicateNotice({
   matches,
   onCreateAnyway,
@@ -90,50 +97,85 @@ export function DuplicateNotice({
   busy?: boolean;
   actionLabel?: string;
 }) {
-  const first = matches[0];
-  if (!first) return null;
-  const isLead = first.entity === "lead";
-  const others = matches.length - 1;
-  const why = matchedOn(first.reason);
+  const fingerprint = matches.map(duplicateKey).sort().join("|");
+  const [open, setOpen] = React.useState(false);
+  const [suppressedFor, setSuppressedFor] = React.useState("");
+
+  React.useEffect(() => {
+    if (!fingerprint) {
+      setOpen(false);
+      return;
+    }
+    if (fingerprint !== suppressedFor) setOpen(true);
+  }, [fingerprint, suppressedFor]);
+
+  if (!matches.length) return null;
+
+  const first = matches[0]!;
+  const titleName = first.fullName?.trim() || "This person";
+  const countLabel =
+    matches.length === 1
+      ? "We found a possible match"
+      : `We found ${matches.length} possible matches`;
+
+  const dismiss = () => {
+    setOpen(false);
+    setSuppressedFor(fingerprint);
+  };
+
+  const confirmAnyway = () => {
+    onCreateAnyway();
+    setOpen(false);
+    setSuppressedFor(fingerprint);
+  };
 
   return (
-    <div role="status" className="flex gap-2.5 rounded-2xl bg-warning-soft px-3.5 py-3 text-cell text-ink">
-      <Info aria-hidden className="mt-0.5 size-4 shrink-0 text-warning" />
-      <div className="min-w-0 flex-1">
-        <p>
-          Looks like <span className="font-semibold">{first.fullName}</span>{" "}
-          {isLead ? "is already in your pipeline." : "is already a customer."}
-          {others > 0 ? (
-            <span className="text-ink-secondary">
-              {" "}
-              {others === 1 ? "There's 1 other possible match." : `There are ${others} other possible matches.`}
-            </span>
-          ) : null}
-        </p>
-        {why ? <p className="text-caption text-ink-muted">{why}</p> : null}
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-          {isLead ? (
-            <a
-              href={`/leads?leadId=${encodeURIComponent(first.id)}`}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1 rounded-sm font-medium text-brand-ink underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    <>
+      {!open ? (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className={cn(
+            "flex w-full items-start gap-2.5 rounded-2xl border border-warning-border bg-warning-soft px-3.5 py-3 text-left text-cell text-ink",
+            "hover:bg-warning-soft/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          )}
+        >
+          <Users aria-hidden className="mt-0.5 size-4 shrink-0 text-warning" />
+          <span className="min-w-0">
+            <span className="font-semibold">{countLabel}.</span>{" "}
+            <span className="text-ink-secondary">Review before you continue.</span>
+          </span>
+        </button>
+      ) : null}
+
+      <Modal open={open} onOpenChange={(next) => !next && dismiss()}>
+        <ModalContent className="max-w-md">
+          <ModalHeader>
+            <ModalTitle>Already in your CRM?</ModalTitle>
+            <ModalDescription>
+              <span className="font-medium text-ink">{titleName}</span> looks similar to{" "}
+              {matches.length === 1 ? "someone you already have" : "people you already have"}. Check
+              before creating a duplicate — you can still continue if this is a different person.
+            </ModalDescription>
+          </ModalHeader>
+
+          <DuplicateMatchList matches={matches} />
+
+          <ModalFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-between">
+            <Button variant="outline" onClick={dismiss} disabled={busy} className="w-full sm:w-auto">
+              Keep editing
+            </Button>
+            <Button
+              variant="ghost"
+              loading={busy}
+              onClick={confirmAnyway}
+              className="w-full text-ink-secondary sm:w-auto"
             >
-              View lead
-              <ExternalLink aria-hidden className="size-3.5" />
-              <span className="sr-only">(opens in a new tab)</span>
-            </a>
-          ) : null}
-          <button
-            type="button"
-            onClick={onCreateAnyway}
-            disabled={busy}
-            className="rounded-sm font-medium text-ink-secondary underline-offset-2 hover:text-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-          >
-            {actionLabel}
-          </button>
-        </div>
-      </div>
-    </div>
+              {actionLabel}
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+    </>
   );
 }

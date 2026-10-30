@@ -43,7 +43,7 @@ import { FIELD_CONTROL } from "./field-ui";
 import { formatFollowUp, fromLocalInput } from "./follow-up";
 import { MoreDetailsAccordion } from "./more-details-accordion";
 import { countryFromLocale, detectDialCountry, formatPhone } from "./phone";
-import { ProfileSection } from "./profile-section";
+import { ProfileSection, WorkSection } from "./profile-section";
 import { QuickAddFields } from "./quick-add-fields";
 import { SalesSection, useOwnerChoices } from "./sales-section";
 import { loadSourceUsage, pickDefaultSource, rankSources } from "./source-usage";
@@ -100,7 +100,8 @@ export function CreateLeadSheet({ open, onOpenChange, pipelineId, onCreated, lea
         <DrawerContent
           ref={contentRef}
           onOpenAutoFocus={(e) => e.preventDefault()}
-          className="max-w-none bg-surface sm:w-[620px] sm:max-w-[620px] motion-reduce:data-[state=closed]:animate-none motion-reduce:data-[state=open]:animate-none"
+          overlayClassName="z-[60]"
+          className="z-[60] max-w-none bg-surface sm:w-[620px] sm:max-w-[620px] motion-reduce:data-[state=closed]:animate-none motion-reduce:data-[state=open]:animate-none"
         >
           <DrawerHeader className="border-b-0 px-6 pb-2 pt-6">
             <DrawerTitle className="flex items-center gap-2 text-xl font-bold tracking-tight">
@@ -115,7 +116,9 @@ export function CreateLeadSheet({ open, onOpenChange, pipelineId, onCreated, lea
               )}
             </DrawerTitle>
             <DrawerDescription className="text-cell">
-              {lead ? "Change what you need, then save." : "Only the name is required. Everything else can wait."}
+              {lead
+                ? "Change what you need, then save."
+                : "Name, country, nationality and location are required. Everything else can wait."}
             </DrawerDescription>
           </DrawerHeader>
           {ready && user ? (
@@ -375,10 +378,8 @@ function CreateLeadForm({
     .filter(Boolean)
     .join(" · ");
   const role = values.jobTitle.trim() || values.occupation.trim();
-  const profileSummary = [
+  const workSummary = [
     role && values.employer.trim() ? `${role} at ${values.employer.trim()}` : role || values.employer.trim(),
-    values.location.trim(),
-    values.country.trim(),
   ]
     .filter(Boolean)
     .join(" · ");
@@ -413,12 +414,15 @@ function CreateLeadForm({
               onCreateAnyway={onCreateAnyway}
               duplicateBusy={isSubmitting}
               editing={Boolean(editing)}
-              anzscoLabel={lead?.anzscoCode && lead.anzscoTitle ? `${lead.anzscoCode} — ${lead.anzscoTitle}` : null}
               screenshot={screenshot}
               onScreenshotChange={setScreenshot}
               pasteTarget={pasteTarget}
               extractEnabled={!editing && env.features.leadScreenshotExtract}
               onApplyExtract={applyExtract}
+            />
+            <ProfileSection
+              anzscoLabel={lead?.anzscoCode && lead.anzscoTitle ? `${lead.anzscoCode} — ${lead.anzscoTitle}` : null}
+              requireClientDetails={!editing}
             />
             <MoreDetailsAccordion<DetailSection>
               open={openSections}
@@ -450,15 +454,15 @@ function CreateLeadForm({
                   ),
                 },
                 {
-                  id: "profile",
-                  title: "About them",
+                  id: "work",
+                  title: "Job details",
                   emoji: "🧑‍💼",
-                  summary: profileSummary || undefined,
-                  placeholder: "Country, job and employer",
-                  invalid: sectionInvalid("profile"),
+                  summary: workSummary || undefined,
+                  placeholder: "Occupation, title and employer",
+                  invalid: sectionInvalid("work"),
                   content: (
                     <>
-                      <ProfileSection />
+                      <WorkSection />
                       <CustomFieldsSection
                         entity="lead"
                         recordId={lead?.id}

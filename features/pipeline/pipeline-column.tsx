@@ -78,7 +78,7 @@ export function PipelineColumn({
           ) : null}
         </div>
         <p className="mt-1 text-[0.8125rem] tabular-nums text-ink-secondary">
-          {subtitle ?? (stage.totalValue > 0 ? formatLeadMoneyCompact(stage.totalValue, currency) : "No value yet")}
+          {subtitle ?? (stage.totalValue > 0 ? formatLeadMoneyCompact(stage.totalValue, currency) : "No estimates yet")}
         </p>
       </header>
 

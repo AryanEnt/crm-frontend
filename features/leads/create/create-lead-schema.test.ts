@@ -48,32 +48,58 @@ const errorsOf = (input: CreateLeadInput) => {
   return Object.fromEntries(r.error.issues.map((i) => [i.path.join("."), i.message]));
 };
 
+const about = {
+  country: "Australia",
+  nationality: "Nepali",
+  location: "Sydney",
+} as const;
+
 describe("create lead schema", () => {
-  it("needs only a name", () => {
-    assert.deepEqual(errorsOf(form({ fullName: "Priya Sharma" })), {});
+  it("needs a name plus country, nationality and location", () => {
+    assert.deepEqual(errorsOf(form({ fullName: "Priya Sharma", ...about })), {});
   });
 
   it("asks for a name in plain words", () => {
-    assert.deepEqual(errorsOf(form({ fullName: "   " })), { fullName: MESSAGES.name });
+    assert.deepEqual(errorsOf(form({ fullName: "   ", ...about })), { fullName: MESSAGES.name });
+  });
+
+  it("asks for country, nationality and location", () => {
+    const missing = errorsOf(form({ fullName: "Priya Sharma" }));
+    assert.equal(missing.country, MESSAGES.country);
+    assert.equal(missing.nationality, MESSAGES.nationality);
+    assert.equal(missing.location, MESSAGES.location);
+  });
+
+  it("lets editing keep blank historical country fields", () => {
+    const blank = { fullName: "Priya Sharma", country: "", nationality: "", location: "" };
+    assert.equal(editLeadSchema.safeParse(form(blank)).success, true);
+    assert.equal(createLeadSchema.safeParse(form(blank)).success, false);
   });
 
   it("leaves phone and email optional but checks them when given", () => {
-    assert.deepEqual(errorsOf(form({ fullName: "A", phone: "0412", email: "priya@" })), {
-      phone: MESSAGES.phoneShort,
-      email: MESSAGES.email,
-    });
-    assert.deepEqual(errorsOf(form({ fullName: "A", phone: "0412 345 678", email: "priya@example.com" })), {});
+    const bad = errorsOf(form({ fullName: "A", ...about, phone: "0412", email: "priya@" }));
+    assert.match(bad.phone ?? "", /Australia numbers need 9 digits/);
+    assert.equal(bad.email, MESSAGES.email);
+    assert.deepEqual(errorsOf(form({ fullName: "A", ...about, phone: "0412 345 678", email: "priya@example.com" })), {});
+    assert.match(
+      errorsOf(form({ fullName: "A", ...about, phoneCountry: "NP", phone: "980 123" })).phone ?? "",
+      /Nepal numbers need 10 digits/,
+    );
   });
 
   it("accepts whole amounts only", () => {
-    assert.deepEqual(errorsOf(form({ fullName: "A", potentialValue: "25000" })), {});
-    assert.deepEqual(errorsOf(form({ fullName: "A", potentialValue: "25.5" })), { potentialValue: MESSAGES.value });
+    assert.deepEqual(errorsOf(form({ fullName: "A", ...about, potentialValue: "25000" })), {});
+    assert.deepEqual(errorsOf(form({ fullName: "A", ...about, potentialValue: "25.5" })), {
+      potentialValue: MESSAGES.value,
+    });
   });
 
   it("asks who referred the lead only when the source is Referral", () => {
-    assert.deepEqual(errorsOf(form({ fullName: "A", source: "Referral" })), { referral: MESSAGES.referrer });
+    assert.deepEqual(errorsOf(form({ fullName: "A", ...about, source: "Referral" })), { referral: MESSAGES.referrer });
     assert.deepEqual(
-      errorsOf(form({ fullName: "A", source: "Referral", referral: { ...referral(), referrerName: "Sam" } })),
+      errorsOf(
+        form({ fullName: "A", ...about, source: "Referral", referral: { ...referral(), referrerName: "Sam" } }),
+      ),
       {},
     );
   });
@@ -88,9 +114,10 @@ describe("create lead schema", () => {
 
   it("maps detail fields to the section that should open on an error", () => {
     assert.equal(sectionForField("nextActivityAt"), "sales");
-    assert.equal(sectionForField("employer"), "profile");
+    assert.equal(sectionForField("employer"), "work");
     assert.equal(sectionForField("notes"), "notes");
     assert.equal(sectionForField("fullName"), null);
+    assert.equal(sectionForField("country"), null);
     assert.equal(sectionForField("priority"), null);
     assert.equal(sectionForField("anzscoId"), null);
   });
@@ -132,11 +159,16 @@ describe("create and add another", () => {
 
 describe("create payload", () => {
   it("sends E.164 phones, numbers and nulls for blanks", () => {
-    const parsed = createLeadSchema.parse(form({ fullName: " Priya ", phone: "0412 345 678", potentialValue: "12500" }));
+    const parsed = createLeadSchema.parse(
+      form({ fullName: " Priya ", ...about, phone: "0412 345 678", potentialValue: "12500" }),
+    );
     const p = toCreatePayload(parsed, { force: false, canAssignOwner: true });
     assert.equal(p.fullName, "Priya");
     assert.equal(p.phone, "+61412345678");
     assert.equal(p.email, null);
+    assert.equal(p.country, "Australia");
+    assert.equal(p.nationality, "Nepali");
+    assert.equal(p.location, "Sydney");
     assert.equal(p.potentialValue, 12500);
     assert.equal(p.nextActivityAt, null);
     assert.equal(p.ownerUserId, "me");
@@ -144,13 +176,13 @@ describe("create payload", () => {
   });
 
   it("sends the follow-up as 9:00 in the user's time zone", () => {
-    const parsed = createLeadSchema.parse(form({ fullName: "A", nextActivityAt: "2026-10-05T09:00" }));
+    const parsed = createLeadSchema.parse(form({ fullName: "A", ...about, nextActivityAt: "2026-10-05T09:00" }));
     const p = toCreatePayload(parsed, { force: false, canAssignOwner: true, timeZone: "Australia/Sydney" });
     assert.equal(p.nextActivityAt, "2026-10-04T22:00:00.000Z");
   });
 
   it("always assigns sales executives to themselves", () => {
-    const parsed = createLeadSchema.parse(form({ fullName: "A", ownerUserId: "someone-else" }));
+    const parsed = createLeadSchema.parse(form({ fullName: "A", ...about, ownerUserId: "someone-else" }));
     assert.equal(toCreatePayload(parsed, { force: false, canAssignOwner: false, currentUserId: "me" }).ownerUserId, "me");
   });
 });
@@ -162,7 +194,7 @@ const existing = (over: Partial<Lead> = {}): Lead =>
     email: "priya@example.com",
     phone: "+61412345678",
     country: "Australia",
-    nationality: "",
+    nationality: "Nepali",
     location: "Sydney",
     ownerUserId: "u2",
     ownerName: "Sam",

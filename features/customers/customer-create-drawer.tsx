@@ -32,6 +32,12 @@ import {
   type Customer,
   type DuplicateMatch,
 } from "@/lib/api/crm";
+import { isValidEmail } from "@/features/leads/create/create-lead-schema";
+import {
+  countryFromLocale,
+  detectDialCountry,
+  phoneLengthMessage,
+} from "@/features/leads/create/phone";
 
 const fieldInputClass = CRM_FIELD_INPUT_CLASS;
 
@@ -60,7 +66,12 @@ export function CustomerCreateDrawer({
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [nameError, setNameError] = React.useState<string | undefined>();
+  const [emailError, setEmailError] = React.useState<string | undefined>();
+  const [phoneError, setPhoneError] = React.useState<string | undefined>();
   const [sourceError, setSourceError] = React.useState<string | undefined>();
+  const phoneCountry =
+    detectDialCountry(phone) ??
+    countryFromLocale(typeof navigator === "undefined" ? undefined : navigator.language);
   const [duplicates, setDuplicates] = React.useState<DuplicateMatch[]>([]);
   const [dupOpen, setDupOpen] = React.useState(false);
   const [created, setCreated] = React.useState<Customer | null>(null);
@@ -109,6 +120,8 @@ export function CustomerCreateDrawer({
       setReferral(emptyReferralForm());
     }
     setNameError(undefined);
+    setEmailError(undefined);
+    setPhoneError(undefined);
     setSourceError(undefined);
   }, [open, initial, user?.id]);
 
@@ -119,6 +132,19 @@ export function CustomerCreateDrawer({
       valid = false;
     } else {
       setNameError(undefined);
+    }
+    if (email.trim() && !isValidEmail(email)) {
+      setEmailError("Enter a valid email, for example name@example.com");
+      valid = false;
+    } else {
+      setEmailError(undefined);
+    }
+    const phoneMsg = phone.trim() ? phoneLengthMessage(phone, phoneCountry) : null;
+    if (phoneMsg) {
+      setPhoneError(phoneMsg);
+      valid = false;
+    } else {
+      setPhoneError(undefined);
     }
     if (!source.trim()) {
       setSourceError("Lead source is required");
@@ -284,21 +310,32 @@ export function CustomerCreateDrawer({
                 />
               </FormFieldSlot>
               <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                <FormFieldSlot label="Phone">
+                <FormFieldSlot label="Phone" error={phoneError}>
                   <Input
                     value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
+                    onChange={(e) => {
+                      setPhone(e.target.value);
+                      if (phoneError) setPhoneError(undefined);
+                    }}
                     placeholder="Phone"
                     className={fieldInputClass}
+                    error={Boolean(phoneError)}
+                    inputMode="tel"
+                    autoComplete="tel"
                   />
                 </FormFieldSlot>
-                <FormFieldSlot label="Email">
+                <FormFieldSlot label="Email" error={emailError}>
                   <Input
                     type="email"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      if (emailError) setEmailError(undefined);
+                    }}
                     placeholder="Email"
                     className={fieldInputClass}
+                    error={Boolean(emailError)}
+                    autoComplete="email"
                   />
                 </FormFieldSlot>
               </div>

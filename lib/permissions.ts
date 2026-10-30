@@ -75,6 +75,7 @@ export const routePermissions: Record<string, PermissionCode[]> = {
   "/pipelines": ["deals:view", "pipelines:view"],
   "/analytics": ["analytics:view"],
   "/sales-funnel": ["analytics:view"],
+  "/lead-population": ["analytics:view"],
   "/reports": ["reports:view"],
   "/forecasts": ["forecasts:view"],
   "/targets": ["targets:view"],
