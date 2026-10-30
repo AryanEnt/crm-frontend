@@ -145,7 +145,6 @@ function CountryFilterSelect({
 
   const options = countriesQuery.data ?? [];
   const selectedStillPresent = !value || options.some((o) => o.country === value);
-  const totalAll = options.reduce((sum, o) => sum + o.count, 0);
 
   return (
     <Select
@@ -159,11 +158,7 @@ function CountryFilterSelect({
         <SelectValue placeholder="All Countries" />
       </SelectTrigger>
       <SelectContent className="max-h-72">
-        <SelectItem value="all">
-          {countriesQuery.isSuccess
-            ? `All Countries (${totalAll.toLocaleString("en-AU")})`
-            : "All Countries"}
-        </SelectItem>
+        <SelectItem value="all">All Countries</SelectItem>
         {!selectedStillPresent && value ? (
           <SelectItem value={value}>{countryFilterLabel(value)}</SelectItem>
         ) : null}

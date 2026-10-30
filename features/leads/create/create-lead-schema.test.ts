@@ -70,10 +70,11 @@ describe("create lead schema", () => {
     assert.equal(missing.location, MESSAGES.location);
   });
 
-  it("lets editing keep blank historical country fields", () => {
+  it("requires country, nationality and location on create and edit", () => {
     const blank = { fullName: "Priya Sharma", country: "", nationality: "", location: "" };
-    assert.equal(editLeadSchema.safeParse(form(blank)).success, true);
+    assert.equal(editLeadSchema.safeParse(form(blank)).success, false);
     assert.equal(createLeadSchema.safeParse(form(blank)).success, false);
+    assert.equal(editLeadSchema.safeParse(form({ fullName: "Priya Sharma", ...about })).success, true);
   });
 
   it("leaves phone and email optional but checks them when given", () => {
@@ -227,9 +228,27 @@ describe("editing a lead", () => {
     assert.equal(v.anzscoId, "anz-1");
   });
 
-  it("doesn't ask for referrer details again", () => {
-    const v = { ...leadToForm(existing({ source: "Referral" }), sydney) };
-    assert.equal(editLeadSchema.safeParse(v).success, true);
+  it("asks for a referrer when the source is Referral", () => {
+    const empty = leadToForm(existing({ source: "Referral" }), sydney);
+    assert.equal(editLeadSchema.safeParse(empty).success, false);
+    const filled = {
+      ...empty,
+      referral: { ...referral(), referrerName: "Sam" },
+    };
+    assert.equal(editLeadSchema.safeParse(filled).success, true);
+  });
+
+  it("sends changed referral details", () => {
+    const initial = leadToForm(existing({ source: "Referral" }), {
+      ...sydney,
+      referral: { ...referral(), referrerName: "Sam" },
+    });
+    const edited = editLeadSchema.parse({
+      ...initial,
+      referral: { ...referral(), referrerName: "Priya" },
+    });
+    const p = toUpdatePayload(edited, initial, { force: false, canAssignOwner: true, timeZone: "Australia/Sydney" });
+    assert.equal((p.referral as { referrerName: string }).referrerName, "Priya");
   });
 
   it("sends nothing but the override flag when nothing changed", () => {

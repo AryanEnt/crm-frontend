@@ -329,7 +329,7 @@ function ActivityCreateBody({
                 label="Title"
                 autoComplete="off"
                 placeholder={selectedType?.name ?? "Defaults to the activity type"}
-                helper="Optional. Defaults to the activity type."
+                helper="Optional. Up to three words. Defaults to the activity type."
               />
 
               {rules.outcome ? (

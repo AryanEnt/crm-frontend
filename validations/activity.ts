@@ -1,5 +1,8 @@
 import { z } from "zod";
+import { activityTitleWithinLimit } from "@/lib/forms/activity-title";
 import { messages } from "@/lib/forms/messages";
+
+export { ACTIVITY_TITLE_MAX_WORDS, activityTitleWordCount } from "@/lib/forms/activity-title";
 
 export const ACTIVITY_PRIORITIES = ["low", "medium", "high", "urgent"] as const;
 export const ACTIVITY_LINK_TYPES = ["customer", "lead", "deal"] as const;
@@ -12,6 +15,10 @@ export type ActivityTypeRules = {
   outcome: boolean;
   notes: boolean;
 };
+
+const activityTitleSchema = z.string().trim().refine(activityTitleWithinLimit, {
+  message: "Use three words or fewer",
+});
 
 /**
  * Built per render from the selected type's rules so required markers and
@@ -29,7 +36,7 @@ export function activitySchema(rules: ActivityTypeRules, { needsLink }: { needsL
       dueAt: schedule === "datetime" ? z.string().min(1, messages.enter("a date and time")) : z.string(),
       startAt: schedule === "duration" ? z.string().min(1, messages.enter("a start time")) : z.string(),
       endAt: schedule === "duration" ? z.string().min(1, messages.enter("an end time")) : z.string(),
-      title: z.string().trim(),
+      title: activityTitleSchema,
       outcome: rules.outcome ? z.string().trim().min(1, messages.enter("the outcome")) : z.string().trim(),
       notes: rules.notes ? z.string().trim().min(1, messages.enter("notes")) : z.string(),
     })

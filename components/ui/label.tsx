@@ -23,7 +23,7 @@ export const Label = React.forwardRef<
   >
     {children}
     {required ? (
-      <span className="ml-0.5 font-normal text-danger/70" aria-hidden="true">
+      <span className="ml-0.5 font-medium text-danger" aria-hidden="true">
         *
       </span>
     ) : null}

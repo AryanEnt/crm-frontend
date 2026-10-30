@@ -70,7 +70,6 @@ function PipelineCountryFilter({
   const options = countriesQuery.data ?? [];
   const value = filters.country;
   const selectedStillPresent = !value || options.some((o) => o.country === value);
-  const totalAll = options.reduce((sum, o) => sum + o.count, 0);
 
   return (
     <Select value={value || "all"} onValueChange={(v) => onChange({ ...filters, country: v === "all" ? "" : v, page: 1 })}>
@@ -81,9 +80,7 @@ function PipelineCountryFilter({
         <SelectValue placeholder="All Countries" />
       </SelectTrigger>
       <SelectContent className="max-h-72">
-        <SelectItem value="all">
-          {countriesQuery.isSuccess ? `All Countries (${totalAll.toLocaleString("en-AU")})` : "All Countries"}
-        </SelectItem>
+        <SelectItem value="all">All Countries</SelectItem>
         {!selectedStillPresent && value ? (
           <SelectItem value={value}>{countryFilterLabel(value)}</SelectItem>
         ) : null}

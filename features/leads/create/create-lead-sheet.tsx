@@ -20,8 +20,9 @@ import { LoadingState } from "@/components/ui/loading-state";
 import { useAuth } from "@/features/auth/auth-provider";
 import type { SessionUser } from "@/features/auth/types";
 import { canAttachLeadScreenshot } from "@/features/leads/can-attach-screenshot";
-import { emptyReferralForm } from "@/features/referrals/smart-referral-fields";
+import { emptyReferralForm, referralToForm } from "@/features/referrals/smart-referral-fields";
 import { crmApi, type DuplicateMatch, type Lead, type LeadSource, type Pipeline } from "@/lib/api/crm";
+import { referralsApi, type Referral } from "@/lib/api/referrals";
 import { env } from "@/lib/env";
 import { cn } from "@/lib/utils";
 import {
@@ -69,6 +70,8 @@ export function CreateLeadSheet({ open, onOpenChange, pipelineId, onCreated, lea
   const [confirmDiscard, setConfirmDiscard] = React.useState(false);
   const hasChangesRef = React.useRef<() => boolean>(() => false);
   const contentRef = React.useRef<HTMLDivElement>(null);
+  // Set before close so a deferred outside-click from the sheet cannot reopen the prompt.
+  const discardConfirmedRef = React.useRef(false);
 
   const pipelinesQuery = useQuery({
     queryKey: ["pipelines", "leads"],
@@ -87,9 +90,29 @@ export function CreateLeadSheet({ open, onOpenChange, pipelineId, onCreated, lea
     enabled: open,
     staleTime: 60_000,
   });
-  const ready = Boolean(user) && pipelinesQuery.isFetched && settingsQuery.isFetched && sourcesQuery.isFetched;
+  const referralQuery = useQuery({
+    queryKey: ["referrals", "subject", lead?.id],
+    queryFn: () => referralsApi.bySubject({ leadId: lead!.id }),
+    enabled: open && Boolean(lead?.id),
+  });
+  const ready =
+    Boolean(user) &&
+    pipelinesQuery.isFetched &&
+    settingsQuery.isFetched &&
+    sourcesQuery.isFetched &&
+    (!lead || referralQuery.isFetched);
+
+  React.useEffect(() => {
+    if (open) discardConfirmedRef.current = false;
+  }, [open]);
 
   const requestClose = () => {
+    if (discardConfirmedRef.current) {
+      discardConfirmedRef.current = false;
+      setConfirmDiscard(false);
+      onOpenChange(false);
+      return;
+    }
     if (hasChangesRef.current()) setConfirmDiscard(true);
     else onOpenChange(false);
   };
@@ -100,6 +123,12 @@ export function CreateLeadSheet({ open, onOpenChange, pipelineId, onCreated, lea
         <DrawerContent
           ref={contentRef}
           onOpenAutoFocus={(e) => e.preventDefault()}
+          onPointerDownOutside={(e) => {
+            if (confirmDiscard) e.preventDefault();
+          }}
+          onInteractOutside={(e) => {
+            if (confirmDiscard) e.preventDefault();
+          }}
           overlayClassName="z-[60]"
           className="z-[60] max-w-none bg-surface sm:w-[620px] sm:max-w-[620px] motion-reduce:data-[state=closed]:animate-none motion-reduce:data-[state=open]:animate-none"
         >
@@ -117,7 +146,7 @@ export function CreateLeadSheet({ open, onOpenChange, pipelineId, onCreated, lea
             </DrawerTitle>
             <DrawerDescription className="text-cell">
               {lead
-                ? "Change what you need, then save."
+                ? "Country, nationality and location are required."
                 : "Name, country, nationality and location are required. Everything else can wait."}
             </DrawerDescription>
           </DrawerHeader>
@@ -125,6 +154,7 @@ export function CreateLeadSheet({ open, onOpenChange, pipelineId, onCreated, lea
             <CreateLeadForm
               key={lead?.id ?? "new"}
               lead={lead ?? undefined}
+              existingReferral={lead ? (referralQuery.data ?? null) : undefined}
               user={user}
               pipelines={pipelinesQuery.data ?? []}
               settings={settingsQuery.data}
@@ -155,7 +185,11 @@ export function CreateLeadSheet({ open, onOpenChange, pipelineId, onCreated, lea
         confirmLabel="Discard"
         cancelLabel="Keep editing"
         destructive
+        // The edit sheet is z-60 so it sits above the lead panel. This prompt has to be higher, or Discard is painted under that overlay and the click never lands.
+        className="z-[80]"
+        overlayClassName="z-[80]"
         onConfirm={() => {
+          discardConfirmedRef.current = true;
           setConfirmDiscard(false);
           onOpenChange(false);
         }}
@@ -211,6 +245,7 @@ function focusNextField(root: HTMLElement, current: HTMLElement) {
 
 function CreateLeadForm({
   lead,
+  existingReferral,
   user,
   pipelines,
   settings,
@@ -223,6 +258,7 @@ function CreateLeadForm({
   onCreated,
 }: {
   lead?: Lead;
+  existingReferral?: Referral | null;
   user: SessionUser;
   pipelines: Pipeline[];
   settings?: Settings;
@@ -254,7 +290,16 @@ function CreateLeadForm({
     buildDefaults({ user, pipelines, settings, rankedSources, initialPipelineId }),
   );
   const [editing] = React.useState(() =>
-    lead ? { lead, initial: leadToForm(lead, { defaultCountry: defaults.phoneCountry, timeZone }) } : undefined,
+    lead
+      ? {
+          lead,
+          initial: leadToForm(lead, {
+            defaultCountry: defaults.phoneCountry,
+            timeZone,
+            referral: referralToForm(existingReferral),
+          }),
+        }
+      : undefined,
   );
   const form = useZodForm(editing ? editLeadSchema : createLeadSchema, {
     defaultValues: editing ? editing.initial : emptyCreateLead(defaults),
@@ -422,7 +467,6 @@ function CreateLeadForm({
             />
             <ProfileSection
               anzscoLabel={lead?.anzscoCode && lead.anzscoTitle ? `${lead.anzscoCode} — ${lead.anzscoTitle}` : null}
-              requireClientDetails={!editing}
             />
             <MoreDetailsAccordion<DetailSection>
               open={openSections}

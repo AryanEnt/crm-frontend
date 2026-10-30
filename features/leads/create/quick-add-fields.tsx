@@ -36,7 +36,6 @@ export function QuickAddFields({
   duplicates: DuplicateMatch[];
   onCreateAnyway: () => void;
   duplicateBusy?: boolean;
-  /** Editing an existing lead: referral details stay as they are. */
   editing?: boolean;
   screenshot: File | null;
   onScreenshotChange: (file: File | null) => void;
@@ -106,15 +105,7 @@ export function QuickAddFields({
       />
 
       <SourceField sources={sources} />
-      {isReferralSource(source) ? (
-        editing ? (
-          <p className="-mt-2 rounded-2xl bg-surface-muted px-3.5 py-2.5 text-caption text-ink-muted">
-            <span aria-hidden>🤝 </span>Referral details can&apos;t be changed here.
-          </p>
-        ) : (
-          <ReferralBlock />
-        )
-      ) : null}
+      {isReferralSource(source) ? <ReferralBlock /> : null}
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-[minmax(0,1fr)_11rem] sm:gap-3">
         <PriorityField />
         <ValueField />
@@ -180,7 +171,7 @@ function SourceField({ sources }: { sources: readonly string[] }) {
   const { control } = useLeadForm();
   const { field, fieldState } = useController({ control, name: "source" });
   return (
-    <LeadField label="Where did they come from?" group error={fieldState.error?.message}>
+    <LeadField label="Where did they come from?" required group error={fieldState.error?.message}>
       {(_a11y, labelId) => (
         <SourcePicker
           value={field.value}
@@ -216,6 +207,10 @@ function ReferralBlock() {
     <div data-invalid={error ? true : undefined} className="rounded-2xl bg-success-soft/60 p-4">
       <p className="mb-3 text-cell font-semibold text-ink">
         <span aria-hidden>🤝 </span>Who referred them?
+        <span className="text-danger" aria-hidden>
+          {" "}
+          *
+        </span>
       </p>
       <SmartReferralFields
         value={field.value ?? emptyReferralForm()}

@@ -22,10 +22,14 @@ import {
   type ReferralMeta,
 } from "@/lib/api/referrals";
 import { toast } from "sonner";
-import type { ReferralFormState } from "@/features/referrals/referral-fields";
-import { emptyReferralForm, toReferralInput } from "@/features/referrals/referral-fields";
+import {
+  emptyReferralForm,
+  referralToForm,
+  toReferralInput,
+  type ReferralFormState,
+} from "@/features/referrals/referral-form";
 
-export { emptyReferralForm, toReferralInput, type ReferralFormState };
+export { emptyReferralForm, referralToForm, toReferralInput, type ReferralFormState };
 
 /**
  * Compact referral block with searchable referrer picker + inline partner create.

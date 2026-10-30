@@ -138,6 +138,7 @@ export function useCreateLead({
     void qc.invalidateQueries({ queryKey: ["documents"] });
     void qc.invalidateQueries({ queryKey: ["documents", "lead", leadId] });
     void qc.invalidateQueries({ queryKey: ["timeline"] });
+    void qc.invalidateQueries({ queryKey: ["referrals"] });
   };
 
   const saveChanges = async (values: CreateLeadValues, force: boolean, { lead, initial }: { lead: Lead; initial: CreateLeadInput }) => {

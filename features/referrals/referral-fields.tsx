@@ -14,58 +14,15 @@ import {
 } from "@/components/ui/select";
 import { adminApi } from "@/lib/api/admin";
 import { crmApi } from "@/lib/api/crm";
+import { referralsApi, type ReferralMeta } from "@/lib/api/referrals";
 import {
-  referralsApi,
-  todayISODate,
-  type ReferralInput,
-  type ReferralMeta,
-} from "@/lib/api/referrals";
+  emptyReferralForm,
+  referralToForm,
+  toReferralInput,
+  type ReferralFormState,
+} from "./referral-form";
 
-export type ReferralFormState = {
-  referrerTypeCode: string;
-  referrerUserId: string;
-  referrerCustomerId: string;
-  referrerPartnerId: string;
-  referrerName: string;
-  relationshipCode: string;
-  referralDate: string;
-  referralSource: string;
-  notes: string;
-  referralCode: string;
-};
-
-export function emptyReferralForm(): ReferralFormState {
-  return {
-    referrerTypeCode: "existing_customer",
-    referrerUserId: "none",
-    referrerCustomerId: "none",
-    referrerPartnerId: "none",
-    referrerName: "",
-    relationshipCode: "none",
-    referralDate: todayISODate(),
-    referralSource: "",
-    notes: "",
-    referralCode: "",
-  };
-}
-
-export function toReferralInput(form: ReferralFormState): ReferralInput {
-  return {
-    referrerTypeCode: form.referrerTypeCode,
-    referrerUserId: form.referrerUserId !== "none" ? form.referrerUserId : null,
-    referrerCustomerId:
-      form.referrerCustomerId !== "none" ? form.referrerCustomerId : null,
-    referrerPartnerId: form.referrerPartnerId !== "none" ? form.referrerPartnerId : null,
-    referrerName: form.referrerName.trim(),
-    relationshipCode:
-      form.relationshipCode !== "none" ? form.relationshipCode : null,
-    referralDate: form.referralDate || todayISODate(),
-    referralSource: form.referralSource.trim(),
-    notes: form.notes,
-    referralCode: form.referralCode.trim() || null,
-    statusCode: "active",
-  };
-}
+export { emptyReferralForm, referralToForm, toReferralInput, type ReferralFormState };
 
 export function ReferralFields({
   value,

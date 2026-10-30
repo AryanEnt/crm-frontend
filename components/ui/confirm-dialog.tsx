@@ -20,6 +20,9 @@ export type ConfirmDialogProps = {
   cancelLabel?: string;
   destructive?: boolean;
   loading?: boolean;
+  /** Stack above a drawer that uses a higher z-index than the default modal. */
+  className?: string;
+  overlayClassName?: string;
   onConfirm: () => void | Promise<void>;
 };
 
@@ -32,17 +35,20 @@ export function ConfirmDialog({
   cancelLabel = "Cancel",
   destructive = false,
   loading = false,
+  className,
+  overlayClassName,
   onConfirm,
 }: ConfirmDialogProps) {
   return (
     <Modal open={open} onOpenChange={onOpenChange}>
-      <ModalContent showClose={!loading}>
+      <ModalContent showClose={!loading} className={className} overlayClassName={overlayClassName}>
         <ModalHeader>
           <ModalTitle>{title}</ModalTitle>
           {description ? <ModalDescription>{description}</ModalDescription> : null}
         </ModalHeader>
         <ModalFooter>
           <Button
+            type="button"
             variant="outline"
             onClick={() => onOpenChange(false)}
             disabled={loading}
@@ -50,6 +56,7 @@ export function ConfirmDialog({
             {cancelLabel}
           </Button>
           <Button
+            type="button"
             variant={destructive ? "destructive" : "default"}
             loading={loading}
             onClick={() => void onConfirm()}

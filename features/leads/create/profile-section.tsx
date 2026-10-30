@@ -98,14 +98,8 @@ function AnzscoField({ initialLabel }: { initialLabel: string | null }) {
   );
 }
 
-/** Always-visible block: country, nationality, location + ANZSCO. Required on create. */
-export function ProfileSection({
-  anzscoLabel = null,
-  requireClientDetails = true,
-}: {
-  anzscoLabel?: string | null;
-  requireClientDetails?: boolean;
-}) {
+/** Always-visible block: country, nationality, location (required) + ANZSCO (optional). */
+export function ProfileSection({ anzscoLabel = null }: { anzscoLabel?: string | null }) {
   return (
     <section aria-labelledby="about-them-heading" className="flex flex-col gap-4">
       <div>
@@ -113,25 +107,23 @@ export function ProfileSection({
           About them
         </h3>
         <p className="mt-0.5 text-caption text-ink-muted">
-          {requireClientDetails
-            ? "Country, nationality and location are required"
-            : "Where they live and how they're classified for visas"}
+          Where they live and how they're classified for visas
         </p>
       </div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-3">
-        <CountryField required={requireClientDetails} />
+        <CountryField required />
         <TextInput
           name="nationality"
           label="Nationality"
           placeholder="e.g. Nepali, Indian"
-          required={requireClientDetails}
+          required
         />
         <TextInput
           name="location"
           label="Location"
           placeholder="City or suburb"
           className="sm:col-span-2"
-          required={requireClientDetails}
+          required
         />
         <AnzscoField initialLabel={anzscoLabel} />
       </div>

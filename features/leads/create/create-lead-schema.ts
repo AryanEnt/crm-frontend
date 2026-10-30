@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Lead } from "../../../lib/api/crm.ts";
-import type { ReferralFormState } from "../../referrals/referral-fields.tsx";
+import { emptyReferralForm, toReferralInput, type ReferralFormState } from "../../referrals/referral-form.ts";
 import { fromLocalInput, isoToZonedInput, zonedInputToIso } from "./follow-up.ts";
 import { detectDialCountry, formatPhone, phoneLengthMessage, toE164 } from "./phone.ts";
 
@@ -42,12 +42,12 @@ export const MESSAGES = {
 } as const;
 
 /**
- * Name plus where they are (country, nationality, location) are required.
+ * Name plus where they are (country, nationality, location) are required on create and edit.
  * Source is required by the API, but it always starts filled (last used, org default
- * or "Other"), so nobody has to touch it. Referrer details are only collected on
- * create; an edited lead keeps its referral record.
+ * or "Other"), so nobody has to touch it. Referral source still needs a referrer on
+ * create and edit.
  */
-export function leadSheetSchema(mode: "create" | "edit") {
+export function leadSheetSchema(_mode: "create" | "edit") {
   return z
     .object({
       fullName: z.string().trim().min(1, MESSAGES.name),
@@ -67,10 +67,9 @@ export function leadSheetSchema(mode: "create" | "edit") {
       pipelineId: z.string(),
       stageId: z.string(),
       nextActivityAt: z.string().refine((v) => !v || fromLocalInput(v) !== null, MESSAGES.followUp),
-      // Create requires client location details; edit keeps blanks so historical leads stay editable.
-      country: mode === "create" ? z.string().trim().min(1, MESSAGES.country) : z.string().trim(),
-      nationality: mode === "create" ? z.string().trim().min(1, MESSAGES.nationality) : z.string().trim(),
-      location: mode === "create" ? z.string().trim().min(1, MESSAGES.location) : z.string().trim(),
+      country: z.string().trim().min(1, MESSAGES.country),
+      nationality: z.string().trim().min(1, MESSAGES.nationality),
+      location: z.string().trim().min(1, MESSAGES.location),
       occupation: z.string().trim(),
       jobTitle: z.string().trim(),
       employer: z.string().trim(),
@@ -82,7 +81,7 @@ export function leadSheetSchema(mode: "create" | "edit") {
     .superRefine((v, ctx) => {
       const phoneMsg = phoneLengthMessage(v.phone, v.phoneCountry);
       if (phoneMsg) ctx.addIssue({ code: "custom", path: ["phone"], message: phoneMsg });
-      if (mode === "create" && isReferralSource(v.source) && !hasReferrer(v.referral)) {
+      if (isReferralSource(v.source) && !hasReferrer(v.referral)) {
         ctx.addIssue({ code: "custom", path: ["referral"], message: MESSAGES.referrer });
       }
     });
@@ -133,7 +132,10 @@ export function emptyCreateLead(d: CreateLeadDefaults): CreateLeadInput {
 }
 
 /** An existing lead as form values, for editing. */
-export function leadToForm(lead: Lead, o: { defaultCountry: string; timeZone?: string }): CreateLeadInput {
+export function leadToForm(
+  lead: Lead,
+  o: { defaultCountry: string; timeZone?: string; referral?: ReferralFormState },
+): CreateLeadInput {
   const phone = lead.phone?.trim() ?? "";
   const phoneCountry = detectDialCountry(phone, o.defaultCountry) ?? o.defaultCountry;
   const priority = (LEAD_PRIORITY_VALUES as readonly string[]).includes(lead.priority)
@@ -160,7 +162,7 @@ export function leadToForm(lead: Lead, o: { defaultCountry: string; timeZone?: s
     anzscoId: lead.anzscoId ?? null,
     notes: lead.notes ?? "",
     tags: (lead.tags ?? []).join(", "),
-    referral: undefined,
+    referral: o.referral ?? emptyReferralForm(),
   };
 }
 
@@ -263,6 +265,11 @@ export function toUpdatePayload(
   if (opts.canAssignOwner && differs(v.ownerUserId, initial.ownerUserId)) p.ownerUserId = v.ownerUserId;
   if (parseTags(v.tags).join(",") !== parseTags(initial.tags).join(",")) p.tags = parseTags(v.tags);
   if (opts.customFields && Object.keys(opts.customFields).length) p.customFields = opts.customFields;
+  if (isReferralSource(v.source) && v.referral) {
+    const next = toReferralInput(v.referral);
+    const prev = initial.referral ? toReferralInput(initial.referral) : null;
+    if (!prev || JSON.stringify(next) !== JSON.stringify(prev)) p.referral = next;
+  }
   return p;
 }
 
