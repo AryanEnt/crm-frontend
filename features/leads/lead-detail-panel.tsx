@@ -53,6 +53,7 @@ import { CommunicationActions } from "@/features/communications/communication-ac
 import { EmailComposer } from "@/features/email/email-composer";
 import { LeadAttachments } from "@/features/leads/lead-attachments";
 import { CreateLeadSheet } from "@/features/leads/create/create-lead-sheet";
+import { PhoneValidationBadge, PhoneValidationDetail } from "@/features/leads/phone-validation-badge";
 import { EstimatedValueEditor } from "@/features/leads/estimated-value-editor";
 import {
   daysSince,
@@ -62,6 +63,7 @@ import {
   nextActionTone,
 } from "@/features/leads/lead-format";
 import { isNurturingPipeline } from "@/features/leads/lead-board-state";
+import { LeadHistory } from "@/features/leads/lead-history";
 import { useLeadMove } from "@/features/leads/lead-move";
 import { UnifiedTimeline } from "@/features/timeline/unified-timeline";
 import { crmApi, type Activity, type CrmDocument, type Lead, type PipelineStage } from "@/lib/api/crm";
@@ -204,6 +206,7 @@ function PanelBody({
   const refresh = React.useCallback(() => {
     void qc.invalidateQueries({ queryKey: ["lead", leadId] });
     void qc.invalidateQueries({ queryKey: ["lead", leadId, "document-deadline"] });
+    void qc.invalidateQueries({ queryKey: ["lead", leadId, "stage-history"] });
     void qc.invalidateQueries({ queryKey: ["lead-board"] });
     void qc.invalidateQueries({ queryKey: ["leads"] });
     void qc.invalidateQueries({ queryKey: ["lead-insights"] });
@@ -329,6 +332,7 @@ function PanelBody({
             {lead.ownerName ? <Avatar name={lead.ownerName} size="sm" className="size-5 text-[0.55rem]" /> : null}
             {lead.ownerName ?? "Unassigned"}
           </span>
+          <PhoneValidationBadge lead={lead} />
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -507,11 +511,15 @@ function PanelBody({
         <Tabs value={detailTab} onValueChange={setDetailTab}>
           <TabsList>
             <TabsTrigger value="timeline">Timeline</TabsTrigger>
+            <TabsTrigger value="history">Lead History</TabsTrigger>
             {can("documents:view") ? <TabsTrigger value="files">Files</TabsTrigger> : null}
             <TabsTrigger value="contact">Contact</TabsTrigger>
           </TabsList>
           <TabsContent value="timeline">
             <UnifiedTimeline leadId={lead.id} />
+          </TabsContent>
+          <TabsContent value="history">
+            <LeadHistory leadId={lead.id} />
           </TabsContent>
           {can("documents:view") ? (
             <TabsContent value="files">
@@ -519,7 +527,7 @@ function PanelBody({
             </TabsContent>
           ) : null}
           <TabsContent value="contact">
-            <ContactSection lead={lead} />
+            <ContactSection lead={lead} onEditPhone={canEdit ? () => onEditOpenChange(true) : undefined} />
           </TabsContent>
         </Tabs>
       </div>
@@ -872,7 +880,7 @@ function Fact({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-function ContactSection({ lead }: { lead: Lead }) {
+function ContactSection({ lead, onEditPhone }: { lead: Lead; onEditPhone?: () => void }) {
   const profile: Array<[string, string | number | null | undefined]> = [
     ["Country", lead.country],
     ["Nationality", lead.nationality],
@@ -893,13 +901,25 @@ function ContactSection({ lead }: { lead: Lead }) {
       <dl className="grid gap-3 sm:grid-cols-2">
         <Fact
           label="Phone"
-          value={lead.phone ? <a className="hover:text-brand" href={`tel:${lead.phone}`}>{lead.phone}</a> : "—"}
+          value={
+            lead.phone ? (
+              <span className="flex flex-col gap-1">
+                <a className="hover:text-brand" href={`tel:${lead.phone}`}>
+                  {lead.phone}
+                </a>
+                <PhoneValidationBadge lead={lead} showWhenValid />
+              </span>
+            ) : (
+              "—"
+            )
+          }
         />
         <Fact
           label="Email"
           value={lead.email ? <a className="hover:text-brand" href={`mailto:${lead.email}`}>{lead.email}</a> : "—"}
         />
       </dl>
+      <PhoneValidationDetail lead={lead} onEditPhone={onEditPhone} />
       {lead.tags.length > 0 ? (
         <div className="flex flex-wrap gap-1.5">
           {lead.tags.map((t) => (

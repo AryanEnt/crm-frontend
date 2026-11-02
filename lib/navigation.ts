@@ -150,12 +150,14 @@ export function isSuperAdminRole(roleCode: string | undefined): boolean {
 }
 
 const HIDDEN_FROM_SE = new Set(["/lead-population", "/email/team", "/settings/email"]);
+/** Team Email replaces per-user Email accounts for TL; no Gmail self-connect. */
+const HIDDEN_FROM_TL = new Set(["/settings/email"]);
 const TL_ONLY = new Set(["/email/team"]);
 
 export function getNavForRole(roleCode: string | undefined): NavSection[] {
   if (isSuperAdminRole(roleCode)) return controlCenterNav;
   const hide = new Set<string>(
-    roleCode === ("sales_manager" satisfies RoleCode) ? [] : [...TL_ONLY],
+    roleCode === ("sales_manager" satisfies RoleCode) ? [...HIDDEN_FROM_TL] : [...TL_ONLY],
   );
   if (roleCode === ("sales_executive" satisfies RoleCode)) {
     for (const h of HIDDEN_FROM_SE) hide.add(h);

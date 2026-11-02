@@ -178,7 +178,7 @@ export function EmailComposer({
     onSuccess: (msg: EmailMessage) => {
       if (msg.status === "failed") {
         toast.error(
-          "Couldn't send the email. Reconnect your mailbox in Email accounts, then try again.",
+          "Couldn't send the email. Ask your Team Lead to check the mailbox connection in Team Email, then try again.",
         );
         return;
       }

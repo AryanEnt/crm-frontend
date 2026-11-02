@@ -1,6 +1,7 @@
 import type { InAppNotification } from "@/lib/api/crm";
 
 export const SLA_TYPE = "lead_sla_exceeded";
+export const PHONE_ISSUE_TYPE = "lead_phone_issue";
 
 export function notificationHref(n: InAppNotification): string | null {
   const leadId = n.leadId || stringField(n.payload, "leadId");
@@ -25,6 +26,7 @@ export function slaPayload(n: InAppNotification): {
 
 export function typeLabel(type: string): string {
   if (type === SLA_TYPE) return "Stage SLA";
+  if (type === PHONE_ISSUE_TYPE) return "Phone validation";
   return type;
 }
 

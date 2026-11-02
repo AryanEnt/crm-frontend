@@ -77,15 +77,11 @@ describe("create lead schema", () => {
     assert.equal(editLeadSchema.safeParse(form({ fullName: "Priya Sharma", ...about })).success, true);
   });
 
-  it("leaves phone and email optional but checks them when given", () => {
-    const bad = errorsOf(form({ fullName: "A", ...about, phone: "0412", email: "priya@" }));
-    assert.match(bad.phone ?? "", /Australia numbers need 9 digits/);
-    assert.equal(bad.email, MESSAGES.email);
+  it("leaves phone optional and does not block on incomplete numbers", () => {
+    assert.deepEqual(errorsOf(form({ fullName: "A", ...about, phone: "0412" })), {});
+    assert.equal(errorsOf(form({ fullName: "A", ...about, phone: "0412", email: "priya@" })).email, MESSAGES.email);
     assert.deepEqual(errorsOf(form({ fullName: "A", ...about, phone: "0412 345 678", email: "priya@example.com" })), {});
-    assert.match(
-      errorsOf(form({ fullName: "A", ...about, phoneCountry: "NP", phone: "980 123" })).phone ?? "",
-      /Nepal numbers need 10 digits/,
-    );
+    assert.deepEqual(errorsOf(form({ fullName: "A", ...about, phoneCountry: "NP", phone: "980 123" })), {});
   });
 
   it("accepts whole amounts only", () => {
@@ -159,13 +155,14 @@ describe("create and add another", () => {
 });
 
 describe("create payload", () => {
-  it("sends E.164 phones, numbers and nulls for blanks", () => {
+  it("sends the entered phone (not forced E.164), country code, numbers and nulls for blanks", () => {
     const parsed = createLeadSchema.parse(
       form({ fullName: " Priya ", ...about, phone: "0412 345 678", potentialValue: "12500" }),
     );
     const p = toCreatePayload(parsed, { force: false, canAssignOwner: true });
     assert.equal(p.fullName, "Priya");
-    assert.equal(p.phone, "+61412345678");
+    assert.equal(p.phone, "0412 345 678");
+    assert.equal(p.phoneCountryCode, "AU");
     assert.equal(p.email, null);
     assert.equal(p.country, "Australia");
     assert.equal(p.nationality, "Nepali");
@@ -288,11 +285,12 @@ describe("editing a lead", () => {
     });
   });
 
-  it("normalises a changed phone and ignores owner changes without permission", () => {
+  it("sends a changed phone as entered and ignores owner changes without permission", () => {
     const initial = leadToForm(existing(), sydney);
     const edited = editLeadSchema.parse({ ...initial, phone: "+61 400 000 000", ownerUserId: "u3" });
     const p = toUpdatePayload(edited, initial, { force: false, canAssignOwner: false });
-    assert.equal(p.phone, "+61400000000");
+    assert.equal(p.phone, "+61 400 000 000");
+    assert.equal(p.phoneCountryCode, "AU");
     assert.equal("ownerUserId" in p, false);
   });
 });

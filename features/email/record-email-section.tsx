@@ -210,7 +210,7 @@ function ThreadMessages({
           />
           {m.status === "failed" ? (
             <p className="mt-2 text-xs text-destructive">
-              Failed to send. Your Gmail connection needs attention.
+              Failed to send. Ask your Team Lead to check the mailbox connection in Team Email.
             </p>
           ) : null}
           <div className="mt-2 flex gap-2">
@@ -253,7 +253,7 @@ function ThreadMessages({
       ))}
       {!account ? (
         <p className="text-xs text-foreground-muted">
-          Connect Gmail in Settings to reply from your own address.
+          Your company mailbox is not connected yet. Ask your Team Lead to link it in Team Email.
         </p>
       ) : null}
     </div>

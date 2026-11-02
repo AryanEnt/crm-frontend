@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { Lead } from "../../../lib/api/crm.ts";
 import { emptyReferralForm, toReferralInput, type ReferralFormState } from "../../referrals/referral-form.ts";
 import { fromLocalInput, isoToZonedInput, zonedInputToIso } from "./follow-up.ts";
-import { detectDialCountry, formatPhone, phoneLengthMessage, toE164 } from "./phone.ts";
+import { detectDialCountry, formatPhone } from "./phone.ts";
 
 /** The choices offered for new leads. */
 export const CREATE_LEAD_PRIORITIES = ["low", "medium", "high"] as const;
@@ -118,8 +118,7 @@ export function leadSheetSchema(_mode: "create" | "edit") {
       referral: z.custom<ReferralFormState>().optional(),
     })
     .superRefine((v, ctx) => {
-      const phoneMsg = phoneLengthMessage(v.phone, v.phoneCountry);
-      if (phoneMsg) ctx.addIssue({ code: "custom", path: ["phone"], message: phoneMsg });
+      // Phone format / duplicates are validated asynchronously after save — never block create/edit.
       if (isReferralSource(v.source) && !hasReferrer(v.referral)) {
         ctx.addIssue({ code: "custom", path: ["referral"], message: MESSAGES.referrer });
       }
@@ -253,7 +252,9 @@ export function toCreatePayload(
   return {
     fullName: v.fullName,
     email: v.email || null,
-    phone: toE164(v.phone, v.phoneCountry) || null,
+    // Keep the user's input (formatted for readability); server validates asynchronously.
+    phone: (v.phone.trim() ? formatPhone(v.phone, v.phoneCountry) || v.phone.trim() : null),
+    phoneCountryCode: v.phoneCountry || null,
     country: v.country,
     nationality: v.nationality,
     location: v.location,
@@ -294,7 +295,8 @@ export function toUpdatePayload(
   for (const key of TEXT_FIELDS) if (differs(v[key], initial[key])) p[key] = v[key];
   if (differs(v.email, initial.email)) p.email = v.email;
   if (differs(v.phone, initial.phone) || (v.phone && v.phoneCountry !== initial.phoneCountry)) {
-    p.phone = toE164(v.phone, v.phoneCountry);
+    p.phone = v.phone.trim() ? formatPhone(v.phone, v.phoneCountry) || v.phone.trim() : "";
+    p.phoneCountryCode = v.phoneCountry || "";
   }
   if (differs(v.anzscoId, initial.anzscoId)) p.anzscoId = v.anzscoId ?? "";
   if (differs(v.potentialValue, initial.potentialValue)) {

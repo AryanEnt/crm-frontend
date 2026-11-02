@@ -188,6 +188,22 @@ export type Lead = {
   isArchived: boolean;
   createdAt: string;
   updatedAt: string;
+  createdByUserId?: string | null;
+  phoneCountryCode?: string;
+  phoneValidationStatus?:
+    | "pending"
+    | "valid"
+    | "invalid"
+    | "duplicate"
+    | "invalid_duplicate"
+    | "needs_review";
+  phoneNormalized?: string | null;
+  phoneValidationMessage?: string;
+  phoneDuplicateLeadIds?: string[];
+  phoneDuplicateLeads?: { id: string; fullName: string }[];
+  phoneValidatedAt?: string | null;
+  phoneLastNotifiedAt?: string | null;
+  phoneValidationVersion?: number;
 };
 
 /** Facet row from GET /leads/countries — blank residence maps to "(Unknown)". */
@@ -265,6 +281,31 @@ export type LeadMoveResult = {
   changed: boolean;
   needsNextActivity: boolean;
   nextActivityId?: string;
+};
+
+/** One stage visit from GET /leads/:id/stage-history (oldest → newest). */
+export type LeadStagePeriod = {
+  id: string;
+  leadId: string;
+  stageId: string;
+  stageName: string;
+  pipelineId: string;
+  enteredAt: string;
+  exitedAt: string | null;
+  durationSeconds: number;
+  movedToStageId: string | null;
+  movedToStageName: string | null;
+  enteredByUserId: string | null;
+  enteredByName: string | null;
+  exitedByUserId: string | null;
+  exitedByName: string | null;
+  isCurrent: boolean;
+  kind: string | null;
+};
+
+export type LeadStageHistory = {
+  periods: LeadStagePeriod[];
+  serverNow: string;
 };
 
 /** 400 details when a closed lead is moved without `reopen`. */
@@ -603,6 +644,7 @@ export const crmApi = {
   getLeadBoardStage: (params: URLSearchParams) =>
     api.get<{ leads: LeadBoardCard[]; hasMore: boolean }>(`/leads/board/stage?${params}`),
   moveLead: (id: string, body: LeadMoveInput) => api.post<LeadMoveResult>(`/leads/${id}/move`, body),
+  getLeadStageHistory: (id: string) => api.get<LeadStageHistory>(`/leads/${id}/stage-history`),
   leadOverview: (params: URLSearchParams) => api.get<LeadOverview>(`/leads/insights/overview?${params}`),
   leadMyDay: (params: URLSearchParams) => api.get<LeadMyDay>(`/leads/insights/my-day?${params}`),
   leadForecast: (params: URLSearchParams) => api.get<LeadForecast>(`/leads/insights/forecast?${params}`),

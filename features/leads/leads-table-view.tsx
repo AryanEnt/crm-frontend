@@ -22,6 +22,7 @@ import { ErrorState } from "@/components/ui/error-state";
 import { stageSlotFromPipeline } from "@/components/ui/stage-rail";
 import { useAuth } from "@/features/auth/auth-provider";
 import { useOwnerOptions } from "@/features/teams/scope-filters";
+import { PhoneValidationBadge } from "@/features/leads/phone-validation-badge";
 import { crmApi, type Lead, type Pipeline } from "@/lib/api/crm";
 import { priorityFromString, stageBadgeClass } from "@/lib/design-tokens";
 import { Avatar } from "@/components/ui/console/avatar";
@@ -182,8 +183,13 @@ export function LeadsListView({
           const { phone, email } = row.original;
           if (!phone && !email) return <span className="text-ink-muted">—</span>;
           return (
-            <span className="flex min-w-0 max-w-[200px] flex-col leading-tight">
-              {phone ? <span className="font-mono text-caption tabular-nums text-ink-secondary">{phone}</span> : null}
+            <span className="flex min-w-0 max-w-[220px] flex-col gap-0.5 leading-tight">
+              {phone ? (
+                <span className="flex min-w-0 flex-wrap items-center gap-1">
+                  <span className="font-mono text-caption tabular-nums text-ink-secondary">{phone}</span>
+                  <PhoneValidationBadge lead={row.original} />
+                </span>
+              ) : null}
               {email ? <span className="truncate text-caption text-ink-muted">{email}</span> : null}
             </span>
           );
