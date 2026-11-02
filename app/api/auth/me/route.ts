@@ -17,8 +17,8 @@ export async function GET(req: Request) {
 
   if (upstream.status === 401) {
     const rotated = await refreshAccessTokens();
-    if (rotated?.accessToken) {
-      access = rotated.accessToken;
+    if (rotated.status === "ok") {
+      access = rotated.data.accessToken;
       upstream = await backendFetch("/api/v1/auth/me", {
         method: "GET",
         headers: { Authorization: `Bearer ${access}` },
@@ -26,12 +26,21 @@ export async function GET(req: Request) {
       const envelope = await readEnvelope<SessionUser>(upstream);
       const res = NextResponse.json(envelope, { status: upstream.status });
       return applyAuthCookies(res, {
-        accessToken: rotated.accessToken,
-        refreshToken: rotated.refreshToken,
+        accessToken: rotated.data.accessToken,
+        refreshToken: rotated.data.refreshToken,
         request: req,
       });
     }
-    // Middleware treats any refresh cookie as a session, so a dead one would bounce /login back to /.
+    if (rotated.status === "unavailable") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: { code: "upstream_unavailable", message: rotated.message },
+        },
+        { status: 503 },
+      );
+    }
+    // Real auth rejection only — middleware treats any refresh cookie as a session.
     const envelope = await readEnvelope<SessionUser>(upstream);
     const res = NextResponse.json(envelope, { status: upstream.status });
     return applyAuthCookies(res, { clear: true, request: req });
@@ -45,7 +54,7 @@ export async function PATCH(req: Request) {
   let access = await readAccessToken();
   if (!access) {
     const rotated = await refreshAccessTokens();
-    access = rotated?.accessToken ?? "";
+    if (rotated.status === "ok") access = rotated.data.accessToken;
   }
   if (!access) {
     return NextResponse.json(
@@ -69,20 +78,20 @@ export async function PATCH(req: Request) {
 
   if (upstream.status === 401) {
     const rotated = await refreshAccessTokens();
-    if (rotated?.accessToken) {
+    if (rotated.status === "ok") {
       upstream = await backendFetch("/api/v1/auth/me", {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${rotated.accessToken}`,
+          Authorization: `Bearer ${rotated.data.accessToken}`,
         },
         body: JSON.stringify(body),
       });
       const envelope = await readEnvelope<SessionUser>(upstream);
       const res = NextResponse.json(envelope, { status: upstream.status });
       return applyAuthCookies(res, {
-        accessToken: rotated.accessToken,
-        refreshToken: rotated.refreshToken,
+        accessToken: rotated.data.accessToken,
+        refreshToken: rotated.data.refreshToken,
         request: req,
       });
     }

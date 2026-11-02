@@ -78,9 +78,19 @@ const cookieBase = {
   path: "/",
 };
 
+/** Private / link-local hosts — Secure cookies would be dropped by the browser over plain HTTP. */
+function isLanOrLocalHost(hostname: string): boolean {
+  const h = hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  if (h === "localhost" || h === "127.0.0.1" || h === "::1") return true;
+  if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
+  if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
+  if (/^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
+  return false;
+}
+
 /**
  * Secure cookies require HTTPS. Production + plain HTTP (e.g. http://10.x.x.x) must not
- * set Secure or the browser drops the session and login hangs on "Opening your workspace…".
+ * set Secure or the browser drops the session → "session expired" / JSON proxy errors.
  *
  * Override: COOKIE_SECURE=true|false
  */
@@ -94,12 +104,18 @@ export function resolveCookieSecure(request?: Request): boolean {
     if (forwarded === "https") return true;
     if (forwarded === "http") return false;
     try {
-      const protocol = new URL(request.url).protocol;
-      if (protocol === "https:") return true;
-      if (protocol === "http:") return false;
+      const url = new URL(request.url);
+      if (url.protocol === "https:") return true;
+      if (url.protocol === "http:") return false;
     } catch {
       /* ignore */
     }
+    // Host header fallback when request.url is opaque / rewritten.
+    const host = (request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? "")
+      .split(",")[0]
+      ?.trim()
+      .split(":")[0];
+    if (host && isLanOrLocalHost(host)) return false;
   }
 
   return process.env.NODE_ENV === "production";
@@ -169,24 +185,51 @@ export type RotatedAuth = {
   user?: unknown;
 };
 
+export type RefreshResult =
+  | { status: "ok"; data: RotatedAuth }
+  /** Refresh token missing or explicitly rejected — safe to clear cookies. */
+  | { status: "rejected"; message: string }
+  /** API down / timeout / non-JSON — keep cookies so the user is not logged out. */
+  | { status: "unavailable"; message: string };
+
 /**
  * Single-flight refresh so parallel page loads (e.g. Users → /users + /roles)
  * do not rotate the same refresh token twice and wipe the session.
  */
-let refreshInFlight: Promise<RotatedAuth | null> | null = null;
+let refreshInFlight: Promise<RefreshResult> | null = null;
 
-export async function refreshAccessTokens(): Promise<RotatedAuth | null> {
+export async function refreshAccessTokens(): Promise<RefreshResult> {
   if (!refreshInFlight) {
-    refreshInFlight = (async () => {
+    refreshInFlight = (async (): Promise<RefreshResult> => {
       const refresh = await readRefreshToken();
-      if (!refresh) return null;
+      if (!refresh) {
+        return { status: "rejected", message: "Authentication required" };
+      }
       const upstream = await backendFetch("/api/v1/auth/refresh", {
         method: "POST",
         headers: { Cookie: `${REFRESH_COOKIE}=${refresh}` },
       });
       const envelope = await readEnvelope<RotatedAuth>(upstream);
-      if (!upstream.ok || !envelope.success || !envelope.data) return null;
-      return envelope.data;
+      if (envelope.error?.code === "upstream_unavailable" || upstream.status === 502) {
+        return {
+          status: "unavailable",
+          message: envelope.error?.message || "Authentication service is unavailable",
+        };
+      }
+      if (upstream.status === 401 || upstream.status === 403) {
+        return {
+          status: "rejected",
+          message: envelope.error?.message || "Session expired",
+        };
+      }
+      if (!upstream.ok || !envelope.success || !envelope.data?.accessToken) {
+        // Ambiguous failure (HTML 500, etc.) — do not wipe cookies.
+        return {
+          status: "unavailable",
+          message: envelope.error?.message || "Could not renew the session. Try again.",
+        };
+      }
+      return { status: "ok", data: envelope.data };
     })().finally(() => {
       refreshInFlight = null;
     });

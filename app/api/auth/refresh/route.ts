@@ -6,25 +6,32 @@ import {
 
 export async function POST(req: Request) {
   const rotated = await refreshAccessTokens();
-  if (!rotated) {
+  if (rotated.status !== "ok") {
     const res = NextResponse.json(
       {
         success: false,
-        error: { code: "unauthorized", message: "No refresh session" },
+        error: {
+          code: rotated.status === "unavailable" ? "upstream_unavailable" : "unauthorized",
+          message: rotated.message,
+        },
       },
-      { status: 401 },
+      { status: rotated.status === "unavailable" ? 503 : 401 },
     );
-    return applyAuthCookies(res, { clear: true, request: req });
+    // Only wipe cookies when the refresh token itself was rejected.
+    if (rotated.status === "rejected") {
+      return applyAuthCookies(res, { clear: true, request: req });
+    }
+    return res;
   }
 
   const res = NextResponse.json({
     success: true,
-    data: { user: rotated.user ?? null },
+    data: { user: rotated.data.user ?? null },
     timestamp: new Date().toISOString(),
   });
   return applyAuthCookies(res, {
-    accessToken: rotated.accessToken,
-    refreshToken: rotated.refreshToken,
+    accessToken: rotated.data.accessToken,
+    refreshToken: rotated.data.refreshToken,
     request: req,
   });
 }
