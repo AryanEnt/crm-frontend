@@ -160,9 +160,9 @@ export function EmailWorkspace() {
         <PageHeader title="Email" />
         <EmptyState
           icon={Mail}
-          title="Connect your mailbox"
-          description="Connect Gmail or your company email in Email accounts, then send from the CRM."
-          actionLabel="Connect mailbox"
+          title="Your company email account has not been connected yet"
+          description="Please contact your Team Lead. If you use Gmail, you can connect it in Email accounts."
+          actionLabel="Email accounts"
           onAction={() => {
             window.location.href = "/settings/email";
           }}

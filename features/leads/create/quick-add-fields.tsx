@@ -7,7 +7,14 @@ import { SmartReferralFields, emptyReferralForm } from "@/features/referrals/sma
 import { referralsApi } from "@/lib/api/referrals";
 import type { DuplicateMatch } from "@/lib/api/crm";
 import { cn } from "@/lib/utils";
-import { formatAmount, isReferralSource, parseAmount, type CreateLeadInput, type CreateLeadValues } from "./create-lead-schema";
+import {
+  formatAmount,
+  isReferralSource,
+  parseAmount,
+  sourceDetailPrompt,
+  type CreateLeadInput,
+  type CreateLeadValues,
+} from "./create-lead-schema";
 import { DuplicateNotice } from "./duplicate-notice";
 import { FIELD_CONTROL, LeadField } from "./field-ui";
 import { detectDialCountry, formatPhone, phoneCountry } from "./phone";
@@ -105,7 +112,7 @@ export function QuickAddFields({
       />
 
       <SourceField sources={sources} />
-      {isReferralSource(source) ? <ReferralBlock /> : null}
+      {isReferralSource(source) ? <ReferralBlock /> : <SourceDetailField source={source} />}
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-[minmax(0,1fr)_11rem] sm:gap-3">
         <PriorityField />
         <ValueField />
@@ -168,7 +175,7 @@ function PhoneField() {
 }
 
 function SourceField({ sources }: { sources: readonly string[] }) {
-  const { control } = useLeadForm();
+  const { control, setValue } = useLeadForm();
   const { field, fieldState } = useController({ control, name: "source" });
   return (
     <LeadField label="Where did they come from?" required group error={fieldState.error?.message}>
@@ -178,10 +185,36 @@ function SourceField({ sources }: { sources: readonly string[] }) {
           onChange={(v) => {
             field.onChange(v);
             field.onBlur();
+            setValue("sourceDetail", "");
           }}
           sources={sources}
           labelId={labelId}
           invalid={Boolean(fieldState.error)}
+        />
+      )}
+    </LeadField>
+  );
+}
+
+function SourceDetailField({ source }: { source: string | undefined }) {
+  const prompt = sourceDetailPrompt(source);
+  const { control } = useLeadForm();
+  const { field } = useController({ control, name: "sourceDetail" });
+  if (!prompt) return null;
+  return (
+    <LeadField label={prompt.label} optional>
+      {(a11y) => (
+        <input
+          ref={field.ref}
+          name={field.name}
+          {...a11y}
+          value={field.value}
+          onChange={(e) => field.onChange(e.target.value)}
+          onBlur={field.onBlur}
+          autoComplete="off"
+          spellCheck={false}
+          placeholder={prompt.placeholder}
+          className={FIELD_CONTROL}
         />
       )}
     </LeadField>

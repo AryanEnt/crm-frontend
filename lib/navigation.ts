@@ -19,7 +19,7 @@ import {
   Building2,
   Share2,
   Mail,
-  Phone,
+  // Phone,
   Columns3,
   Globe2,
   type LucideIcon,
@@ -55,7 +55,7 @@ export const crmNav: NavSection[] = [
     items: [
       // { label: "WhatsApp", href: "/whatsapp", icon: MessageCircle },
       { label: "Email", href: "/email", icon: Mail },
-      { label: "Calls", href: "/calls", icon: Phone },
+      // { label: "Calls", href: "/calls", icon: Phone },
     ],
   },
   {
@@ -82,7 +82,7 @@ export const crmNav: NavSection[] = [
     items: [
       // Team Leads only see their own team, so there is no cross-team Teams page here.
       { label: "My team", href: "/admin/users", icon: UsersRound },
-      { label: "Team email", href: "/email/team", icon: Mail },
+      { label: "Team Email", href: "/email/team", icon: Mail },
       { label: "Referrals", href: "/admin/referrals", icon: Building2 },
     ],
   },
@@ -149,7 +149,7 @@ export function isSuperAdminRole(roleCode: string | undefined): boolean {
   return roleCode === ("super_admin" satisfies RoleCode);
 }
 
-const HIDDEN_FROM_SE = new Set(["/lead-population", "/email/team"]);
+const HIDDEN_FROM_SE = new Set(["/lead-population", "/email/team", "/settings/email"]);
 const TL_ONLY = new Set(["/email/team"]);
 
 export function getNavForRole(roleCode: string | undefined): NavSection[] {

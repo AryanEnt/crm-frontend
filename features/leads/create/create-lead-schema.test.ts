@@ -182,6 +182,13 @@ describe("create payload", () => {
     assert.equal(p.nextActivityAt, "2026-10-04T22:00:00.000Z");
   });
 
+  it("stores an optional website name with the notes, and leaves it off when blank", () => {
+    const withSite = createLeadSchema.parse(form({ fullName: "A", ...about, source: "Website", sourceDetail: "entegrasources.com" }));
+    assert.equal(toCreatePayload(withSite, { force: false, canAssignOwner: true }).notes, "Website: entegrasources.com");
+    const blank = createLeadSchema.parse(form({ fullName: "A", ...about, source: "Website", sourceDetail: "  " }));
+    assert.equal(toCreatePayload(blank, { force: false, canAssignOwner: true }).notes, "");
+  });
+
   it("always assigns sales executives to themselves", () => {
     const parsed = createLeadSchema.parse(form({ fullName: "A", ...about, ownerUserId: "someone-else" }));
     assert.equal(toCreatePayload(parsed, { force: false, canAssignOwner: false, currentUserId: "me" }).ownerUserId, "me");

@@ -5,7 +5,9 @@ import { PageHeader } from "@/components/shared/page-header";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { useAuth } from "@/features/auth/auth-provider";
 import { emailApi } from "@/lib/api/email";
+import { MailDomainsSection } from "./mail-domains-section";
 
 function Row({ label, ok, extra }: { label: string; ok: boolean; extra?: string }) {
   return (
@@ -20,6 +22,7 @@ function Row({ label, ok, extra }: { label: string; ok: boolean; extra?: string 
 }
 
 export function GmailAdminView() {
+  const { user } = useAuth();
   const q = useQuery({ queryKey: ["email-health"], queryFn: () => emailApi.health() });
   if (q.isLoading) return <LoadingState />;
   if (q.isError) return <ErrorState onRetry={() => void q.refetch()} />;
@@ -66,6 +69,7 @@ export function GmailAdminView() {
           <p className="mt-1 text-kpi">{h.needsAttention}</p>
         </div>
       </div>
+      {user?.roleCode === "super_admin" ? <MailDomainsSection /> : null}
     </div>
   );
 }

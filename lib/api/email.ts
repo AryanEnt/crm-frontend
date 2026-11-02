@@ -5,6 +5,14 @@ export type EmailIntegrationHealth = {
   oauthConfigured: boolean;
   gmailApiEnabled: boolean;
   imapConfigured?: boolean;
+  companyServer?: {
+    imapHost: string;
+    imapPort: number;
+    imapSecure: boolean;
+    smtpHost: string;
+    smtpPort: number;
+    smtpSecure: boolean;
+  } | null;
   pubSubConfigured: boolean;
   pushSyncHealthy: boolean;
   connectedAccounts: number;
@@ -17,6 +25,9 @@ export type TeamMailboxPerson = {
   fullName: string;
   email: string;
   mailbox: EmailAccount | null;
+  sentToday: number;
+  receivedToday: number;
+  canChangeSettings: boolean;
 };
 
 export type TeamMailboxesResponse = {
@@ -25,6 +36,9 @@ export type TeamMailboxesResponse = {
     connected: number;
     disconnected: number;
     syncFailures: number;
+    sentToday: number;
+    receivedToday: number;
+    lastSyncAt?: string | null;
   };
   people: TeamMailboxPerson[];
 };
@@ -41,7 +55,102 @@ export type EmailAccount = {
   lastSyncAt?: string | null;
   lastSyncError?: string;
   createdAt: string;
+  ownerUserId?: string;
+  username?: string;
+  managerUserId?: string;
+  imapHost?: string;
+  imapPort?: number;
+  imapSecure?: boolean;
+  smtpHost?: string;
+  smtpPort?: number;
+  smtpSecure?: boolean;
 };
+
+export type ImapConnectBody = {
+  ownerUserId?: string;
+  provider?: string;
+  emailAddress: string;
+  username?: string;
+  password: string;
+  inviteToken?: string;
+  imapHost?: string;
+  imapPort?: number;
+  imapSecure?: boolean;
+  smtpHost?: string;
+  smtpPort?: number;
+  smtpSecure?: boolean;
+};
+
+export type MailboxStageResult = {
+  ok: boolean;
+  host: string;
+  port: number;
+  secure: boolean;
+  code?: "auth" | "tls" | "network" | "timeout" | "quota" | "reject" | "unknown";
+  message?: string;
+};
+
+export type MailboxCheck = {
+  requestId: string;
+  provider?: string;
+  /** "mapping" when an admin mapping chose the server, "dns" when the domain's mail records did, "override" when a TL did. */
+  providerSource?: "mapping" | "dns" | "override";
+  imap: MailboxStageResult;
+  smtp: MailboxStageResult;
+};
+
+export type MailServerSettings = {
+  imapHost: string;
+  imapPort: number;
+  imapSecure: boolean;
+  smtpHost: string;
+  smtpPort: number;
+  smtpSecure: boolean;
+};
+
+/** Admin-managed record saying which mail provider hosts a company domain. */
+export type DomainProvider = MailServerSettings & {
+  id: string;
+  domain: string;
+  provider: "migadu" | "spacemail" | "imap";
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type DomainProviderInput = Partial<MailServerSettings> & {
+  domain: string;
+  provider: DomainProvider["provider"];
+  isActive?: boolean;
+};
+
+export type DomainProviderResolution = {
+  domain: string;
+  mapping: {
+    provider: DomainProvider["provider"];
+    settings: MailServerSettings;
+    source: "mapping" | "dns";
+  } | null;
+};
+
+export type MailboxTestResponse = MailboxCheck & { ok: boolean; inbox: string; sent: string | null };
+
+/** Per-protocol results from a successful test, or from the details of a failed test/connect. */
+export function mailboxCheckOf(value: unknown): MailboxCheck | null {
+  if (!value || typeof value !== "object") return null;
+  const v = value as Record<string, unknown>;
+  const candidate = (v.mailboxCheck ?? (v.details as Record<string, unknown> | undefined)?.mailboxCheck ?? v) as
+    | Partial<MailboxCheck>
+    | undefined;
+  if (!candidate?.imap || !candidate?.smtp) return null;
+  return {
+    requestId: String(candidate.requestId ?? ""),
+    provider: candidate.provider,
+    providerSource: candidate.providerSource,
+    imap: candidate.imap,
+    smtp: candidate.smtp,
+  };
+}
 
 export type EmailAccountsResponse = {
   accounts: EmailAccount[];
@@ -179,10 +288,19 @@ export const emailApi = {
     api.get<{ invite: { emailAddress: string; provider: string; expiresAt: string } | null }>(
       `/email/invites/${token}`,
     ),
-  testImap: (body: { emailAddress: string; password: string }) =>
-    api.post<{ ok: boolean; inbox: string; sent: string | null }>("/email/imap/test", body),
-  connectImap: (body: { emailAddress: string; password: string; inviteToken?: string }) =>
+  listDomainProviders: () => api.get<{ items: DomainProvider[] }>("/email/domain-providers"),
+  createDomainProvider: (body: DomainProviderInput) => api.post<DomainProvider>("/email/domain-providers", body),
+  updateDomainProvider: (id: string, body: DomainProviderInput) =>
+    api.put<DomainProvider>(`/email/domain-providers/${id}`, body),
+  deleteDomainProvider: (id: string) => api.delete<{ deleted: boolean }>(`/email/domain-providers/${id}`),
+  resolveDomainProvider: (email: string) =>
+    api.get<DomainProviderResolution>(`/email/domain-providers/resolve${qs({ email })}`),
+  testImap: (body: ImapConnectBody) => api.post<MailboxTestResponse>("/email/imap/test", body),
+  connectImap: (body: ImapConnectBody) =>
     api.post<EmailAccount>("/email/imap/connect", body),
+  testTeamMailbox: (body: ImapConnectBody) => api.post<MailboxTestResponse>("/email/team/mailboxes/test", body),
+  connectTeamMailbox: (body: ImapConnectBody) =>
+    api.post<EmailAccount>("/email/team/mailboxes", body),
   connectGoogle: (redirectTo?: string) =>
     api.post<{ url: string }>("/email/google/connect", { redirectTo }),
   disconnect: (id: string) =>

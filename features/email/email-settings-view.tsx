@@ -25,11 +25,15 @@ import { ErrorState } from "@/components/ui/error-state";
 import { Label } from "@/components/ui/label";
 import { LoadingState } from "@/components/ui/loading-state";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { emailApi, type EmailAccount } from "@/lib/api/email";
+import { emailApi, mailboxCheckOf, type EmailAccount, type MailboxCheck } from "@/lib/api/email";
 import { ApiError } from "@/types/api";
 import { cn } from "@/lib/utils";
+import { MailboxCheckResults } from "./mailbox-check-results";
 
-type TestStatus = { kind: "idle" } | { kind: "success" } | { kind: "error"; message: string };
+type TestStatus =
+  | { kind: "idle" }
+  | { kind: "success"; check: MailboxCheck | null }
+  | { kind: "error"; message: string; check: MailboxCheck | null };
 
 function statusTone(s: string): "success" | "warning" | "danger" | "brand" | "neutral" {
   if (s === "connected") return "success";
@@ -128,7 +132,7 @@ export function EmailSettingsView() {
   const integration = query.data?.integration;
   const accounts = query.data?.accounts ?? [];
   const hasGmail = accounts.some((a) => a.provider === "gmail");
-  const hasImap = accounts.some((a) => a.provider === "imap");
+  const hasImap = accounts.some((a) => a.provider !== "gmail");
   const invite = params.get("invite") || "";
   const configured = Boolean(integration?.configured);
   const showImapForm = configured && Boolean(integration?.imapConfigured) && !hasImap;
@@ -342,20 +346,21 @@ function CompanyMailboxCard({ inviteToken }: { inviteToken: string }) {
     },
     onError: (err: Error) => {
       const message = err instanceof ApiError ? err.message : "Could not connect the mailbox";
-      setTestStatus({ kind: "error", message });
+      setTestStatus({ kind: "error", message, check: err instanceof ApiError ? mailboxCheckOf(err) : null });
       toast.error(message);
     },
   });
 
   const test = useMutation({
     mutationFn: () => emailApi.testImap({ emailAddress: email, password }),
-    onSuccess: () => {
-      setTestStatus({ kind: "success" });
+    onSuccess: (data) => {
+      setTestStatus({ kind: "success", check: mailboxCheckOf(data) });
     },
     onError: (err: Error) => {
       setTestStatus({
         kind: "error",
         message: err instanceof ApiError ? err.message : "Connection test failed",
+        check: err instanceof ApiError ? mailboxCheckOf(err) : null,
       });
     },
   });
@@ -426,13 +431,15 @@ function CompanyMailboxCard({ inviteToken }: { inviteToken: string }) {
           />
 
           <div className="min-h-5" aria-live="polite">
-            {testStatus.kind === "success" ? (
+            {testStatus.kind !== "idle" && testStatus.check ? (
+              <MailboxCheckResults check={testStatus.check} />
+            ) : testStatus.kind === "success" ? (
               <p className="flex items-center gap-1.5 text-[13px] text-emerald-600 dark:text-emerald-400">
                 <CheckCircle2 className="size-4 shrink-0" aria-hidden />
                 Connection successful — you&apos;re good to connect.
               </p>
             ) : null}
-            {testStatus.kind === "error" ? (
+            {testStatus.kind === "error" && !testStatus.check ? (
               <p className="flex items-start gap-1.5 text-[13px] text-destructive">
                 <XCircle className="mt-0.5 size-4 shrink-0" aria-hidden />
                 <span>{testStatus.message}</span>
@@ -559,7 +566,7 @@ function AccountCard({
           {account.avatarUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={account.avatarUrl} alt="" className="size-12 rounded-2xl object-cover ring-1 ring-border" />
-          ) : account.provider === "imap" ? (
+          ) : account.provider !== "gmail" ? (
             <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/15">
               <Building2 className="size-5" aria-hidden />
             </span>
@@ -570,7 +577,7 @@ function AccountCard({
           )}
           <div className="min-w-0">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-foreground-muted">
-              {account.provider === "imap" ? "Company mailbox" : "Gmail"}
+              {account.provider === "gmail" ? "Gmail" : "Company mailbox"}
             </p>
             <p className="truncate text-base font-semibold tracking-tight text-foreground">
               {account.displayName || account.emailAddress}
@@ -600,7 +607,7 @@ function AccountCard({
             <Button size="sm" className="rounded-xl" onClick={onReconnect} loading={reconnectPending}>
               Reconnect Gmail
             </Button>
-          ) : needs && account.provider === "imap" ? (
+          ) : needs && account.provider !== "gmail" ? (
             <Button size="sm" variant="outline" className="rounded-xl" asChild>
               <a href="#company-mailbox">Update login</a>
             </Button>

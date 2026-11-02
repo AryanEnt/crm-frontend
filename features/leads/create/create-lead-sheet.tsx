@@ -43,7 +43,7 @@ import { duplicateKey, useDuplicateCheck } from "./duplicate-notice";
 import { FIELD_CONTROL } from "./field-ui";
 import { formatFollowUp, fromLocalInput } from "./follow-up";
 import { MoreDetailsAccordion } from "./more-details-accordion";
-import { countryFromLocale, detectDialCountry, formatPhone } from "./phone";
+import { DEFAULT_PHONE_COUNTRY, detectDialCountry, formatPhone } from "./phone";
 import { ProfileSection, WorkSection } from "./profile-section";
 import { QuickAddFields } from "./quick-add-fields";
 import { SalesSection, useOwnerChoices } from "./sales-section";
@@ -227,7 +227,7 @@ function buildDefaults({
     priority: orgPriority && (CREATE_LEAD_PRIORITIES as readonly string[]).includes(orgPriority) ? orgPriority : "medium",
     pipelineId: pipeline?.id ?? "",
     stageId: stage?.id ?? "",
-    phoneCountry: countryFromLocale(typeof navigator === "undefined" ? undefined : navigator.language),
+    phoneCountry: DEFAULT_PHONE_COUNTRY,
     referral: emptyReferralForm(),
   };
 }

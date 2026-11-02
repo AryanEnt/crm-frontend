@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Link2, Mail, MoreHorizontal, RefreshCw, Search, Unplug, Users } from "lucide-react";
+import { ArrowLeft, Mail, MoreHorizontal, Plug, RefreshCw, Search, Unplug, Users } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
@@ -22,8 +22,9 @@ import { Input } from "@/components/ui/input";
 import { LoadingState } from "@/components/ui/loading-state";
 import { MetricCard } from "@/components/ui/metric-card";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { ConnectMailboxDialog } from "@/features/email/connect-mailbox-dialog";
+import { providerLabel } from "@/lib/email-providers";
 import { emailApi, type EmailThread, type TeamMailboxPerson } from "@/lib/api/email";
-import { ApiError } from "@/types/api";
 import { cn } from "@/lib/utils";
 
 function relative(iso?: string | null) {
@@ -43,12 +44,6 @@ function statusTone(s: string): "success" | "warning" | "danger" | "brand" | "ne
   return "neutral";
 }
 
-function providerLabel(p?: string) {
-  if (p === "imap") return "Company mail";
-  if (p === "gmail") return "Gmail";
-  return "Not connected";
-}
-
 function matchesPerson(p: TeamMailboxPerson, q: string) {
   if (!q) return true;
   const hay = `${p.fullName} ${p.email} ${p.mailbox?.emailAddress ?? ""}`.toLowerCase();
@@ -64,6 +59,8 @@ export function TeamEmailView() {
   const [mobileShowMail, setMobileShowMail] = React.useState(false);
   const [page, setPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(25);
+  const [direction, setDirection] = React.useState("");
+  const [connectFor, setConnectFor] = React.useState<TeamMailboxPerson | null | undefined>(undefined);
   const team = useQuery({ queryKey: ["email-team"], queryFn: () => emailApi.listTeamMailboxes() });
 
   React.useEffect(() => {
@@ -73,39 +70,20 @@ export function TeamEmailView() {
 
   React.useEffect(() => {
     setPage(1);
-  }, [seId, mailQDebounced, pageSize]);
+  }, [seId, mailQDebounced, direction, pageSize]);
 
   const activity = useQuery({
-    queryKey: ["email-threads", "team", seId, mailQDebounced, page, pageSize],
+    queryKey: ["email-threads", "team", seId, mailQDebounced, direction, page, pageSize],
     queryFn: () =>
       emailApi.listThreads({
-        folder: "sent",
+        folder: "inbox",
         q: mailQDebounced || undefined,
         salesExecutiveId: seId || undefined,
+        direction: direction || undefined,
         limit: String(pageSize),
         offset: String((page - 1) * pageSize),
       }),
     placeholderData: (prev) => prev,
-  });
-
-  const invite = useMutation({
-    mutationFn: (p: TeamMailboxPerson) =>
-      emailApi.createInvite({
-        invitedUserId: p.userId,
-        emailAddress: p.email,
-        provider: "imap",
-      }),
-    onSuccess: async (data) => {
-      try {
-        await navigator.clipboard.writeText(data.url);
-        toast.success("Connection link copied. Send it to the SE — they enter their own password.");
-      } catch {
-        toast.success(`Connection link: ${data.url}`);
-      }
-    },
-    onError: (err: Error) => {
-      toast.error(err instanceof ApiError ? err.message : "Could not create a connection link");
-    },
   });
 
   const sync = useMutation({
@@ -144,15 +122,24 @@ export function TeamEmailView() {
   return (
     <div className="flex min-h-0 flex-col gap-5">
       <PageHeader
-        title="Team email"
-        description="Connect assigned sales executives’ company mailboxes. You never collect their password — they authorize their own account."
+        title="Team Email Management"
+        description="Connect Migadu, Spacemail, or custom IMAP mailboxes for assigned sales executives. They never see the password."
+        actions={
+          <Button size="sm" onClick={() => setConnectFor(null)}>
+            <Plug className="size-3.5" />
+            Connect mailbox
+          </Button>
+        }
       />
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
         <MetricCard label="Assigned people" value={String(overview?.assigned ?? 0)} />
         <MetricCard label="Connected" value={String(overview?.connected ?? 0)} />
         <MetricCard label="Not connected" value={String(overview?.disconnected ?? 0)} />
-        <MetricCard label="Needs attention" value={String(overview?.syncFailures ?? 0)} />
+        <MetricCard label="Connection errors" value={String(overview?.syncFailures ?? 0)} />
+        <MetricCard label="Sent today" value={String(overview?.sentToday ?? 0)} />
+        <MetricCard label="Received today" value={String(overview?.receivedToday ?? 0)} />
+        <MetricCard label="Last sync" value={relative(overview?.lastSyncAt)} />
       </div>
 
       <div className="flex min-h-[min(70vh,720px)] flex-col overflow-hidden rounded-2xl border border-line bg-surface lg:flex-row">
@@ -166,7 +153,7 @@ export function TeamEmailView() {
           <div className="shrink-0 space-y-3 border-b border-line px-4 py-3">
             <div>
               <h2 className="text-cell font-semibold text-ink">Mailboxes</h2>
-              <p className="text-caption text-ink-muted">Select a person to view their sent mail</p>
+              <p className="text-caption text-ink-muted">Select a person to connect or review activity</p>
             </div>
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted" aria-hidden />
@@ -216,8 +203,7 @@ export function TeamEmailView() {
                   person={p}
                   selected={seId === p.userId}
                   onSelect={() => selectPerson(p.userId)}
-                  onInvite={() => invite.mutate(p)}
-                  inviting={invite.isPending}
+                  onConnect={() => setConnectFor(p)}
                   onSync={() => p.mailbox && sync.mutate(p.mailbox.id)}
                   onDisconnect={() => {
                     if (p.mailbox && window.confirm(`Disconnect ${p.mailbox.emailAddress}?`)) {
@@ -253,15 +239,30 @@ export function TeamEmailView() {
             </button>
             <div className="min-w-0 flex-1">
               <h2 className="text-cell font-semibold text-ink">
-                {selected ? selected.fullName : "Recent sent activity"}
+                {selected ? selected.fullName : "Team email activity"}
               </h2>
               <p className="truncate text-caption text-ink-muted">
                 {selected
                   ? selected.mailbox
                     ? `${providerLabel(selected.mailbox.provider)} · Last sync ${relative(selected.mailbox.lastSyncAt)}`
-                    : "Not connected — invite them to link company mail"
+                    : "Not connected — add IMAP credentials for their mailbox"
                   : "All assigned people · search subject or recipient"}
               </p>
+            </div>
+            <div className="flex gap-1.5">
+              {(["", "outbound", "inbound"] as const).map((d) => (
+                <button
+                  key={d || "all"}
+                  type="button"
+                  onClick={() => setDirection(d)}
+                  className={cn(
+                    "inline-flex h-7 items-center rounded-full px-2.5 text-caption font-medium",
+                    direction === d ? "bg-brand text-primary-foreground" : "bg-surface-muted text-ink-secondary",
+                  )}
+                >
+                  {d === "" ? "All" : d === "outbound" ? "Sent" : "Received"}
+                </button>
+              ))}
             </div>
             <div className="relative w-full sm:ml-auto sm:w-56">
               <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted" aria-hidden />
@@ -280,11 +281,11 @@ export function TeamEmailView() {
               <EmptyState
                 icon={Mail}
                 title={`${selected.fullName} isn’t connected`}
-                description="Copy an invite link so they can authorize their company mailbox. You never see their password."
+                description="Connect their Migadu, Spacemail, or custom IMAP mailbox. They will see it automatically when they open Email."
               />
-              <Button size="sm" onClick={() => invite.mutate(selected)} disabled={invite.isPending}>
-                <Link2 className="size-3.5" />
-                Invite to connect
+              <Button size="sm" onClick={() => setConnectFor(selected)}>
+                <Plug className="size-3.5" />
+                Connect mailbox
               </Button>
             </div>
           ) : activity.isLoading && threads.length === 0 ? (
@@ -329,8 +330,22 @@ export function TeamEmailView() {
       </div>
 
       <p className="text-caption text-ink-muted">
-        Company mail uses IMAP/SMTP. Thunderbird can stay in use; sent mail syncs when the server exposes a Sent folder.
+        Thunderbird can stay in use. Sent and received mail syncs from the provider after the worker runs.
       </p>
+
+      <ConnectMailboxDialog
+        open={connectFor !== undefined}
+        onOpenChange={(next) => {
+          if (!next) setConnectFor(undefined);
+        }}
+        people={people}
+        initial={connectFor ?? null}
+        onSaved={() => {
+          toast.success("Mailbox connected");
+          void qc.invalidateQueries({ queryKey: ["email-team"] });
+          void qc.invalidateQueries({ queryKey: ["email-threads"] });
+        }}
+      />
     </div>
   );
 }
@@ -339,16 +354,14 @@ function MailboxRow({
   person,
   selected,
   onSelect,
-  onInvite,
-  inviting,
+  onConnect,
   onSync,
   onDisconnect,
 }: {
   person: TeamMailboxPerson;
   selected: boolean;
   onSelect: () => void;
-  onInvite: () => void;
-  inviting: boolean;
+  onConnect: () => void;
   onSync: () => void;
   onDisconnect: () => void;
 }) {
@@ -413,25 +426,28 @@ function MailboxRow({
                 <MoreHorizontal className="size-4" aria-hidden />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              {!m ? (
-                <DropdownMenuItem disabled={inviting} onSelect={() => onInvite()}>
-                  <Link2 className="size-3.5" aria-hidden />
-                  Invite to connect
-                </DropdownMenuItem>
-              ) : (
+            <DropdownMenuContent align="end" className="w-52">
+              <DropdownMenuItem onSelect={() => onConnect()}>
+                <Plug className="size-3.5" aria-hidden />
+                {m ? (person.canChangeSettings ? "Edit configuration" : "Take over mailbox") : "Connect mailbox"}
+              </DropdownMenuItem>
+              {m ? (
                 <>
                   <DropdownMenuItem onSelect={() => onSync()}>
                     <RefreshCw className="size-3.5" aria-hidden />
-                    Retry sync
+                    Sync now
                   </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem className="text-danger" onSelect={() => onDisconnect()}>
-                    <Unplug className="size-3.5" aria-hidden />
-                    Disconnect
-                  </DropdownMenuItem>
+                  {person.canChangeSettings ? (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem className="text-danger" onSelect={() => onDisconnect()}>
+                        <Unplug className="size-3.5" aria-hidden />
+                        Disconnect
+                      </DropdownMenuItem>
+                    </>
+                  ) : null}
                 </>
-              )}
+              ) : null}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

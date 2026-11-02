@@ -20,6 +20,44 @@ export function isReferralSource(source: string | undefined) {
   return source?.trim().toLowerCase() === "referral";
 }
 
+/** Optional follow-up for a source chip. Referral has its own referrer block instead. */
+export function sourceDetailPrompt(source: string | undefined): { label: string; placeholder: string } | null {
+  const name = source?.trim() ?? "";
+  if (!name || isReferralSource(name)) return null;
+  const key = name.toLowerCase().replace(/[-_]+/g, " ");
+  const prompts: Record<string, { label: string; placeholder: string }> = {
+    website: { label: "Which website?", placeholder: "company.com or the page they visited" },
+    facebook: { label: "Which Facebook page or ad?", placeholder: "Page, group, or campaign name" },
+    instagram: { label: "Which Instagram account or ad?", placeholder: "Handle or campaign name" },
+    google: { label: "Which Google listing or ad?", placeholder: "Search term, listing, or campaign" },
+    whatsapp: { label: "Any WhatsApp details?", placeholder: "Group, number, or campaign" },
+    email: { label: "Which campaign or inbox?", placeholder: "Newsletter, signature, or mailbox" },
+    event: { label: "Which event?", placeholder: "Expo, webinar, or open day" },
+    partner: { label: "Which partner?", placeholder: "Agency or partner name" },
+    agent: { label: "Which agent?", placeholder: "Agent or consultant name" },
+    "walk in": { label: "Which office?", placeholder: "Branch or location" },
+    "cold call": { label: "Anything about the call?", placeholder: "List or campaign, if you have it" },
+    phone: { label: "Anything about the call?", placeholder: "List or campaign, if you have it" },
+  };
+  return prompts[key] ?? { label: `Anything else about this ${name}?`, placeholder: "Campaign, page, or how you met" };
+}
+
+export function parseSourceNote(source: string, notes: string): { sourceDetail: string; notes: string } {
+  const prefix = `${source}: `;
+  if (!source || !notes.startsWith(prefix)) return { sourceDetail: "", notes };
+  const rest = notes.slice(prefix.length);
+  const nl = rest.indexOf("\n");
+  if (nl < 0) return { sourceDetail: rest.trim(), notes: "" };
+  return { sourceDetail: rest.slice(0, nl).trim(), notes: rest.slice(nl + 1).replace(/^\n/, "") };
+}
+
+export function mergeSourceNote(source: string, detail: string | undefined, notes: string): string {
+  const d = (detail ?? "").trim();
+  const n = notes.replace(/^\n+/, "");
+  if (!d || isReferralSource(source)) return n;
+  return n ? `${source}: ${d}\n${n}` : `${source}: ${d}`;
+}
+
 /** Same rule as the backend: a linked referrer or a typed name. */
 export function hasReferrer(r: ReferralFormState | undefined) {
   if (!r) return false;
@@ -76,6 +114,7 @@ export function leadSheetSchema(_mode: "create" | "edit") {
       anzscoId: z.string().nullable(),
       notes: z.string(),
       tags: z.string(),
+      sourceDetail: z.string(),
       referral: z.custom<ReferralFormState>().optional(),
     })
     .superRefine((v, ctx) => {
@@ -127,6 +166,7 @@ export function emptyCreateLead(d: CreateLeadDefaults): CreateLeadInput {
     anzscoId: null,
     notes: "",
     tags: "",
+    sourceDetail: "",
     referral: d.referral,
   };
 }
@@ -141,6 +181,7 @@ export function leadToForm(
   const priority = (LEAD_PRIORITY_VALUES as readonly string[]).includes(lead.priority)
     ? (lead.priority as CreateLeadPriority)
     : "medium";
+  const sourceNote = parseSourceNote(lead.source ?? "", lead.notes ?? "");
   return {
     fullName: lead.fullName ?? "",
     phoneCountry,
@@ -160,8 +201,9 @@ export function leadToForm(
     jobTitle: lead.jobTitle ?? "",
     employer: lead.employer ?? "",
     anzscoId: lead.anzscoId ?? null,
-    notes: lead.notes ?? "",
+    notes: sourceNote.notes,
     tags: (lead.tags ?? []).join(", "),
+    sourceDetail: sourceNote.sourceDetail,
     referral: o.referral ?? emptyReferralForm(),
   };
 }
@@ -219,7 +261,7 @@ export function toCreatePayload(
     priority: v.priority,
     tags: parseTags(v.tags),
     anzscoId: v.anzscoId || null,
-    notes: v.notes,
+    notes: mergeSourceNote(v.source, v.sourceDetail, v.notes),
     occupation: v.occupation,
     jobTitle: v.jobTitle,
     employer: v.employer,
@@ -234,7 +276,7 @@ export function toCreatePayload(
   };
 }
 
-const TEXT_FIELDS = ["fullName", "country", "nationality", "location", "source", "priority", "notes", "occupation", "jobTitle", "employer"] as const;
+const TEXT_FIELDS = ["fullName", "country", "nationality", "location", "source", "priority", "occupation", "jobTitle", "employer"] as const;
 
 /**
  * Body for PATCH /leads/:id with only what changed. The API leaves omitted fields alone
@@ -262,6 +304,9 @@ export function toUpdatePayload(
   if (differs(v.nextActivityAt, initial.nextActivityAt)) {
     p.nextActivityAt = v.nextActivityAt ? zonedInputToIso(v.nextActivityAt, opts.timeZone) : "";
   }
+  const nextNotes = mergeSourceNote(v.source, v.sourceDetail, v.notes);
+  const prevNotes = mergeSourceNote(initial.source, initial.sourceDetail, initial.notes);
+  if (differs(nextNotes, prevNotes)) p.notes = nextNotes;
   if (opts.canAssignOwner && differs(v.ownerUserId, initial.ownerUserId)) p.ownerUserId = v.ownerUserId;
   if (parseTags(v.tags).join(",") !== parseTags(initial.tags).join(",")) p.tags = parseTags(v.tags);
   if (opts.customFields && Object.keys(opts.customFields).length) p.customFields = opts.customFields;
