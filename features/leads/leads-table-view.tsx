@@ -348,7 +348,7 @@ export function LeadsListView({
             [
               ["all", "All"],
               ["working", "Open"],
-              ["won", "Won"],
+              ["won", "Purchased"],
               ["lost", "Lost"],
             ] as const
           ).map(([value, label]) => (

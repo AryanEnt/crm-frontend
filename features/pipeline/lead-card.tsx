@@ -18,9 +18,16 @@ import {
 import { useAuth } from "@/features/auth/auth-provider";
 import type { LeadBoardCard, LeadBoardStage } from "@/lib/api/crm";
 import { cn } from "@/lib/utils";
+import { ClientsEmailControl } from "./clients-email-control";
+import { ContactRatingControl } from "./contact-rating-control";
+import { DocumentDelayRemarksControl } from "./document-delay-remarks-control";
+import { NegotiationTagControl } from "./negotiation-tag-control";
+import { isNegotiationStage } from "./negotiation-tag";
+import { isClientsStage } from "./nurturing-stages";
 import { formatDate } from "./pipeline-format";
 import { OwnerAvatar } from "./pipeline-ui";
-import { stageAge, type StageAgeTone } from "./stage-age";
+import { formatStageAgeLabel, stageAge, type StageAgeTone } from "./stage-age";
+import { useHourlyNow } from "./use-hourly-now";
 
 const TONE_CLASS = {
   overdue: "text-danger",
@@ -58,10 +65,10 @@ const AGE_BAR: Record<StageAgeTone, string> = {
 };
 
 const AGE_TITLE: Record<StageAgeTone, string> = {
-  none: "Days in this stage",
+  none: "Time in this stage",
   ok: "On track — within stage time limit",
   warn: "Near limit — follow up soon",
-  over: "Overdue — past stage time limit",
+  over: "Rotten — past stage time limit",
 };
 
 export function LeadCard({
@@ -86,14 +93,17 @@ export function LeadCard({
 }) {
   const { user } = useAuth();
   const timezone = user?.timezone || undefined;
+  const now = useHourlyNow();
   // Sales Won keeps wonAt after handoff to Nurturing (status becomes open again).
   const won = lead.status === "won" || Boolean(lead.wonAt);
   const lost = lead.status === "lost";
   const closed = won || lost;
   const tone = nextActionTone(lead.nextActivityAt, timezone);
   const stage = stages?.find((s) => s.id === lead.stageId);
-  const age = stageAge(lead.stageEnteredAt, stage?.slaHours, { closed });
+  const age = stageAge(lead.stageEnteredAt, stage?.slaHours, { closed, now });
   const showMenu = !overlay && canEdit && !!stages?.length;
+  const showNegotiationTag = !overlay && isNegotiationStage(stage?.name);
+  const showClientsEmail = !overlay && isClientsStage(stage?.name) && !!stages?.length;
 
   return (
     <article
@@ -143,15 +153,18 @@ export function LeadCard({
         <span className="ml-auto flex min-w-0 items-center gap-1.5">
           {age.tone === "over" ? (
             <span className="inline-flex shrink-0 items-center rounded-full bg-danger-soft px-1.5 py-px text-[0.625rem] font-semibold uppercase tracking-wide text-danger">
-              Overdue
+              Rotten
             </span>
           ) : age.tone === "warn" ? (
             <span className="inline-flex shrink-0 items-center rounded-full bg-warning-soft px-1.5 py-px text-[0.625rem] font-semibold uppercase tracking-wide text-warning">
               Soon
             </span>
           ) : null}
-          <span className={cn("text-caption tabular-nums", AGE_DAYS[age.tone])} title={AGE_TITLE[age.tone]}>
-            {age.days}d
+          <span
+            className={cn("max-w-[9.5rem] truncate text-caption tabular-nums", AGE_DAYS[age.tone])}
+            title={`${AGE_TITLE[age.tone]} · ${formatStageAgeLabel(age)}`}
+          >
+            {formatStageAgeLabel(age)}
           </span>
         </span>
         <OwnerAvatar id={lead.ownerUserId} name={lead.ownerName} />
@@ -162,7 +175,7 @@ export function LeadCard({
           {`Lost${lead.lostReason ? ` · ${lead.lostReason}` : ` ${formatDate(lead.lostAt)}`}`}
         </p>
       ) : won ? (
-        <p className="mt-2 truncate text-caption text-stage-won-ink">{`Won ${formatDate(lead.wonAt)}`}</p>
+        <p className="mt-2 truncate text-caption text-stage-won-ink">{`Purchased ${formatDate(lead.wonAt)}`}</p>
       ) : null}
       {!lost && lead.documentDeadlineAt ? (
         <p
@@ -185,6 +198,14 @@ export function LeadCard({
           </span>
         </p>
       ) : null}
+      {showNegotiationTag ? <NegotiationTagControl lead={lead} canEdit={!!canEdit} /> : null}
+      {!overlay ? (
+        <ContactRatingControl lead={lead} stageName={stage?.name} canEdit={!!canEdit} />
+      ) : null}
+      {showClientsEmail ? (
+        <ClientsEmailControl lead={lead} stages={stages!} canEdit={!!canEdit} />
+      ) : null}
+      {!overlay ? <DocumentDelayRemarksControl lead={lead} canEdit={!!canEdit} /> : null}
     </article>
   );
 }
@@ -200,7 +221,7 @@ function MoveMenu({
 }) {
   const open = stages.filter((s) => !s.isWon && !s.isLost);
   const outcomes = stages.filter((s) => s.isWon || s.isLost);
-  // Nurturing has a Complete outcome and no Lost; sales has Won + Lost.
+  // Nurturing has an Outcome stage and no Lost; sales has Purchased + Lost.
   const completeOnly = outcomes.some((s) => s.isWon) && !outcomes.some((s) => s.isLost);
   return (
     <DropdownMenu>
@@ -228,7 +249,11 @@ function MoveMenu({
             onSelect={() => onMove?.(s)}
             className={s.isWon ? "text-success" : "text-danger"}
           >
-            {s.isWon ? (completeOnly ? s.name || "Complete" : "Mark as won") : "Mark as lost"}
+            {s.isWon
+              ? completeOnly
+                ? s.name || "Outcome"
+                : `Mark as ${(s.name || "Purchased").toLowerCase()}`
+              : "Mark as lost"}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>

@@ -9,6 +9,7 @@ import {
   closedLeadsParams,
   closedListParams,
   hasNarrowingFilters,
+  openListParams,
   parsePipelineFilters,
   writePipelineFilters,
 } from "./pipeline-filters.ts";
@@ -31,13 +32,23 @@ describe("pipeline filters in the URL", () => {
   });
 
   it("ignores invalid values instead of sending them to the API", () => {
-    const f = parse("status=archived&next=soon&min=-5&max=abc&page=0&sort=owner");
+    const f = parse("status=archived&next=soon&min=-5&max=abc&page=0&sort=owner&boardSort=age");
     assert.equal(f.status, "all");
     assert.equal(f.next, "");
     assert.equal(f.min, "");
     assert.equal(f.max, "");
     assert.equal(f.page, 1);
     assert.equal(f.sort, "closed");
+    assert.equal(f.boardSort, "days");
+  });
+
+  it("round-trips the global board sort", () => {
+    const f = parse("boardSort=value&boardOrder=asc");
+    assert.equal(f.boardSort, "value");
+    assert.equal(f.boardOrder, "asc");
+    assert.equal(boardParams("p1", f).get("sort"), "value");
+    assert.equal(boardParams("p1", f).get("order"), "asc");
+    assert.deepEqual(parsePipelineFilters(writePipelineFilters(f)), f);
   });
 
   it("round-trips the closed date filter and view", () => {
@@ -62,10 +73,49 @@ describe("API params", () => {
 
   it("board and closed views share the same narrowing filters, minus next action", () => {
     const board = boardParams("p1", f);
-    assert.equal(board.toString(), "pipelineId=p1&q=jo&ownerUserId=u1&teamId=t1&source=Referral&activity=overdue&minValue=100");
+    assert.equal(
+      board.toString(),
+      "pipelineId=p1&q=jo&ownerUserId=u1&teamId=t1&source=Referral&activity=overdue&minValue=100&sort=days&order=desc",
+    );
     const closed = closedListParams("p1", "lost-stage", f, 25);
-    for (const [k, v] of board) if (k !== "activity") assert.equal(closed.get(k), v, k);
+    // Board sort (days/time/…) is unrelated to closed-table sort (name/value/closed).
+    for (const [k, v] of board) {
+      if (k === "activity" || k === "sort" || k === "order") continue;
+      assert.equal(closed.get(k), v, k);
+    }
     assert.equal(closed.has("activity"), false);
+    assert.equal(closed.get("sort"), "name");
+  });
+
+  it("open table keeps board filters and remaps closed sort to next activity", () => {
+    const open = openListParams("p1", parse("status=open&q=jo&next=today&owner=u1&view=table"), 25);
+    assert.equal(open.get("pipelineId"), "p1");
+    assert.equal(open.get("q"), "jo");
+    assert.equal(open.get("activity"), "today");
+    assert.equal(open.get("ownerUserId"), "u1");
+    assert.equal(open.has("status"), false);
+    assert.equal(open.get("sort"), "nextActivity");
+    assert.equal(open.get("order"), "asc");
+    assert.equal(open.get("limit"), "25");
+    assert.equal(open.get("offset"), "0");
+
+    const all = openListParams("p1", parse("status=all&sort=value&order=asc&view=table&page=2"), 25);
+    assert.equal(all.get("status"), "all");
+    assert.equal(all.get("sort"), "value");
+    assert.equal(all.get("order"), "asc");
+    assert.equal(all.get("offset"), "25");
+  });
+
+  it("open table can narrow to a stage; board params ignore stage", () => {
+    const f = parse("view=table&stage=s1&q=jo");
+    assert.equal(f.stage, "s1");
+    assert.equal(openListParams("p1", f, 25).get("stageId"), "s1");
+    assert.equal(boardParams("p1", f).has("stageId"), false);
+    assert.equal(writePipelineFilters(f).get("stage"), "s1");
+    assert.deepEqual(
+      activeFilterChips(f, { stage: "Qualified" }).map((c) => c.label),
+      ["“jo”", "Stage: Qualified"],
+    );
   });
 
   it("sends country on the board and closed list params", () => {
@@ -149,7 +199,7 @@ describe("filter chips", () => {
 
   it("shows the date filter on Won and Lost, where next action doesn't apply", () => {
     const won = parse("status=won&closed=30d&next=week");
-    assert.deepEqual(activeFilterChips(won).map((c) => c.label), ["Won past 30 days"]);
+    assert.deepEqual(activeFilterChips(won).map((c) => c.label), ["Purchased past 30 days"]);
     assert.equal(hasNarrowingFilters(parse("status=won&next=week")), false);
     assert.equal(hasNarrowingFilters(parse("status=open&closed=30d")), false);
     const custom = parse("status=lost&closed=custom&closedFrom=2026-09-01&closedTo=2026-09-30");

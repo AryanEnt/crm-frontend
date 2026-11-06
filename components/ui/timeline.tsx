@@ -8,6 +8,8 @@ export type TimelineItem = {
   timestamp: string;
   tone?: "neutral" | "brand" | "success" | "warning" | "danger";
   href?: string;
+  /** Label for the href link; defaults to "View". */
+  linkLabel?: string;
 };
 
 const toneDot: Record<NonNullable<TimelineItem["tone"]>, string> = {
@@ -52,8 +54,8 @@ export function Timeline({
               <p className="mt-0.5 text-meta">{item.description}</p>
             ) : null}
             {item.href ? (
-              <Link href={item.href} className="mt-1 inline-block text-xs text-brand hover:underline">
-                View email
+              <Link href={item.href} className="mt-1 inline-block text-xs font-medium text-brand hover:underline">
+                {item.linkLabel ?? "View"}
               </Link>
             ) : null}
           </div>

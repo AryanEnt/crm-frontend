@@ -112,6 +112,8 @@ export function useCreateLead({
       wonAt: null,
       lostAt: null,
       lostReason: "",
+      negotiationTag: "",
+      negotiationRemarks: "",
     };
   };
 

@@ -216,10 +216,14 @@ export function valuesForNextLead(prev: CreateLeadInput, d: CreateLeadDefaults):
   return next;
 }
 
-/** Fields that live in the collapsed "More details" sections, by section. Country / nationality / location / ANZSCO sit above. */
+/**
+ * Fields that live in collapsed accordion sections.
+ * Basic info, source, and qualification stay above the fold.
+ */
 export const DETAIL_SECTION_FIELDS = {
+  about: ["country", "nationality", "location", "occupation", "anzscoId"],
   sales: ["ownerUserId", "pipelineId", "stageId", "nextActivityAt"],
-  work: ["occupation", "jobTitle", "employer"],
+  work: ["jobTitle", "employer"],
   notes: ["notes", "tags"],
 } as const;
 

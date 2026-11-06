@@ -7,13 +7,24 @@ import {
   appendStagePage,
   applyPendingMoves,
   moveCard,
+  replaceStagePage,
   type PendingMoves,
 } from "@/features/leads/lead-board-state";
 import { useAuth } from "@/features/auth/auth-provider";
 import { crmApi, type LeadBoard, type LeadBoardStage } from "@/lib/api/crm";
 import { closedInterval } from "./closed-range";
-import { boardParams, closedListParams, type PipelineFilters } from "./pipeline-filters";
+import {
+  boardParams,
+  closedListParams,
+  isClosedStatus,
+  openListParams,
+  type BoardSortKey,
+  type PipelineFilters,
+  type SortOrder,
+} from "./pipeline-filters";
 import { derivePipelineTotals, statusCounts } from "./pipeline-totals";
+
+export type StageBoardSort = { sort: BoardSortKey; order: SortOrder };
 
 export const CLOSED_PAGE_SIZE = 25;
 
@@ -109,6 +120,16 @@ export function usePipelineLeads(filters: PipelineFilters, closedPageSize = CLOS
     placeholderData: (prev) => prev,
   });
 
+  const openTable =
+    !!pipelineId && filters.view === "table" && !isClosedStatus(filters.status);
+  const openQs = openTable ? openListParams(pipelineId, filters, closedPageSize).toString() : "";
+  const openQuery = useQuery({
+    queryKey: ["leads", "pipeline-open", openQs],
+    queryFn: () => crmApi.listLeads(new URLSearchParams(openQs)),
+    enabled: openQs !== "",
+    placeholderData: (prev) => prev,
+  });
+
   const clearPending = React.useCallback(
     (leadId: string) =>
       setPending((prev) => {
@@ -156,11 +177,33 @@ export function usePipelineLeads(filters: PipelineFilters, closedPageSize = CLOS
   );
 
   const [loadingMore, setLoadingMore] = React.useState<string | null>(null);
+  /** Per-stage sort overrides; when absent, the column uses the global board sort. */
+  const [stageSorts, setStageSorts] = React.useState<Record<string, StageBoardSort>>({});
+  const [sortingStage, setSortingStage] = React.useState<string | null>(null);
+
+  // Global sort changes clear funnel-wise overrides so columns stay in sync.
+  React.useEffect(() => {
+    setStageSorts({});
+  }, [filters.boardSort, filters.boardOrder, pipelineId]);
+
+  const stageSortParams = React.useCallback(
+    (stageId: string) => {
+      const override = stageSorts[stageId];
+      const p = new URLSearchParams(boardQs);
+      if (override) {
+        p.set("sort", override.sort);
+        p.set("order", override.order);
+      }
+      return p;
+    },
+    [boardQs, stageSorts],
+  );
+
   const loadMore = React.useCallback(
     async (stage: LeadBoardStage) => {
       setLoadingMore(stage.id);
       try {
-        const p = new URLSearchParams(boardQs);
+        const p = stageSortParams(stage.id);
         p.set("stageId", stage.id);
         p.set("offset", String(stage.leads.length));
         const page = await crmApi.getLeadBoardStage(p);
@@ -173,7 +216,48 @@ export function usePipelineLeads(filters: PipelineFilters, closedPageSize = CLOS
         setLoadingMore(null);
       }
     },
-    [boardKey, boardQs, qc],
+    [boardKey, qc, stageSortParams],
+  );
+
+  const setStageSort = React.useCallback(
+    async (stageId: string, next: StageBoardSort | null) => {
+      const matchesGlobal =
+        !next || (next.sort === filters.boardSort && next.order === filters.boardOrder);
+      setStageSorts((prev) => {
+        if (matchesGlobal) {
+          if (!(stageId in prev)) return prev;
+          const copy = { ...prev };
+          delete copy[stageId];
+          return copy;
+        }
+        return { ...prev, [stageId]: next! };
+      });
+      setSortingStage(stageId);
+      try {
+        const p = new URLSearchParams(boardQs);
+        p.set("stageId", stageId);
+        p.set("offset", "0");
+        if (!matchesGlobal && next) {
+          p.set("sort", next.sort);
+          p.set("order", next.order);
+        }
+        const page = await crmApi.getLeadBoardStage(p);
+        qc.setQueryData<LeadBoard>(boardKey, (prev) => (prev ? replaceStagePage(prev, stageId, page) : prev));
+      } catch (err) {
+        toast.error("Couldn't re-sort this stage", {
+          description: err instanceof Error && err.message ? err.message : undefined,
+        });
+      } finally {
+        setSortingStage(null);
+      }
+    },
+    [boardKey, boardQs, filters.boardOrder, filters.boardSort, qc],
+  );
+
+  const stageSortFor = React.useCallback(
+    (stageId: string): StageBoardSort =>
+      stageSorts[stageId] ?? { sort: filters.boardSort, order: filters.boardOrder },
+    [filters.boardOrder, filters.boardSort, stageSorts],
   );
 
   return {
@@ -206,11 +290,22 @@ export function usePipelineLeads(filters: PipelineFilters, closedPageSize = CLOS
       isError: closedQuery.isError,
       retry: () => void closedQuery.refetch(),
     },
+    openList: {
+      rows: openQuery.data?.data ?? [],
+      total: openQuery.data?.total ?? 0,
+      isLoading: openQs !== "" && openQuery.isLoading,
+      isError: openQuery.isError,
+      retry: () => void openQuery.refetch(),
+    },
     optimisticMove,
     settleMove,
     refresh,
     loadMore,
     loadingMore,
+    stageSortFor,
+    setStageSort,
+    sortingStage,
+    stageHasOverride: (stageId: string) => stageId in stageSorts,
   };
 }
 

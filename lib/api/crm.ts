@@ -178,6 +178,17 @@ export type Lead = {
   wonAt?: string | null;
   lostAt?: string | null;
   lostReason?: string;
+  negotiationTag?: string;
+  negotiationRemarks?: string;
+  contactRating?: number | null;
+  contactRemarks?: string;
+  contactRatedAt?: string | null;
+  contactRatedBy?: string | null;
+  contactRatedByName?: string | null;
+  documentDelayRemarks?: string;
+  documentDelayRemarksAt?: string | null;
+  documentDelayRemarksBy?: string | null;
+  documentDelayRemarksByName?: string | null;
   expectedOutcome: string;
   lastActivityAt?: string | null;
   nextActivityAt?: string | null;
@@ -235,8 +246,24 @@ export type LeadBoardCard = {
   wonAt: string | null;
   lostAt: string | null;
   lostReason: string;
+  negotiationTag?: string;
+  negotiationRemarks?: string;
+  contactRating?: number | null;
+  contactRemarks?: string;
   /** Earliest open document send-by date (set when marking Won). */
   documentDeadlineAt?: string | null;
+  /** Latest overdue document-delay remark. */
+  documentDelayRemarks?: string;
+  documentDelayRemarksAt?: string | null;
+};
+
+export type DocumentDelayRemark = {
+  id: string;
+  leadId: string;
+  body: string;
+  authorUserId: string | null;
+  authorName: string | null;
+  createdAt: string;
 };
 
 export type LeadBoardStage = {
@@ -645,6 +672,10 @@ export const crmApi = {
     api.get<{ leads: LeadBoardCard[]; hasMore: boolean }>(`/leads/board/stage?${params}`),
   moveLead: (id: string, body: LeadMoveInput) => api.post<LeadMoveResult>(`/leads/${id}/move`, body),
   getLeadStageHistory: (id: string) => api.get<LeadStageHistory>(`/leads/${id}/stage-history`),
+  listDocumentDelayRemarks: (id: string) =>
+    api.get<DocumentDelayRemark[]>(`/leads/${id}/document-delay-remarks`),
+  addDocumentDelayRemark: (id: string, body: string) =>
+    api.post<{ lead: Lead; remark: DocumentDelayRemark }>(`/leads/${id}/document-delay-remarks`, { body }),
   leadOverview: (params: URLSearchParams) => api.get<LeadOverview>(`/leads/insights/overview?${params}`),
   leadMyDay: (params: URLSearchParams) => api.get<LeadMyDay>(`/leads/insights/my-day?${params}`),
   leadForecast: (params: URLSearchParams) => api.get<LeadForecast>(`/leads/insights/forecast?${params}`),

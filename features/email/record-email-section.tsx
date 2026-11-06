@@ -6,6 +6,7 @@ import { Mail, Paperclip, Reply, Forward, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { LoadingState } from "@/components/ui/loading-state";
+import { useAuth } from "@/features/auth/auth-provider";
 import { emailApi, type EmailAccount, type EmailMessage, type EmailThread } from "@/lib/api/email";
 import { EmailComposer, type ComposerContext } from "@/features/email/email-composer";
 import { cn } from "@/lib/utils";
@@ -30,6 +31,7 @@ function statusCopy(m: EmailMessage) {
   return "Received";
 }
 
+/** Emails linked to a lead or customer — compose, browse threads, reply in place. */
 export function RecordEmailSection({
   leadId,
   customerId,
@@ -39,6 +41,8 @@ export function RecordEmailSection({
   customerId?: string;
   defaultTo?: string | null;
 }) {
+  const { can } = useAuth();
+  const canCompose = can("email:send");
   const accountsQ = useQuery({
     queryKey: ["email-accounts"],
     queryFn: () => emailApi.listAccounts(),
@@ -60,86 +64,108 @@ export function RecordEmailSection({
     queryFn: () => emailApi.listThreads(params),
   });
 
+  const threads = list.data?.threads ?? [];
+  const startCompose = () =>
+    setCompose({
+      leadId,
+      customerId,
+      to: defaultTo ? [defaultTo] : [],
+      mode: "compose",
+    });
+
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold">Email</h3>
-        <Button
-          size="sm"
-          onClick={() =>
-            setCompose({
-              leadId,
-              customerId,
-              to: defaultTo ? [defaultTo] : [],
-              mode: "compose",
-            })
-          }
-        >
-          Compose email
-        </Button>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-ink">Emails</p>
+          <p className="text-caption text-ink-muted">
+            Messages sent from CRM for this lead, including document emails from Clients.
+          </p>
+        </div>
+        {canCompose ? (
+          <Button size="sm" onClick={startCompose} disabled={!account && !accountsQ.isLoading}>
+            <Mail className="size-3.5" aria-hidden />
+            Compose
+          </Button>
+        ) : null}
       </div>
-      <div className="flex gap-1 rounded-lg bg-surface-muted p-0.5 text-xs">
-        {["all", "sent", "inbox", "drafts"].map((f) => (
+
+      <div
+        role="tablist"
+        aria-label="Email folder"
+        className="inline-flex h-8 items-center rounded-full bg-surface-muted p-0.5"
+      >
+        {(["all", "sent", "inbox", "drafts"] as const).map((f) => (
           <button
             key={f}
             type="button"
+            role="tab"
+            aria-selected={folder === f}
             className={cn(
-              "rounded-md px-2.5 py-1 capitalize",
-              folder === f ? "bg-surface font-medium shadow-sm" : "text-foreground-muted",
+              "rounded-full px-2.5 py-1 text-[0.75rem] font-medium capitalize transition-colors",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              folder === f ? "bg-surface text-ink shadow-card" : "text-ink-muted hover:text-ink",
             )}
             onClick={() => setFolder(f)}
           >
-            {f === "inbox" ? "Received" : f[0].toUpperCase() + f.slice(1)}
+            {f === "inbox" ? "Received" : f[0]!.toUpperCase() + f.slice(1)}
           </button>
         ))}
       </div>
+
       {list.isLoading ? (
-        <LoadingState />
-      ) : (list.data?.threads ?? []).length === 0 ? (
+        <LoadingState compact label="Loading emails…" />
+      ) : threads.length === 0 ? (
         <EmptyState
           icon={Mail}
-          title="No emails yet"
-          description="Emails associated with this record will appear here."
-          actionLabel="Compose email"
-          onAction={() =>
-            setCompose({ leadId, customerId, to: defaultTo ? [defaultTo] : [] })
+          title="No emails linked yet"
+          description={
+            canCompose
+              ? "Send from Compose, or use Email documents on the Clients stage — both are saved here."
+              : "Emails associated with this lead will appear here."
           }
+          actionLabel={canCompose && account ? "Compose email" : undefined}
+          onAction={canCompose && account ? startCompose : undefined}
         />
       ) : (
-        <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
-          {(list.data?.threads ?? []).map((t) => (
-            <li key={t.id}>
-              <button
-                type="button"
-                className="w-full px-3 py-2.5 text-left hover:bg-surface-muted/60"
-                onClick={() => setOpenId(openId === t.id ? null : t.id)}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{t.subject || "(no subject)"}</p>
-                    <p className="truncate text-xs text-foreground-muted">
-                      {t.participants.slice(0, 3).join(", ")}
-                    </p>
-                    <p className="mt-0.5 truncate text-xs text-foreground-subtle">
-                      {t.lastMessagePreview}
-                    </p>
+        <ul className="divide-y divide-line overflow-hidden rounded-column border border-line bg-surface">
+          {threads.map((t) => {
+            const open = openId === t.id;
+            return (
+              <li key={t.id}>
+                <button
+                  type="button"
+                  aria-expanded={open}
+                  className={cn(
+                    "w-full px-3.5 py-2.5 text-left transition-colors",
+                    open ? "bg-surface-muted/50" : "hover:bg-surface-muted/40",
+                  )}
+                  onClick={() => setOpenId(open ? null : t.id)}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-ink">{t.subject || "(no subject)"}</p>
+                      <p className="truncate text-caption text-ink-muted">
+                        {t.participants.slice(0, 3).join(", ")}
+                      </p>
+                      {t.lastMessagePreview ? (
+                        <p className="mt-0.5 truncate text-caption text-ink-subtle">{t.lastMessagePreview}</p>
+                      ) : null}
+                    </div>
+                    <span className="shrink-0 text-[0.6875rem] tabular-nums text-ink-muted">
+                      {formatWhen(t.lastMessageAt)}
+                    </span>
                   </div>
-                  <span className="shrink-0 text-[11px] text-foreground-subtle">
-                    {formatWhen(t.lastMessageAt)}
-                  </span>
-                </div>
-              </button>
-              {openId === t.id ? (
-                <ThreadMessages
-                  thread={t}
-                  account={account}
-                  onReply={(ctx) => setCompose(ctx)}
-                />
-              ) : null}
-            </li>
-          ))}
+                </button>
+                {open ? (
+                  <ThreadMessages thread={t} account={account} onReply={(ctx) => setCompose(ctx)} />
+                ) : null}
+              </li>
+            );
+          })}
         </ul>
       )}
+
       <EmailComposer
         open={!!compose}
         onOpenChange={(o) => {
@@ -171,13 +197,19 @@ function ThreadMessages({
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["email-threads"] }),
   });
 
-  if (detail.isLoading) return <div className="px-3 pb-3"><LoadingState /></div>;
+  if (detail.isLoading) {
+    return (
+      <div className="px-3.5 pb-3">
+        <LoadingState compact label="Loading messages…" />
+      </div>
+    );
+  }
   const messages = detail.data?.messages ?? [];
 
   return (
-    <div className="space-y-3 border-t border-border bg-surface-muted/30 px-3 py-3">
+    <div className="space-y-2.5 border-t border-line bg-surface-muted/25 px-3.5 py-3">
       <div className="flex justify-end">
-        <Button size="sm" variant="ghost" onClick={() => star.mutate()} aria-label="Star">
+        <Button size="sm" variant="ghost" onClick={() => star.mutate()} aria-label="Star thread">
           <Star className={cn("size-3.5", thread.starred && "fill-warning text-warning")} />
         </Button>
       </div>
@@ -185,31 +217,31 @@ function ThreadMessages({
         <article
           key={m.id}
           className={cn(
-            "rounded-lg border border-border bg-surface px-3 py-2.5",
-            m.direction === "outbound" && "ml-6",
-            m.direction === "inbound" && "mr-6",
-            m.status === "failed" && "border-destructive/40",
+            "rounded-card border border-line bg-surface px-3 py-2.5",
+            m.direction === "outbound" && "ml-4",
+            m.direction === "inbound" && "mr-4",
+            m.status === "failed" && "border-danger/40",
             m.status === "draft" && "border-dashed",
           )}
         >
           <div className="flex items-start justify-between gap-2">
-            <div>
-              <p className="text-sm font-medium">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium text-ink">
                 {m.fromName || m.from}{" "}
-                <span className="font-normal text-foreground-muted">→ {m.to.join(", ")}</span>
+                <span className="font-normal text-ink-muted">→ {m.to.join(", ")}</span>
               </p>
-              <p className="text-[11px] text-foreground-subtle">
+              <p className="text-[0.6875rem] text-ink-muted">
                 {statusCopy(m)} · {formatWhen(m.sentAt || m.receivedAt || m.createdAt)}
               </p>
             </div>
-            {m.hasAttachments ? <Paperclip className="size-3.5 text-foreground-muted" /> : null}
+            {m.hasAttachments ? <Paperclip className="size-3.5 shrink-0 text-ink-muted" aria-hidden /> : null}
           </div>
           <div
-            className="prose prose-sm mt-2 max-w-none text-sm"
+            className="prose prose-sm mt-2 max-w-none text-sm text-ink"
             dangerouslySetInnerHTML={{ __html: m.bodyHtml || m.bodyText.replace(/\n/g, "<br/>") }}
           />
           {m.status === "failed" ? (
-            <p className="mt-2 text-xs text-destructive">
+            <p className="mt-2 text-caption text-danger">
               Failed to send. Ask your Team Lead to check the mailbox connection in Team Email.
             </p>
           ) : null}
@@ -252,8 +284,8 @@ function ThreadMessages({
         </article>
       ))}
       {!account ? (
-        <p className="text-xs text-foreground-muted">
-          Your company mailbox is not connected yet. Ask your Team Lead to link it in Team Email.
+        <p className="text-caption text-ink-muted">
+          Company mailbox is not connected. Ask your Team Lead to link it in Team Email.
         </p>
       ) : null}
     </div>

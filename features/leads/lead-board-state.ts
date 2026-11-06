@@ -46,7 +46,7 @@ export function classifyMove(
   if (card.stageId === to.id) return { kind: "noop" };
   if (isClosedStatus(card.status)) return { kind: "reopen", lostReason: to.isLost };
   if (to.isLost) return { kind: "lost_reason" };
-  // Nurturing "Complete" is isWon in the schema, but it is not a sales win — no doc deadline.
+  // Nurturing "Outcome" is isWon in the schema, but it is not a sales purchase — no doc deadline.
   if (to.isWon && !isNurturingPipeline(opts?.pipelineId)) return { kind: "won_deadline" };
   return { kind: "move" };
 }
@@ -120,6 +120,18 @@ export function appendStagePage(
       const seen = new Set(s.leads.map((l) => l.id));
       return { ...s, hasMore: page.hasMore, leads: [...s.leads, ...page.leads.filter((l) => !seen.has(l.id))] };
     }),
+  };
+}
+
+/** Replaces a column's loaded cards (e.g. after changing that stage's sort). */
+export function replaceStagePage(
+  board: LeadBoard,
+  stageId: string,
+  page: { leads: LeadBoardCard[]; hasMore: boolean },
+): LeadBoard {
+  return {
+    ...board,
+    stages: board.stages.map((s) => (s.id === stageId ? { ...s, hasMore: page.hasMore, leads: page.leads } : s)),
   };
 }
 

@@ -2,9 +2,14 @@ import type { PipelineStatus } from "./pipeline-totals.ts";
 import { closedRangeLabel, isIsoDate, setIntervalParams, type ClosedRange, type Interval } from "./closed-range.ts";
 
 export type NextActionFilter = "" | "overdue" | "today" | "week" | "none";
-export type ClosedSortKey = "name" | "value" | "closed";
+export type ClosedSortKey = "name" | "value" | "closed" | "next";
 export type SortOrder = "asc" | "desc";
-export type ClosedView = "board" | "table";
+/** Board column card order (display only). */
+export type BoardSortKey = "value" | "days" | "time" | "priority";
+/** Board (kanban) is the default; table is the list layout. */
+export type PipelineView = "board" | "table";
+/** @deprecated Prefer PipelineView — kept for closed-filter call sites. */
+export type ClosedView = PipelineView;
 
 /** Everything the Pipeline page can be filtered by. Mirrors the URL, so views are shareable. */
 export type PipelineFilters = {
@@ -17,6 +22,8 @@ export type PipelineFilters = {
   source: string;
   /** Exact lead.country; "(Unknown)" matches blank. */
   country: string;
+  /** Table view only: narrow to one pipeline stage id. */
+  stage: string;
   /** Value range in whole currency units; "" when unset. */
   min: string;
   max: string;
@@ -25,11 +32,14 @@ export type PipelineFilters = {
   closed: ClosedRange;
   closedFrom: string;
   closedTo: string;
-  /** Won / Lost as a kanban board or a table. */
-  view: ClosedView;
-  /** Won / Lost sorting, and table paging. */
+  /** Kanban board or table layout for the current status. */
+  view: PipelineView;
+  /** Table sorting (closed date for Won/Lost; next action for open), and paging. */
   sort: ClosedSortKey;
   order: SortOrder;
+  /** Global board column sort (kanban only). */
+  boardSort: BoardSortKey;
+  boardOrder: SortOrder;
   page: number;
 };
 
@@ -41,6 +51,7 @@ export const DEFAULT_PIPELINE_FILTERS: PipelineFilters = {
   team: "",
   source: "",
   country: "",
+  stage: "",
   min: "",
   max: "",
   pipeline: "",
@@ -50,21 +61,44 @@ export const DEFAULT_PIPELINE_FILTERS: PipelineFilters = {
   view: "board",
   sort: "closed",
   order: "desc",
+  boardSort: "days",
+  boardOrder: "desc",
   page: 1,
 };
+
+export const BOARD_SORT_OPTIONS: { value: `${BoardSortKey}:${SortOrder}`; label: string; group: string }[] = [
+  { value: "value:asc", label: "Low to high", group: "Lead value" },
+  { value: "value:desc", label: "High to low", group: "Lead value" },
+  { value: "days:desc", label: "Fewest days first", group: "Days in stage" },
+  { value: "days:asc", label: "Most days first", group: "Days in stage" },
+  { value: "time:asc", label: "Soonest next action", group: "Time" },
+  { value: "time:desc", label: "Latest next action", group: "Time" },
+  { value: "priority:desc", label: "Highest first", group: "Priority" },
+  { value: "priority:asc", label: "Lowest first", group: "Priority" },
+];
+
+export function boardSortLabel(sort: BoardSortKey, order: SortOrder): string {
+  return BOARD_SORT_OPTIONS.find((o) => o.value === `${sort}:${order}`)?.label
+    ?? BOARD_SORT_OPTIONS.find((o) => o.value.startsWith(`${sort}:`))?.group
+    ?? "Days in stage";
+}
+
+export function boardSortGroup(sort: BoardSortKey): string {
+  return BOARD_SORT_OPTIONS.find((o) => o.value.startsWith(`${sort}:`))?.group ?? "Sort";
+}
 
 export type ClosedOutcome = "won" | "lost" | "complete";
 
 export const isClosedStatus = (s: PipelineStatus): s is ClosedOutcome =>
   s === "won" || s === "lost" || s === "complete";
 
-/** Nurturing's closed-won stage is Complete; sales still uses Won. */
-export function closedWonLabel(nurturing: boolean): "Complete" | "Won" {
-  return nurturing ? "Complete" : "Won";
+/** Nurturing's closed-won stage is Outcome; sales uses Purchased. */
+export function closedWonLabel(nurturing: boolean): "Outcome" | "Purchased" {
+  return nurturing ? "Outcome" : "Purchased";
 }
 
 export function closedStatusLabel(status: PipelineStatus, nurturing = false): string {
-  if (status === "complete") return "Complete";
+  if (status === "complete") return "Outcome";
   if (status === "won") return closedWonLabel(nurturing);
   if (status === "lost") return "Lost";
   return "";
@@ -82,19 +116,19 @@ export const CLOSED_SORT_OPTIONS: { value: `${ClosedSortKey}:${SortOrder}`; labe
 export const STATUS_OPTIONS: { value: PipelineStatus; label: string }[] = [
   { value: "all", label: "All" },
   { value: "open", label: "Open" },
-  { value: "won", label: "Won" },
+  { value: "won", label: "Purchased" },
   { value: "lost", label: "Lost" },
 ];
 
-/** Nurturing adds Complete after Lost; sales keeps Won as the closed-success filter. */
+/** Nurturing adds Outcome after Lost; sales keeps Purchased as the closed-success filter. */
 export function statusOptions(nurturing: boolean): { value: PipelineStatus; label: string }[] {
   if (!nurturing) return STATUS_OPTIONS;
   return [
     { value: "all", label: "All" },
     { value: "open", label: "Open" },
-    { value: "won", label: "Won" },
+    { value: "won", label: "Purchased" },
     { value: "lost", label: "Lost" },
-    { value: "complete", label: "Complete" },
+    { value: "complete", label: "Outcome" },
   ];
 }
 
@@ -115,6 +149,7 @@ const FILTER_KEYS = [
   "team",
   "source",
   "country",
+  "stage",
   "min",
   "max",
   "pipeline",
@@ -124,6 +159,8 @@ const FILTER_KEYS = [
   "view",
   "sort",
   "order",
+  "boardSort",
+  "boardOrder",
   "page",
 ] as const;
 
@@ -156,6 +193,7 @@ export function parsePipelineFilters(sp: URLSearchParams): PipelineFilters {
     team: sp.get("team") ?? "",
     source: sp.get("source") ?? "",
     country: (sp.get("country") ?? "").trim(),
+    stage: sp.get("stage") ?? "",
     min,
     max,
     pipeline: sp.get("pipeline") ?? "",
@@ -163,8 +201,10 @@ export function parsePipelineFilters(sp: URLSearchParams): PipelineFilters {
     closedFrom,
     closedTo,
     view: oneOf(sp.get("view"), ["board", "table"] as const, "board"),
-    sort: oneOf(sp.get("sort"), ["name", "value", "closed"] as const, "closed"),
+    sort: oneOf(sp.get("sort"), ["name", "value", "closed", "next"] as const, "closed"),
     order: oneOf(sp.get("order"), ["asc", "desc"] as const, "desc"),
+    boardSort: oneOf(sp.get("boardSort"), ["value", "days", "time", "priority"] as const, "days"),
+    boardOrder: oneOf(sp.get("boardOrder"), ["asc", "desc"] as const, "desc"),
     page: Number.isInteger(page) && page > 1 ? page : 1,
   };
 }
@@ -181,6 +221,7 @@ export function writePipelineFilters(f: PipelineFilters, base: URLSearchParams =
   if (f.team) out.set("team", f.team);
   if (f.source) out.set("source", f.source);
   if (f.country.trim()) out.set("country", f.country.trim());
+  if (f.stage) out.set("stage", f.stage);
   if (f.min) out.set("min", f.min);
   if (f.max) out.set("max", f.max);
   if (f.pipeline) out.set("pipeline", f.pipeline);
@@ -190,6 +231,8 @@ export function writePipelineFilters(f: PipelineFilters, base: URLSearchParams =
   if (f.view !== d.view) out.set("view", f.view);
   if (f.sort !== d.sort) out.set("sort", f.sort);
   if (f.order !== d.order) out.set("order", f.order);
+  if (f.boardSort !== d.boardSort) out.set("boardSort", f.boardSort);
+  if (f.boardOrder !== d.boardOrder) out.set("boardOrder", f.boardOrder);
   if (f.page > 1) out.set("page", String(f.page));
   return out;
 }
@@ -210,10 +253,35 @@ function sharedParams(pipelineId: string, f: PipelineFilters): URLSearchParams {
 }
 
 export function boardParams(pipelineId: string, f: PipelineFilters): URLSearchParams {
-  return sharedParams(pipelineId, f);
+  const p = sharedParams(pipelineId, f);
+  p.set("sort", f.boardSort);
+  p.set("order", f.boardOrder);
+  return p;
 }
 
-const SORT_PARAM: Record<ClosedSortKey, string> = { name: "name", value: "value", closed: "closed" };
+const SORT_PARAM: Record<ClosedSortKey, string> = {
+  name: "name",
+  value: "value",
+  closed: "closed",
+  next: "nextActivity",
+};
+
+/**
+ * Open / All leads as a paged table for the current pipeline filters.
+ * `sort=closed` (the closed-view default) remaps to next activity so switching
+ * layouts does not send a meaningless closed-date sort.
+ */
+export function openListParams(pipelineId: string, f: PipelineFilters, pageSize: number): URLSearchParams {
+  const p = sharedParams(pipelineId, f);
+  if (f.status === "all") p.set("status", "all");
+  if (f.stage) p.set("stageId", f.stage);
+  const sortKey: ClosedSortKey = f.sort === "closed" ? "next" : f.sort;
+  p.set("sort", SORT_PARAM[sortKey]);
+  p.set("order", f.sort === "closed" ? "asc" : f.order);
+  p.set("limit", String(pageSize));
+  p.set("offset", String((f.page - 1) * pageSize));
+  return p;
+}
 
 /**
  * Won / Lost leads that closed within `interval`, sorted, one page at a time.
@@ -240,8 +308,9 @@ export function closedLeadsParams(
     p.set("status", "all");
   }
   setIntervalParams(p, interval);
-  p.set("sort", SORT_PARAM[f.sort]);
-  p.set("order", f.order);
+  const sortKey: ClosedSortKey = f.sort === "next" ? "closed" : f.sort;
+  p.set("sort", SORT_PARAM[sortKey]);
+  p.set("order", f.sort === "next" ? "desc" : f.order);
   p.set("limit", String(limit));
   p.set("offset", String(offset));
   return p;
@@ -259,7 +328,7 @@ export function closedListParams(
   return closedLeadsParams(pipelineId, stageId, f, interval, pageSize, (f.page - 1) * pageSize, outcome);
 }
 
-export type FilterChipKey = "q" | "next" | "owner" | "team" | "source" | "country" | "value" | "closed";
+export type FilterChipKey = "q" | "next" | "owner" | "team" | "source" | "country" | "stage" | "value" | "closed";
 export type FilterChip = { key: FilterChipKey; label: string };
 
 const formatAmount = (v: string) => Number(v).toLocaleString("en-AU");
@@ -273,7 +342,13 @@ function countryChipLabel(country: string): string {
 /** Removable chips for every active filter except status, which has its own control. */
 export function activeFilterChips(
   f: PipelineFilters,
-  names: { owner?: string; team?: string; currencySymbol?: string; nurturing?: boolean } = {},
+  names: {
+    owner?: string;
+    team?: string;
+    stage?: string;
+    currencySymbol?: string;
+    nurturing?: boolean;
+  } = {},
 ): FilterChip[] {
   const chips: FilterChip[] = [];
   const sym = names.currencySymbol ?? "$";
@@ -285,6 +360,9 @@ export function activeFilterChips(
   if (f.next && !closedView) {
     const label = NEXT_ACTION_OPTIONS.find((o) => o.value === f.next)?.label ?? f.next;
     chips.push({ key: "next", label: `Next action: ${label.toLowerCase()}` });
+  }
+  if (f.stage && f.view === "table" && !closedView) {
+    chips.push({ key: "stage", label: `Stage: ${names.stage ?? "selected"}` });
   }
   if (f.team) chips.push({ key: "team", label: `Team: ${names.team ?? "selected"}` });
   if (f.owner) chips.push({ key: "owner", label: `Individual: ${names.owner ?? "selected"}` });
@@ -319,6 +397,7 @@ export function clearAllFilters(f: PipelineFilters): PipelineFilters {
     team: "",
     source: "",
     country: "",
+    stage: "",
     min: "",
     max: "",
     closed: "",
@@ -333,5 +412,5 @@ export function hasNarrowingFilters(f: PipelineFilters): boolean {
   if (isClosedStatus(f.status)) {
     return Boolean(f.q || f.owner || f.team || f.source || f.country || f.min || f.max || f.closed);
   }
-  return Boolean(f.q || f.next || f.owner || f.team || f.source || f.country || f.min || f.max);
+  return Boolean(f.q || f.next || f.owner || f.team || f.source || f.country || f.stage || f.min || f.max);
 }

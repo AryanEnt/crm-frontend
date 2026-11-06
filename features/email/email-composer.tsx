@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bold, Italic, Link2, List, Paperclip, Eye } from "lucide-react";
+import { Bold, Italic, Link2, List, Paperclip, Eye, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,9 +15,44 @@ import {
   ModalHeader,
   ModalTitle,
 } from "@/components/ui/modal";
-import { emailApi, type EmailAccount, type EmailMessage, type EmailTemplate } from "@/lib/api/email";
+import {
+  emailApi,
+  type ComposeAttachmentPayload,
+  type EmailAccount,
+  type EmailMessage,
+  type EmailTemplate,
+} from "@/lib/api/email";
 import { ApiError } from "@/types/api";
 import { cn } from "@/lib/utils";
+
+const MAX_ATTACH_BYTES = 15 * 1024 * 1024;
+const MAX_ATTACH_COUNT = 10;
+
+type PendingAttachment = {
+  id: string;
+  file: File;
+};
+
+async function fileToComposeAttachment(file: File): Promise<ComposeAttachmentPayload> {
+  const buf = await file.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return {
+    filename: file.name || "attachment",
+    mimeType: file.type || "application/octet-stream",
+    contentBase64: btoa(binary),
+  };
+}
+
+function formatAttachSize(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 export type ComposerContext = {
   leadId?: string;
@@ -48,15 +83,19 @@ export function EmailComposer({
   context,
   account,
   fullscreen = false,
+  onSent,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   context: ComposerContext;
   account?: EmailAccount | null;
   fullscreen?: boolean;
+  /** Called after a successful send (not drafts / failed sends). */
+  onSent?: (msg: EmailMessage) => void;
 }) {
   const qc = useQueryClient();
   const editorRef = React.useRef<HTMLDivElement>(null);
+  const attachInputRef = React.useRef<HTMLInputElement>(null);
   const [to, setTo] = React.useState((context.to ?? []).join(", "));
   const [cc, setCc] = React.useState("");
   const [bcc, setBcc] = React.useState("");
@@ -66,6 +105,7 @@ export function EmailComposer({
   const [saveState, setSaveState] = React.useState<"idle" | "saving" | "saved">("idle");
   const [preview, setPreview] = React.useState<string | null>(null);
   const [showPreview, setShowPreview] = React.useState(false);
+  const [attachments, setAttachments] = React.useState<PendingAttachment[]>([]);
   const saveTimer = React.useRef<number | null>(null);
 
   const templatesQuery = useQuery({
@@ -81,6 +121,7 @@ export function EmailComposer({
     setDraftId(null);
     setSaveState("idle");
     setShowPreview(false);
+    setAttachments([]);
     window.setTimeout(() => {
       if (editorRef.current) {
         editorRef.current.innerHTML = context.quoteHtml
@@ -89,6 +130,23 @@ export function EmailComposer({
       }
     }, 0);
   }, [open, context.to, context.subject, context.threadId, context.inReplyTo, context.quoteHtml]);
+
+  const addFiles = (list: FileList | File[] | null) => {
+    if (!list || list.length === 0) return;
+    const next = [...attachments];
+    for (const file of Array.from(list)) {
+      if (next.length >= MAX_ATTACH_COUNT) {
+        toast.error(`You can attach up to ${MAX_ATTACH_COUNT} files`);
+        break;
+      }
+      if (file.size > MAX_ATTACH_BYTES) {
+        toast.error(`“${file.name}” is over 15 MB`);
+        continue;
+      }
+      next.push({ id: `${file.name}-${file.size}-${file.lastModified}-${Math.random()}`, file });
+    }
+    setAttachments(next);
+  };
 
   const html = () => editorRef.current?.innerHTML ?? "";
 
@@ -150,7 +208,12 @@ export function EmailComposer({
           code: "unresolved_variables",
         });
       }
-      if (draftId) {
+      const outboundAttachments =
+        attachments.length > 0
+          ? await Promise.all(attachments.map((a) => fileToComposeAttachment(a.file)))
+          : [];
+      // Drafts don't carry files yet — send a fresh message when attaching.
+      if (draftId && outboundAttachments.length === 0) {
         await emailApi.patchDraft(draftId, {
           to: splitAddrs(to),
           cc: splitAddrs(cc),
@@ -173,6 +236,7 @@ export function EmailComposer({
         threadId: context.threadId,
         inReplyTo: context.inReplyTo,
         send: true,
+        attachments: outboundAttachments.length > 0 ? outboundAttachments : undefined,
       });
     },
     onSuccess: (msg: EmailMessage) => {
@@ -182,11 +246,12 @@ export function EmailComposer({
         );
         return;
       }
-      toast.success("Email sent");
+      if (!onSent) toast.success("Email sent");
       void qc.invalidateQueries({ queryKey: ["email-threads"] });
       void qc.invalidateQueries({ queryKey: ["email-thread"] });
       void qc.invalidateQueries({ queryKey: ["timeline"] });
       onOpenChange(false);
+      onSent?.(msg);
     },
     onError: (err: Error) => {
       toast.error(
@@ -375,6 +440,31 @@ export function EmailComposer({
               }}
             />
           </div>
+          {attachments.length > 0 ? (
+            <ul className="space-y-1 rounded-md border border-border bg-surface-muted/30 p-2">
+              {attachments.map((a) => (
+                <li
+                  key={a.id}
+                  className="flex items-center gap-2 rounded-md px-1.5 py-1 text-sm text-foreground"
+                >
+                  <Paperclip className="size-3.5 shrink-0 text-foreground-muted" aria-hidden />
+                  <span className="min-w-0 flex-1 truncate font-medium">{a.file.name}</span>
+                  <span className="shrink-0 text-[11px] text-foreground-subtle">
+                    {formatAttachSize(a.file.size)}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${a.file.name}`}
+                    className="inline-flex size-7 items-center justify-center rounded-md text-foreground-muted hover:bg-surface hover:text-foreground"
+                    onClick={() => setAttachments((prev) => prev.filter((x) => x.id !== a.id))}
+                  >
+                    <X className="size-3.5" aria-hidden />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+
           {showPreview ? (
             <div className="rounded-md border border-border bg-surface-muted/40 p-3 text-sm">
               <p className="mb-1 text-[11px] uppercase tracking-wide text-foreground-subtle">
@@ -390,9 +480,37 @@ export function EmailComposer({
         </div>
 
         <ModalFooter className="border-t border-border px-4 py-3">
-          <div className="mr-auto flex items-center gap-2 text-xs text-foreground-muted">
-            <Paperclip className="size-3.5" />
-            Attachments from Thunderbird appear after mailbox sync
+          <div className="mr-auto flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={sendMut.isPending || attachments.length >= MAX_ATTACH_COUNT}
+              onClick={() => attachInputRef.current?.click()}
+            >
+              <Paperclip className="size-3.5" />
+              Attach files
+            </Button>
+            <input
+              ref={attachInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              tabIndex={-1}
+              aria-hidden
+              accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx,.txt,image/*,application/pdf"
+              onChange={(e) => {
+                addFiles(e.target.files);
+                e.currentTarget.value = "";
+              }}
+            />
+            {attachments.length > 0 ? (
+              <span className="text-xs text-foreground-muted">
+                {attachments.length} file{attachments.length === 1 ? "" : "s"} · max 15 MB each
+              </span>
+            ) : (
+              <span className="text-xs text-foreground-muted">PDF, images, Office docs</span>
+            )}
           </div>
           <Button
             type="button"

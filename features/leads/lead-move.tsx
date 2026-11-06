@@ -28,6 +28,8 @@ import {
   LostReasonFields,
   useLostReasonDraft,
 } from "@/features/leads/lost-reason-dialog";
+import { isContactRatingBlocker } from "@/features/pipeline/contact-rating";
+import { ContactRatingFields, contactRatingReady } from "@/features/pipeline/contact-rating-fields";
 
 export { LEAD_LOST_REASONS } from "@/features/leads/lost-reason-dialog";
 
@@ -142,7 +144,11 @@ export function useLeadMove({
           return;
         }
         setPending({ kind: "blocked", vars, details: err.details });
-        setAnnounce("Stage move blocked. Review the requirements.");
+        setAnnounce(
+          isContactRatingBlocker(err.details)
+            ? "Add a contact rating and remarks before leaving Contacted."
+            : "Stage move blocked. Review the requirements.",
+        );
         return;
       }
       if (err instanceof ApiError && err.status === 400 && isLeadClosedError(err.details)) {
@@ -223,8 +229,20 @@ export function useLeadMove({
           mutation.mutate({ ...pending.req, reopen: true, lostReason: lostReason ?? pending.req.lostReason })
         }
       />
+      <ContactRatingMoveModal
+        open={pending?.kind === "blocked" && isContactRatingBlocker(pending.details)}
+        leadName={pending?.kind === "blocked" ? pending.vars.leadName : ""}
+        destinationName={pending?.kind === "blocked" ? pending.vars.to.name : ""}
+        leadId={pending?.kind === "blocked" ? pending.vars.leadId : ""}
+        movePending={mutation.isPending}
+        onCancel={() => setPending(null)}
+        onForce={() => pending?.kind === "blocked" && mutation.mutate({ ...pending.vars, force: true })}
+        onSavedAndMove={() => pending?.kind === "blocked" && mutation.mutate(pending.vars)}
+      />
       <RequirementsModal
+        open={pending?.kind === "blocked" && !isContactRatingBlocker(pending.details)}
         details={pending?.kind === "blocked" ? pending.details : null}
+        destinationName={pending?.kind === "blocked" ? pending.vars.to.name : ""}
         loading={mutation.isPending}
         onCancel={() => setPending(null)}
         onForce={() => pending?.kind === "blocked" && mutation.mutate({ ...pending.vars, force: true })}
@@ -267,16 +285,17 @@ function WonDeadlineDialog({
     <Modal open={open} onOpenChange={(o) => !o && onCancel()}>
       <ModalContent>
         <ModalHeader>
-          <ModalTitle>Close deal for {leadName || "this lead"}</ModalTitle>
+          <ModalTitle>Mark {leadName || "this lead"} as purchased</ModalTitle>
           <ModalDescription>
-            Enter the closing amount, then choose when documents must be sent. We&apos;ll move the lead into Nurturing
-            and track that send-by date there.
+            Confirm the final sale amount
+            {initialAmount != null ? ` (estimate was ${initialAmount.toLocaleString("en-AU")})` : ""}, then pick when
+            documents must be sent. We&apos;ll move the lead into Nurturing after this.
           </ModalDescription>
         </ModalHeader>
         <div className="space-y-3">
           <div className="space-y-1.5">
             <Label htmlFor="closing-amount" required>
-              Closing amount
+              Final amount
             </Label>
             <Input
               id="closing-amount"
@@ -286,6 +305,7 @@ function WonDeadlineDialog({
               placeholder="e.g. 25000"
               autoFocus={!amount}
             />
+            <p className="text-meta text-ink-muted">What the customer actually paid or committed to.</p>
           </div>
           <div className="space-y-1.5">
             <Label required>Send documents by</Label>
@@ -302,7 +322,7 @@ function WonDeadlineDialog({
             disabled={!deadline || !amountOk}
             onClick={() => amountOk && onConfirm(deadline, parsed)}
           >
-            Deal Close — move to Nurturing
+            Confirm purchased
           </Button>
         </ModalFooter>
       </ModalContent>
@@ -330,7 +350,7 @@ function ReopenModal({
   onConfirm: (lostReason?: string) => void;
 }) {
   const r = useLostReasonDraft(open);
-  const closedAs = status === "won" ? "Won" : "Lost";
+  const closedAs = status === "won" ? "Purchased" : "Lost";
   return (
     <Modal open={open} onOpenChange={(o) => !o && onCancel()}>
       <ModalContent>
@@ -359,34 +379,167 @@ function ReopenModal({
   );
 }
 
+function friendlyRequirementLabel(raw: string): string {
+  const key = raw.trim().toLowerCase();
+  const known: Record<string, string> = {
+    contact_rating: "Contact rating",
+    contact_remarks: "Contact remarks",
+    email: "Email",
+    phone: "Phone",
+    source: "Source",
+    value: "Estimated value",
+    company: "Company",
+    owner: "Owner",
+  };
+  if (known[key]) return known[key];
+  return raw
+    .replace(/[_-]+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function ContactRatingMoveModal({
+  open,
+  leadName,
+  destinationName,
+  leadId,
+  movePending,
+  onCancel,
+  onForce,
+  onSavedAndMove,
+}: {
+  open: boolean;
+  leadName: string;
+  destinationName: string;
+  leadId: string;
+  movePending: boolean;
+  onCancel: () => void;
+  onForce: () => void;
+  onSavedAndMove: () => void;
+}) {
+  const [rating, setRating] = React.useState(0);
+  const [remarks, setRemarks] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
+  const [wasOpen, setWasOpen] = React.useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) {
+      setRating(0);
+      setRemarks("");
+      setSaving(false);
+    }
+  }
+
+  const canSave = contactRatingReady(rating, remarks);
+  const busy = saving || movePending;
+
+  // Clear local saving once the follow-up move finishes (success or another blocker).
+  const [wasMovePending, setWasMovePending] = React.useState(movePending);
+  if (movePending !== wasMovePending) {
+    setWasMovePending(movePending);
+    if (!movePending) setSaving(false);
+  }
+
+  const saveAndMove = async () => {
+    if (!canSave || !leadId || busy) return;
+    setSaving(true);
+    try {
+      await crmApi.updateLead(leadId, {
+        contactRating: rating,
+        contactRemarks: remarks.trim(),
+        forceUpdate: true,
+      });
+      onSavedAndMove();
+    } catch (err) {
+      toast.error("Couldn't save contact rating", {
+        description: err instanceof Error && err.message ? err.message : undefined,
+      });
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal open={open} onOpenChange={(o) => !o && !busy && onCancel()}>
+      <ModalContent>
+        <ModalHeader>
+          <ModalTitle>How was the contact?</ModalTitle>
+          <ModalDescription>
+            Add a star rating and a short note before leaving Contacted
+            {destinationName ? ` for ${destinationName}` : ""}
+            {leadName ? ` (${leadName})` : ""}.
+          </ModalDescription>
+        </ModalHeader>
+        <ContactRatingFields
+          rating={rating}
+          remarks={remarks}
+          onRatingChange={setRating}
+          onRemarksChange={setRemarks}
+          disabled={busy}
+          remarksId="contact-rating-move-remarks"
+        />
+        <ModalFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-between">
+          <Button variant="outline" onClick={onCancel} disabled={busy}>
+            Cancel
+          </Button>
+          <div className="flex w-full flex-col-reverse gap-2 sm:w-auto sm:flex-row">
+            <Button variant="ghost" loading={movePending && !saving} disabled={busy} onClick={onForce}>
+              Move anyway
+            </Button>
+            <Button loading={busy} disabled={!canSave} onClick={() => void saveAndMove()}>
+              Save and move
+            </Button>
+          </div>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
+  );
+}
+
 function RequirementsModal({
+  open,
   details,
+  destinationName,
   loading,
   onCancel,
   onForce,
 }: {
+  open: boolean;
   details: StageMoveError | null;
+  destinationName: string;
   loading: boolean;
   onCancel: () => void;
   onForce: () => void;
 }) {
   const items = [
-    ...(details?.missingFields ?? []).map((f) => ({ key: `f-${f}`, label: "Field", value: f })),
-    ...(details?.missingActivities ?? []).map((a) => ({ key: `a-${a}`, label: "Activity", value: a })),
-    ...(details?.missingDocuments ?? []).map((d) => ({ key: `d-${d}`, label: "Document", value: d })),
+    ...(details?.missingFields ?? []).map((f) => ({
+      key: `f-${f}`,
+      label: "Field",
+      value: friendlyRequirementLabel(f),
+    })),
+    ...(details?.missingActivities ?? []).map((a) => ({
+      key: `a-${a}`,
+      label: "Activity",
+      value: friendlyRequirementLabel(a),
+    })),
+    ...(details?.missingDocuments ?? []).map((d) => ({
+      key: `d-${d}`,
+      label: "Document",
+      value: friendlyRequirementLabel(d),
+    })),
   ];
+  const stageLabel = destinationName || "this stage";
   return (
-    <Modal open={!!details} onOpenChange={(o) => !o && onCancel()}>
+    <Modal open={open} onOpenChange={(o) => !o && onCancel()}>
       <ModalContent>
         <ModalHeader>
-          <ModalTitle>Before moving to {details?.stageName ?? "this stage"}</ModalTitle>
+          <ModalTitle>Before moving to {stageLabel}</ModalTitle>
           <ModalDescription>This stage expects a few things first. Complete them, or move anyway.</ModalDescription>
         </ModalHeader>
         <ul className="space-y-1.5 text-sm">
           {items.map((i) => (
             <li key={i.key} className="flex items-baseline gap-2">
               <span className="w-16 shrink-0 text-meta">{i.label}</span>
-              <span className="font-medium text-ink">{i.value.replace(/_/g, " ")}</span>
+              <span className="font-medium text-ink">{i.value}</span>
             </li>
           ))}
         </ul>

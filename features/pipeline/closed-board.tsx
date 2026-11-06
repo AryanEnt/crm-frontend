@@ -35,6 +35,12 @@ export function leadToCard(lead: Lead): LeadBoardCard {
     wonAt: lead.wonAt ?? null,
     lostAt: lead.lostAt ?? null,
     lostReason: lead.lostReason ?? "",
+    negotiationTag: lead.negotiationTag ?? "",
+    negotiationRemarks: lead.negotiationRemarks ?? "",
+    contactRating: lead.contactRating ?? null,
+    contactRemarks: lead.contactRemarks ?? "",
+    documentDelayRemarks: lead.documentDelayRemarks ?? "",
+    documentDelayRemarksAt: lead.documentDelayRemarksAt ?? null,
   };
 }
 
@@ -58,7 +64,7 @@ export function ClosedBoard({
     (filters.status === "won"
       ? ({
           id: "won",
-          name: "Won",
+          name: "Purchased",
           position: 0,
           isWon: true,
           isLost: false,

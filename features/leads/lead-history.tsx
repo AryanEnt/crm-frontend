@@ -129,7 +129,7 @@ export function LeadHistory({ leadId }: { leadId: string }) {
     return (
       <EmptyState
         title="No stage history yet"
-        description="History appears when this lead is created or moved between stages."
+        description="Stage moves appear here. Emails and calls are on the Timeline and Emails tabs."
       />
     );
   }
@@ -137,15 +137,20 @@ export function LeadHistory({ leadId }: { leadId: string }) {
   const nowMs = (baseNowMs || 0) + extraMs;
 
   return (
-    <ol className="relative space-y-3 before:absolute before:bottom-3 before:left-[4px] before:top-3 before:w-px before:bg-line">
-      {periods.map((period) => (
-        <PeriodCard
-          key={period.id}
-          period={period}
-          timeZone={timeZone}
-          durationSeconds={liveSeconds(period, nowMs)}
-        />
-      ))}
-    </ol>
+    <div className="space-y-3">
+      <p className="text-caption text-ink-muted">
+        Time spent in each pipeline stage. For emails and calls, use Timeline or Emails.
+      </p>
+      <ol className="relative space-y-3 before:absolute before:bottom-3 before:left-[4px] before:top-3 before:w-px before:bg-line">
+        {periods.map((period) => (
+          <PeriodCard
+            key={period.id}
+            period={period}
+            timeZone={timeZone}
+            durationSeconds={liveSeconds(period, nowMs)}
+          />
+        ))}
+      </ol>
+    </div>
   );
 }

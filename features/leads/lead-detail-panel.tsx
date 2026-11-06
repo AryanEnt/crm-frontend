@@ -19,8 +19,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Avatar } from "@/components/ui/console/avatar";
 import {
   Drawer,
@@ -48,9 +46,12 @@ import {
 } from "@/components/ui/modal";
 import { ActivityQuickCreateDialog } from "@/features/activities/activity-quick-create";
 import { leadMovedMessage } from "@/features/activities/lead-moved";
+import { contactRatingLabel, isContactedStage } from "@/features/pipeline/contact-rating";
+import { ContactRatingControl } from "@/features/pipeline/contact-rating-control";
 import { useAuth } from "@/features/auth/auth-provider";
 import { CommunicationActions } from "@/features/communications/communication-actions";
 import { EmailComposer } from "@/features/email/email-composer";
+import { RecordEmailSection } from "@/features/email/record-email-section";
 import { LeadAttachments } from "@/features/leads/lead-attachments";
 import { CreateLeadSheet } from "@/features/leads/create/create-lead-sheet";
 import { PhoneValidationBadge, PhoneValidationDetail } from "@/features/leads/phone-validation-badge";
@@ -66,6 +67,7 @@ import { isNurturingPipeline } from "@/features/leads/lead-board-state";
 import { LeadHistory } from "@/features/leads/lead-history";
 import { useLeadMove } from "@/features/leads/lead-move";
 import { UnifiedTimeline } from "@/features/timeline/unified-timeline";
+import { Textarea } from "@/components/ui/console/textarea";
 import { crmApi, type Activity, type CrmDocument, type Lead, type PipelineStage } from "@/lib/api/crm";
 import { emailApi } from "@/lib/api/email";
 import { stageBadgeClass } from "@/lib/design-tokens";
@@ -179,9 +181,6 @@ function PanelBody({
   const [emailOpen, setEmailOpen] = React.useState(false);
   const [messagingOpen, setMessagingOpen] = React.useState(false);
   const [detailTab, setDetailTab] = React.useState("timeline");
-  const [closingAmount, setClosingAmount] = React.useState("");
-  const [closingError, setClosingError] = React.useState(false);
-  const closingInputRef = React.useRef<HTMLInputElement>(null);
 
   const leadQuery = useQuery({ queryKey: ["lead", leadId], queryFn: () => crmApi.getLead(leadId) });
   const pipelinesQuery = useQuery({
@@ -196,12 +195,6 @@ function PanelBody({
     enabled: can("email:send") || can("email:view"),
     staleTime: 60_000,
   });
-
-  React.useEffect(() => {
-    const estimate = leadQuery.data?.potentialValue;
-    if (estimate == null) return;
-    setClosingAmount((prev) => (prev === "" ? String(Math.round(estimate)) : prev));
-  }, [leadQuery.data?.id, leadQuery.data?.potentialValue]);
 
   const refresh = React.useCallback(() => {
     void qc.invalidateQueries({ queryKey: ["lead", leadId] });
@@ -272,8 +265,10 @@ function PanelBody({
   const wonStage = stages.find((s) => s.isWon);
   const lostStage = stages.find((s) => s.isLost);
   const nurturing = isNurturingPipeline(lead.pipelineId);
-  const parsedClosing = closingAmount.trim() === "" ? null : Number(closingAmount.trim());
-  const closingOk = parsedClosing != null && Number.isInteger(parsedClosing) && parsedClosing >= 0;
+  const estimateAmount =
+    lead.potentialValue != null && Number.isFinite(lead.potentialValue)
+      ? Math.round(lead.potentialValue)
+      : undefined;
 
   const requestStage = (to: PipelineStage, extra?: { closingAmount?: number }) =>
     move.request({
@@ -286,16 +281,10 @@ function PanelBody({
       closingAmount: extra?.closingAmount,
     });
 
+  /** Opens the Purchased confirm (final amount + send-by date); no inline closing field. */
   const handleDealClose = () => {
     if (!wonStage) return;
-    if (!nurturing && !closingOk) {
-      setClosingError(true);
-      closingInputRef.current?.focus();
-      toast.error("Enter the closing amount before closing this deal.");
-      return;
-    }
-    setClosingError(false);
-    requestStage(wonStage, closingOk ? { closingAmount: parsedClosing } : undefined);
+    requestStage(wonStage, !nurturing && estimateAmount != null ? { closingAmount: estimateAmount } : undefined);
   };
 
   return (
@@ -314,17 +303,23 @@ function PanelBody({
           {stage ? <StagePill stage={stage} stages={stages} /> : lead.stageName ? <span>{lead.stageName}</span> : null}
           {lead.wonAt && lead.status !== "lost" ? (
             <span className="rounded-md bg-stage-won-soft px-1.5 py-0.5 text-caption font-medium text-stage-won-ink">
-              Won {formatDate(lead.wonAt)}
+              Purchased {formatDate(lead.wonAt)}
             </span>
           ) : null}
-          <EstimatedValueEditor
-            leadId={lead.id}
-            value={lead.potentialValue}
-            currency={lead.currency}
-            canEdit={canEdit}
-            onSaved={refresh}
-            compact
-          />
+          {lead.status === "won" && lead.potentialValue != null ? (
+            <span className="tabular-nums text-ink">
+              Closed at {formatLeadMoney(lead.potentialValue, lead.currency)}
+            </span>
+          ) : (
+            <EstimatedValueEditor
+              leadId={lead.id}
+              value={lead.potentialValue}
+              currency={lead.currency}
+              canEdit={canEdit && !closed}
+              onSaved={refresh}
+              compact
+            />
+          )}
           <span aria-hidden className="text-ink-subtle">
             ·
           </span>
@@ -440,11 +435,14 @@ function PanelBody({
 
         {!closed && deadlineQuery.data?.expiryDate ? (
           <DocumentDeadlineCard
+            lead={lead}
             doc={deadlineQuery.data}
             timezone={user?.timezone || undefined}
             nurturing={isNurturingPipeline(lead.pipelineId)}
+            canEdit={canEdit}
             canViewFiles={can("documents:view")}
             onOpenFiles={() => setDetailTab("files")}
+            onRemarksSaved={() => refresh()}
           />
         ) : null}
 
@@ -463,43 +461,19 @@ function PanelBody({
           />
         ) : null}
 
-        {canEdit && !closed && wonStage && !nurturing ? (
-          <div className="space-y-1.5 rounded-card border border-line p-4">
-            <Label htmlFor="lead-closing-amount" required>
-              Closing amount
-            </Label>
-            <Input
-              ref={closingInputRef}
-              id="lead-closing-amount"
-              inputMode="numeric"
-              value={closingAmount}
-              error={closingError}
-              onChange={(e) => {
-                setClosingAmount(e.target.value.replace(/[^\d]/g, ""));
-                setClosingError(false);
-              }}
-              placeholder={lead.potentialValue != null ? String(Math.round(lead.potentialValue)) : "e.g. 25000"}
-            />
-            <p className="text-meta text-ink-muted">
-              Required before Deal Close. Saved as this lead’s closed value
-              {lead.potentialValue != null ? ` (estimate ${formatLeadMoney(lead.potentialValue, lead.currency)})` : ""}.
-            </p>
-          </div>
-        ) : closed && lead.status === "won" && lead.potentialValue != null ? (
-          <dl>
-            <Fact label="Closing amount" value={formatLeadMoney(lead.potentialValue, lead.currency)} />
-          </dl>
-        ) : null}
-
         <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3">
           <div className="min-w-0 sm:col-span-1">
-            <EstimatedValueEditor
-              leadId={lead.id}
-              value={lead.potentialValue}
-              currency={lead.currency}
-              canEdit={canEdit}
-              onSaved={refresh}
-            />
+            {lead.status === "won" && lead.potentialValue != null ? (
+              <Fact label="Closed at" value={formatLeadMoney(lead.potentialValue, lead.currency)} />
+            ) : (
+              <EstimatedValueEditor
+                leadId={lead.id}
+                value={lead.potentialValue}
+                currency={lead.currency}
+                canEdit={canEdit && !closed}
+                onSaved={refresh}
+              />
+            )}
           </div>
           <Fact label="Probability" value={lead.probability != null ? `${lead.probability}%` : "—"} />
           <Fact label="Expected close" value={formatDate(lead.expectedCloseAt)} />
@@ -508,16 +482,67 @@ function PanelBody({
           <Fact label="Created" value={formatDate(lead.createdAt)} />
         </dl>
 
+        {isContactedStage(lead.stageName) || (lead.contactRating != null && lead.contactRating >= 1) ? (
+          <section aria-label="Contact rating" className="space-y-1.5">
+            <p className="text-label">Contact rating</p>
+            {isContactedStage(lead.stageName) ? (
+              <ContactRatingControl
+                lead={{
+                  id: lead.id,
+                  fullName: lead.fullName,
+                  employer: lead.employer ?? "",
+                  phone: lead.phone ?? null,
+                  email: lead.email ?? null,
+                  potentialValue: lead.potentialValue ?? null,
+                  currency: lead.currency ?? "AUD",
+                  stageId: lead.stageId ?? null,
+                  status: lead.status,
+                  ownerUserId: lead.ownerUserId ?? null,
+                  ownerName: lead.ownerName ?? null,
+                  priority: lead.priority,
+                  tags: lead.tags ?? [],
+                  lastActivityAt: lead.lastActivityAt ?? null,
+                  nextActivityAt: lead.nextActivityAt ?? null,
+                  nextActivityTitle: null,
+                  nextActivityType: null,
+                  expectedCloseAt: lead.expectedCloseAt ?? null,
+                  stageEnteredAt: lead.stageEnteredAt ?? lead.createdAt,
+                  wonAt: lead.wonAt ?? null,
+                  lostAt: lead.lostAt ?? null,
+                  lostReason: lead.lostReason ?? "",
+                  contactRating: lead.contactRating ?? null,
+                  contactRemarks: lead.contactRemarks ?? "",
+                }}
+                stageName={lead.stageName}
+                canEdit={canEdit}
+              />
+            ) : (
+              <p className="text-body text-ink">
+                {contactRatingLabel(lead.contactRating, lead.contactRemarks ?? "") || "—"}
+                {lead.contactRatedByName ? (
+                  <span className="text-meta text-ink-muted"> · {lead.contactRatedByName}</span>
+                ) : null}
+              </p>
+            )}
+          </section>
+        ) : null}
+
         <Tabs value={detailTab} onValueChange={setDetailTab}>
           <TabsList>
             <TabsTrigger value="timeline">Timeline</TabsTrigger>
-            <TabsTrigger value="history">Lead History</TabsTrigger>
+            {(can("email:view") || can("email:send")) ? <TabsTrigger value="emails">Emails</TabsTrigger> : null}
+            <TabsTrigger value="history">Stage history</TabsTrigger>
             {can("documents:view") ? <TabsTrigger value="files">Files</TabsTrigger> : null}
             <TabsTrigger value="contact">Contact</TabsTrigger>
           </TabsList>
           <TabsContent value="timeline">
             <UnifiedTimeline leadId={lead.id} />
           </TabsContent>
+          {(can("email:view") || can("email:send")) ? (
+            <TabsContent value="emails">
+              <RecordEmailSection leadId={lead.id} defaultTo={lead.email} />
+            </TabsContent>
+          ) : null}
           <TabsContent value="history">
             <LeadHistory leadId={lead.id} />
           </TabsContent>
@@ -547,7 +572,7 @@ function PanelBody({
               onClick={handleDealClose}
             >
               <Check className="size-3.5" />
-              {nurturing ? wonStage.name?.trim() || "Complete" : "Deal Close"}
+              {nurturing ? wonStage.name?.trim() || "Outcome" : "Mark as purchased"}
             </Button>
           ) : null}
         </div>
@@ -633,7 +658,7 @@ function StageStepper({
   const currentIdx = open.findIndex((s) => s.id === currentId);
   const closed = lead.status === "won" || lead.status === "lost";
   const nurturing = isNurturingPipeline(lead.pipelineId);
-  const completeLabel = won?.name?.trim() || "Complete";
+  const completeLabel = won?.name?.trim() || "Outcome";
 
   return (
     <section aria-label="Stage" className="space-y-2.5">
@@ -686,8 +711,8 @@ function StageStepper({
           <span className="font-medium">
             {lead.status === "won"
               ? nurturing
-                ? `Complete ${formatDate(lead.wonAt)}`
-                : `Won ${formatDate(lead.wonAt)}`
+                ? `Outcome ${formatDate(lead.wonAt)}`
+                : `Purchased ${formatDate(lead.wonAt)}`
               : `Lost ${formatDate(lead.lostAt)}`}
           </span>
           {lead.status === "lost" && lead.lostReason ? <span>· {lead.lostReason}</span> : null}
@@ -730,19 +755,55 @@ function StageStepper({
 }
 
 function DocumentDeadlineCard({
+  lead,
   doc,
   timezone,
   nurturing,
+  canEdit,
   canViewFiles,
   onOpenFiles,
+  onRemarksSaved,
 }: {
+  lead: Lead;
   doc: CrmDocument;
   timezone?: string;
   nurturing: boolean;
+  canEdit: boolean;
   canViewFiles: boolean;
   onOpenFiles: () => void;
+  onRemarksSaved: () => void;
 }) {
+  const qc = useQueryClient();
   const copy = documentDeadlineCopy(doc.expiryDate!, timezone);
+  const overdue = copy.tone === "overdue";
+  const historyQuery = useQuery({
+    queryKey: ["lead", lead.id, "document-delay-remarks"],
+    queryFn: () => crmApi.listDocumentDelayRemarks(lead.id),
+    enabled: overdue,
+  });
+  const [draft, setDraft] = React.useState(lead.documentDelayRemarks ?? "");
+  React.useEffect(() => {
+    setDraft(lead.documentDelayRemarks ?? "");
+  }, [lead.documentDelayRemarks, lead.id]);
+
+  const saveMutation = useMutation({
+    mutationFn: (body: string) => crmApi.addDocumentDelayRemark(lead.id, body),
+    onSuccess: () => {
+      toast.success("Delay remarks saved");
+      void qc.invalidateQueries({ queryKey: ["lead", lead.id, "document-delay-remarks"] });
+      void qc.invalidateQueries({ queryKey: ["lead-board"] });
+      onRemarksSaved();
+    },
+    onError: (err) => {
+      toast.error("Couldn't save delay remarks", {
+        description: err instanceof Error && err.message ? err.message : undefined,
+      });
+    },
+  });
+
+  const history = historyQuery.data ?? [];
+  const saved = (lead.documentDelayRemarks ?? "").trim();
+
   return (
     <section
       aria-label="Document deadline"
@@ -774,6 +835,55 @@ function DocumentDeadlineCard({
           </Button>
         ) : null}
       </div>
+
+      {overdue ? (
+        <div className="mt-4 space-y-3 border-t border-danger/20 pt-3">
+          <div>
+            <p className="text-sm font-semibold text-ink">Delay remarks</p>
+            <p className="text-caption text-ink-muted">
+              Explain why documents are late. Team Leads and admins can see this history.
+            </p>
+          </div>
+          {canEdit ? (
+            <div className="space-y-2">
+              <Textarea
+                rows={3}
+                maxLength={1000}
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                placeholder="e.g. Client travelling; docs expected next week"
+                className="min-h-[72px] text-sm"
+              />
+              <div className="flex justify-end">
+                <Button
+                  size="sm"
+                  loading={saveMutation.isPending}
+                  disabled={!draft.trim() || draft.trim() === saved}
+                  onClick={() => saveMutation.mutate(draft.trim())}
+                >
+                  {saved ? "Update remarks" : "Save remarks"}
+                </Button>
+              </div>
+            </div>
+          ) : saved ? (
+            <p className="text-body text-ink">{saved}</p>
+          ) : (
+            <p className="text-meta text-ink-muted">No remarks yet.</p>
+          )}
+          {history.length > 0 ? (
+            <ol className="space-y-2" aria-label="Delay remarks history">
+              {history.map((r) => (
+                <li key={r.id} className="rounded-md bg-surface/80 px-3 py-2 text-sm">
+                  <p className="text-ink">{r.body}</p>
+                  <p className="mt-1 text-caption text-ink-muted">
+                    {[r.authorName || "Someone", formatDate(r.createdAt)].filter(Boolean).join(" · ")}
+                  </p>
+                </li>
+              ))}
+            </ol>
+          ) : null}
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -893,6 +1003,10 @@ function ContactSection({ lead, onEditPhone }: { lead: Lead; onEditPhone?: () =>
     ["ANZSCO", lead.anzscoCode ? `${lead.anzscoCode} ${lead.anzscoTitle ?? ""}` : null],
     ["Priority", lead.priority],
     ["Team", lead.teamName],
+    [
+      "Contact rating",
+      contactRatingLabel(lead.contactRating, lead.contactRemarks ?? "") || null,
+    ],
   ];
   const filled = profile.filter(([, v]) => v != null && String(v).trim() !== "");
 

@@ -25,7 +25,7 @@ export function slaPayload(n: InAppNotification): {
 }
 
 export function typeLabel(type: string): string {
-  if (type === SLA_TYPE) return "Stage SLA";
+  if (type === SLA_TYPE) return "Stage overdue";
   if (type === PHONE_ISSUE_TYPE) return "Phone validation";
   return type;
 }

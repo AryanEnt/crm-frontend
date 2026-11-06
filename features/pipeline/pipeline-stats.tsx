@@ -91,7 +91,7 @@ export function PipelineStats({
               active={status === "won" || status === "complete"}
               onClick={() => onStatus(nurturing ? "complete" : "won")}
             >
-              {totals.wonCount} {nurturing ? "complete" : "won"}
+              {totals.wonCount} {nurturing ? "outcome" : "purchased"}
             </OutcomeLink>
             <span aria-hidden>·</span>
             <OutcomeLink active={status === "lost"} onClick={() => onStatus("lost")}>
@@ -106,9 +106,9 @@ export function PipelineStats({
           label={
             closed > 0
               ? nurturing
-                ? `Complete rate ${percent(totals.winRate)}: ${totals.wonCount} complete of ${closed} closed`
-                : `Win rate ${percent(totals.winRate)}: ${totals.wonCount} won of ${closed} closed`
-              : "Win rate: no closed leads yet"
+                ? `Outcome rate ${percent(totals.winRate)}: ${totals.wonCount} outcome of ${closed} closed`
+                : `Purchase rate ${percent(totals.winRate)}: ${totals.wonCount} purchased of ${closed} closed`
+              : "Purchase rate: no closed leads yet"
           }
         />
       </div>

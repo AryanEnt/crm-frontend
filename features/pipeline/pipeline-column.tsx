@@ -6,7 +6,10 @@ import type { StageSlot } from "@/components/ui/stage-rail";
 import { formatLeadMoney, formatLeadMoneyCompact } from "@/features/leads/lead-format";
 import type { LeadBoardCard, LeadBoardStage } from "@/lib/api/crm";
 import { cn } from "@/lib/utils";
+import { BoardSortSelect } from "./board-sort-select";
 import { LeadCard } from "./lead-card";
+import { isNegotiationStage } from "./negotiation-tag";
+import type { BoardSortKey, SortOrder } from "./pipeline-filters";
 import { StageDot, stageVars } from "./pipeline-ui";
 
 export const stageDropId = (stageId: string) => `stage:${stageId}`;
@@ -25,6 +28,11 @@ export function PipelineColumn({
   className,
   subtitle,
   emptyText,
+  boardSort,
+  boardOrder,
+  sortOverridden,
+  sorting,
+  onBoardSortChange,
 }: {
   stage: LeadBoardStage;
   stages: LeadBoardStage[];
@@ -42,6 +50,11 @@ export function PipelineColumn({
   subtitle?: string;
   /** Replaces the empty-column hint. */
   emptyText?: string;
+  boardSort?: BoardSortKey;
+  boardOrder?: SortOrder;
+  sortOverridden?: boolean;
+  sorting?: boolean;
+  onBoardSortChange?: (sort: BoardSortKey, order: SortOrder) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: stageDropId(stage.id), disabled: !dndEnabled });
   const closed = stage.isWon || stage.isLost;
@@ -64,22 +77,37 @@ export function PipelineColumn({
         <span aria-hidden className="absolute inset-x-0 top-0 h-[3px] bg-(--col-stage)" />
         <div className="flex items-center gap-2">
           <StageDot slot={slot} />
-          <h3 className="truncate text-[0.875rem] font-semibold text-ink">{stage.name}</h3>
+          <h3 className="min-w-0 flex-1 truncate text-[0.875rem] font-semibold text-ink">{stage.name}</h3>
           <span className="rounded-full bg-surface px-2 py-px text-caption font-medium tabular-nums text-ink-secondary">
             {stage.count}
           </span>
           {!closed && probability > 0 ? (
             <span
-              className="ml-auto rounded-full border border-[color-mix(in_srgb,var(--col-stage)_35%,transparent)] bg-surface px-1.5 py-px text-[0.6875rem] font-semibold tabular-nums text-(--col-stage-ink)"
+              className="rounded-full border border-[color-mix(in_srgb,var(--col-stage)_35%,transparent)] bg-surface px-1.5 py-px text-[0.6875rem] font-semibold tabular-nums text-(--col-stage-ink)"
               title="Stage win probability"
             >
               {probability}%
             </span>
           ) : null}
         </div>
-        <p className="mt-1 text-[0.8125rem] tabular-nums text-ink-secondary">
-          {subtitle ?? (stage.totalValue > 0 ? formatLeadMoneyCompact(stage.totalValue, currency) : "No estimates yet")}
-        </p>
+        <div className="mt-1 flex items-center gap-1">
+          <p className="min-w-0 flex-1 truncate text-[0.8125rem] tabular-nums text-ink-secondary">
+            {subtitle ?? (stage.totalValue > 0 ? formatLeadMoneyCompact(stage.totalValue, currency) : "No estimates yet")}
+            {sorting ? <span className="ml-1 text-ink-muted">· sorting…</span> : null}
+          </p>
+          {boardSort && boardOrder && onBoardSortChange ? (
+            <BoardSortSelect
+              compact
+              sort={boardSort}
+              order={boardOrder}
+              overridden={sortOverridden}
+              onChange={onBoardSortChange}
+            />
+          ) : null}
+        </div>
+        {isNegotiationStage(stage.name) ? (
+          <p className="mt-1 text-[0.6875rem] text-ink-muted">Set a status on each card</p>
+        ) : null}
       </header>
 
       <div

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Timeline } from "@/components/ui/timeline";
+import { Timeline, type TimelineItem } from "@/components/ui/timeline";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { LoadingState } from "@/components/ui/loading-state";
@@ -20,7 +20,13 @@ const PAGE_SIZE = 20;
 
 function formatWhen(v?: string | null) {
   if (!v) return "—";
-  return new Date(v).toLocaleString();
+  return new Date(v).toLocaleString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 function eventTone(
@@ -44,6 +50,34 @@ function eventTone(
     return "brand";
   }
   return "neutral";
+}
+
+function toTimelineItem(e: TimelineEvent): TimelineItem {
+  const threadId = typeof e.metadata?.threadId === "string" ? e.metadata.threadId : "";
+  const direction = typeof e.metadata?.direction === "string" ? e.metadata.direction : "";
+
+  if (e.eventType === "email") {
+    const outbound = direction === "outbound" || e.title.toLowerCase().includes("sent");
+    const subject = (e.body || "").trim() || "(no subject)";
+    return {
+      id: e.id,
+      title: subject,
+      description: [outbound ? "Email sent" : "Email received", e.actorName].filter(Boolean).join(" · "),
+      timestamp: formatWhen(e.occurredAt),
+      tone: "brand",
+      href: threadId ? `/email?thread=${threadId}` : undefined,
+      linkLabel: "Open email",
+    };
+  }
+
+  return {
+    id: e.id,
+    title: e.title || e.eventType,
+    description: [e.body, e.actorName, e.source !== "crm" ? e.source : null].filter(Boolean).join(" · "),
+    timestamp: formatWhen(e.occurredAt),
+    tone: eventTone(e.eventType),
+    href: undefined,
+  };
 }
 
 export function UnifiedTimeline({
@@ -107,19 +141,7 @@ export function UnifiedTimeline({
   }
   if (query.isError) return <ErrorState onRetry={() => void query.refetch()} />;
 
-  const items = accumulated.map((e) => {
-    const threadId = typeof e.metadata?.threadId === "string" ? e.metadata.threadId : "";
-    return {
-      id: e.id,
-      title: e.title || e.eventType,
-      description: [e.body, e.actorName, e.source !== "crm" ? e.source : null]
-        .filter(Boolean)
-        .join(" · "),
-      timestamp: formatWhen(e.occurredAt),
-      tone: eventTone(e.eventType),
-      href: e.eventType === "email" && threadId ? `/email?thread=${threadId}` : undefined,
-    };
-  });
+  const items = accumulated.map(toTimelineItem);
 
   return (
     <div className="space-y-3">
@@ -144,8 +166,8 @@ export function UnifiedTimeline({
 
       {items.length === 0 ? (
         <EmptyState
-          title="No timeline events yet"
-          description="Calls, emails, and CRM updates linked to this record show up here."
+          title="No activity yet"
+          description="Emails, calls, and CRM updates linked to this lead appear here."
         />
       ) : (
         <Timeline items={items} />

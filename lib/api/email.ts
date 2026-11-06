@@ -252,6 +252,12 @@ export type EmailTemplate = {
   updatedAt: string;
 };
 
+export type ComposeAttachmentPayload = {
+  filename: string;
+  mimeType: string;
+  contentBase64: string;
+};
+
 export type ComposePayload = {
   accountId?: string;
   to: string[];
@@ -267,6 +273,7 @@ export type ComposePayload = {
   threadId?: string;
   scheduledAt?: string;
   send?: boolean;
+  attachments?: ComposeAttachmentPayload[];
 };
 
 function qs(params: Record<string, string | undefined>) {

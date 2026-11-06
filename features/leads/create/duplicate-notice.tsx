@@ -98,16 +98,17 @@ export function DuplicateNotice({
   actionLabel?: string;
 }) {
   const fingerprint = matches.map(duplicateKey).sort().join("|");
-  const [open, setOpen] = React.useState(false);
-  const [suppressedFor, setSuppressedFor] = React.useState("");
+  const [dismissedFor, setDismissedFor] = React.useState("");
+  const [reopened, setReopened] = React.useState(false);
+  const [seenFingerprint, setSeenFingerprint] = React.useState(fingerprint);
 
-  React.useEffect(() => {
-    if (!fingerprint) {
-      setOpen(false);
-      return;
-    }
-    if (fingerprint !== suppressedFor) setOpen(true);
-  }, [fingerprint, suppressedFor]);
+  // Reset reopen when the match set changes (React-recommended derived-state pattern).
+  if (seenFingerprint !== fingerprint) {
+    setSeenFingerprint(fingerprint);
+    setReopened(false);
+  }
+
+  const open = Boolean(fingerprint) && (reopened || fingerprint !== dismissedFor);
 
   if (!matches.length) return null;
 
@@ -119,14 +120,14 @@ export function DuplicateNotice({
       : `We found ${matches.length} possible matches`;
 
   const dismiss = () => {
-    setOpen(false);
-    setSuppressedFor(fingerprint);
+    setReopened(false);
+    setDismissedFor(fingerprint);
   };
 
   const confirmAnyway = () => {
     onCreateAnyway();
-    setOpen(false);
-    setSuppressedFor(fingerprint);
+    setReopened(false);
+    setDismissedFor(fingerprint);
   };
 
   return (
@@ -134,7 +135,7 @@ export function DuplicateNotice({
       {!open ? (
         <button
           type="button"
-          onClick={() => setOpen(true)}
+          onClick={() => setReopened(true)}
           className={cn(
             "flex w-full items-start gap-2.5 rounded-2xl border border-warning-border bg-warning-soft px-3.5 py-3 text-left text-cell text-ink",
             "hover:bg-warning-soft/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",

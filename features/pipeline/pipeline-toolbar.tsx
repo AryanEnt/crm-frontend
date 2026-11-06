@@ -4,6 +4,7 @@ import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Search, SlidersHorizontal, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -17,11 +18,14 @@ import {
 } from "@/components/ui/select";
 import { useAuth } from "@/features/auth/auth-provider";
 import { useListFilterScope } from "@/features/auth/list-scope";
+import { countryFilterLabel } from "@/features/leads/lead-format";
 import { OrgScopeSelects, useOwnerOptions, useTeamOptions } from "@/features/teams/scope-filters";
 import { TeamMemberFilterChip } from "@/features/teams/team-member-filter";
-import { countryFilterLabel } from "@/features/leads/lead-format";
-import { crmApi } from "@/lib/api/crm";
+import { crmApi, type PipelineStage } from "@/lib/api/crm";
 import { cn } from "@/lib/utils";
+import { BoardSortSelect } from "./board-sort-select";
+import { ClosedSortSelect } from "./closed-filters";
+import { CLOSED_RANGE_OPTIONS, type ClosedRange } from "./closed-range";
 import {
   NEXT_ACTION_OPTIONS,
   activeFilterChips,
@@ -33,71 +37,12 @@ import {
   type NextActionFilter,
   type PipelineFilters,
 } from "./pipeline-filters";
-import { ClosedDateFilter, ClosedSortSelect, ClosedViewToggle } from "./closed-filters";
 import { currencySymbol } from "./pipeline-format";
 import type { PipelineStatus } from "./pipeline-totals";
+import { PipelineViewToggle } from "./pipeline-view-toggle";
 
 const ANY = "any";
 
-function PipelineCountryFilter({
-  filters,
-  onChange,
-}: {
-  filters: PipelineFilters;
-  onChange: (next: PipelineFilters) => void;
-}) {
-  const facetParams = React.useMemo(() => {
-    const p = new URLSearchParams();
-    if (filters.pipeline) p.set("pipelineId", filters.pipeline);
-    if (filters.q.trim()) p.set("q", filters.q.trim());
-    if (filters.owner) p.set("ownerUserId", filters.owner);
-    if (filters.team) p.set("teamId", filters.team);
-    if (filters.source) p.set("source", filters.source);
-    if (filters.next) p.set("activity", filters.next);
-    if (filters.min) p.set("minValue", filters.min);
-    if (filters.max) p.set("maxValue", filters.max);
-    p.set("status", "all");
-    return p;
-  }, [filters.pipeline, filters.q, filters.owner, filters.team, filters.source, filters.next, filters.min, filters.max]);
-
-  const countriesQuery = useQuery({
-    queryKey: ["leads", "countries", "pipeline", facetParams.toString()],
-    queryFn: () => crmApi.listLeadCountries(facetParams),
-    staleTime: 30_000,
-    placeholderData: (prev) => prev,
-  });
-
-  const options = countriesQuery.data ?? [];
-  const value = filters.country;
-  const selectedStillPresent = !value || options.some((o) => o.country === value);
-
-  return (
-    <Select value={value || "all"} onValueChange={(v) => onChange({ ...filters, country: v === "all" ? "" : v, page: 1 })}>
-      <SelectTrigger
-        className={cn("h-9 w-[180px] text-xs", value && "border-brand-border bg-brand-soft text-brand")}
-        aria-label="Country"
-      >
-        <SelectValue placeholder="All Countries" />
-      </SelectTrigger>
-      <SelectContent className="max-h-72">
-        <SelectItem value="all">All Countries</SelectItem>
-        {!selectedStillPresent && value ? (
-          <SelectItem value={value}>{countryFilterLabel(value)}</SelectItem>
-        ) : null}
-        {options.map((o) => (
-          <SelectItem key={o.country} value={o.country}>
-            {`${countryFilterLabel(o.country)} (${o.count.toLocaleString("en-AU")})`}
-          </SelectItem>
-        ))}
-        {countriesQuery.isSuccess && options.length === 0 ? (
-          <div className="px-2 py-1.5 text-xs text-ink-muted">No countries in this view</div>
-        ) : null}
-      </SelectContent>
-    </Select>
-  );
-}
-
-/** Names for active filter chips; list is scoped to the selected team when one is set. */
 function useFilterNames(filters: PipelineFilters) {
   const { user } = useAuth();
   const scope = useListFilterScope("leads:view");
@@ -116,28 +61,49 @@ function isTypingTarget(t: EventTarget | null) {
   return !!el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName));
 }
 
+function secondaryFilterCount(filters: PipelineFilters, closedView: boolean, showStage: boolean): number {
+  let n = 0;
+  if (filters.owner) n += 1;
+  if (filters.team) n += 1;
+  if (filters.source) n += 1;
+  if (filters.country) n += 1;
+  if (filters.min || filters.max) n += 1;
+  if (showStage && filters.stage) n += 1;
+  if (closedView) {
+    if (filters.closed) n += 1;
+  } else if (filters.next) {
+    n += 1;
+  }
+  return n;
+}
+
 export function PipelineToolbar({
   filters,
   counts,
   currency,
+  stages = [],
   nurturing = false,
   onChange,
 }: {
   filters: PipelineFilters;
   counts: Record<PipelineStatus, number> | null;
   currency: string;
-  /** Nurturing shows a Complete filter and uses Complete wording for closed-success. */
+  stages?: PipelineStage[];
   nurturing?: boolean;
   onChange: (next: PipelineFilters) => void;
 }) {
   const names = useFilterNames(filters);
+  const stageName = stages.find((s) => s.id === filters.stage)?.name;
   const chips = activeFilterChips(filters, {
     owner: names.ownerName,
     team: names.teamName,
+    stage: stageName,
     currencySymbol: currencySymbol(currency),
     nurturing,
   });
   const closedView = isClosedStatus(filters.status);
+  const showStageFilter = filters.view === "table" && !closedView;
+  const filterCount = secondaryFilterCount(filters, closedView, showStageFilter);
 
   return (
     <div className="space-y-2.5">
@@ -146,54 +112,44 @@ export function PipelineToolbar({
         <SegmentedControl
           ariaLabel="Lead status"
           value={filters.status}
-          onChange={(status) => onChange({ ...filters, status, page: 1 })}
+          onChange={(status) => {
+            const next = { ...filters, status, page: 1 };
+            if (isClosedStatus(status) && next.sort === "next") {
+              next.sort = "closed";
+              next.order = "desc";
+            }
+            if (isClosedStatus(status)) next.stage = "";
+            else if (status === "open" && next.stage) {
+              const st = stages.find((s) => s.id === next.stage);
+              if (st?.isWon || st?.isLost) next.stage = "";
+            }
+            onChange(next);
+          }}
           options={statusOptions(nurturing).map((o) => ({ ...o, count: counts?.[o.value] }))}
         />
-        {names.scope.teamMemberFilter ? (
-          <TeamMemberFilterChip
-            value={filters.owner || "all"}
-            onChange={(id) => onChange({ ...filters, owner: id === "all" ? "" : id, page: 1 })}
+
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <FiltersPanel
+            filters={filters}
+            currency={currency}
+            stages={stages}
+            closedView={closedView}
+            showStageFilter={showStageFilter}
+            filterCount={filterCount}
+            scope={names.scope}
+            onChange={onChange}
           />
-        ) : (
-          <OrgScopeSelects
-            teamId={filters.team}
-            ownerUserId={filters.owner}
-            onTeamChange={(team) => onChange({ ...filters, team, owner: "", page: 1 })}
-            onOwnerChange={(owner) => onChange({ ...filters, owner, page: 1 })}
-            showTeam={names.scope.teamFilter}
-            showOwner={names.scope.ownerFilter}
-          />
-        )}
-        {closedView ? (
-          <>
-            <ClosedDateFilter filters={filters} onChange={onChange} />
+          {closedView ? (
             <ClosedSortSelect filters={filters} onChange={onChange} />
-          </>
-        ) : (
-          <Select
-            value={filters.next || ANY}
-            onValueChange={(v) => onChange({ ...filters, next: (v === ANY ? "" : v) as NextActionFilter, page: 1 })}
-          >
-            <SelectTrigger className="h-9 w-[168px]" aria-label="Next action">
-              <span className="text-ink-muted">Next action:</span>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {NEXT_ACTION_OPTIONS.map((o) => (
-                <SelectItem key={o.value || ANY} value={o.value || ANY}>
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-        <PipelineCountryFilter filters={filters} onChange={onChange} />
-        <MoreFilters filters={filters} currency={currency} onChange={onChange} />
-        {closedView ? (
-          <div className="ml-auto">
-            <ClosedViewToggle filters={filters} onChange={onChange} />
-          </div>
-        ) : null}
+          ) : filters.view === "board" ? (
+            <BoardSortSelect
+              sort={filters.boardSort}
+              order={filters.boardOrder}
+              onChange={(boardSort, boardOrder) => onChange({ ...filters, boardSort, boardOrder, page: 1 })}
+            />
+          ) : null}
+          <PipelineViewToggle filters={filters} onChange={onChange} />
+        </div>
       </div>
 
       {chips.length > 0 ? (
@@ -232,7 +188,6 @@ function SearchField({ filters, onChange }: { filters: PipelineFilters; onChange
   const [input, setInput] = React.useState(filters.q);
   const [committed, setCommitted] = React.useState(filters.q);
   const [synced, setSynced] = React.useState(filters.q);
-  // Follow outside changes (chip removed, back button) without clobbering what is being typed.
   if (filters.q !== synced) {
     setSynced(filters.q);
     if (filters.q !== committed) {
@@ -262,7 +217,7 @@ function SearchField({ filters, onChange }: { filters: PipelineFilters; onChange
   }, []);
 
   return (
-    <div className="relative w-full sm:w-72">
+    <div className="relative w-full min-w-[12rem] flex-1 sm:max-w-sm sm:flex-none">
       <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-muted" aria-hidden />
       <Input
         ref={inputRef}
@@ -275,15 +230,7 @@ function SearchField({ filters, onChange }: { filters: PipelineFilters; onChange
             setInput("");
           }
         }}
-        placeholder={
-          filters.status === "complete"
-            ? "Search complete leads"
-            : filters.status === "won"
-              ? "Search won leads"
-              : filters.status === "lost"
-                ? "Search lost leads"
-                : "Search name, company, email, phone"
-        }
+        placeholder="Search leads"
         aria-label="Search leads"
         aria-keyshortcuts="/"
         className="peer h-9 rounded-full pl-9 pr-9 [&::-webkit-search-cancel-button]:hidden"
@@ -309,20 +256,42 @@ function SearchField({ filters, onChange }: { filters: PipelineFilters; onChange
   );
 }
 
-type Draft = { source: string; min: string; max: string };
+type Draft = {
+  source: string;
+  min: string;
+  max: string;
+  next: NextActionFilter;
+  country: string;
+  stage: string;
+  team: string;
+  owner: string;
+  closed: PipelineFilters["closed"];
+  closedFrom: string;
+  closedTo: string;
+};
 
-function MoreFilters({
+function FiltersPanel({
   filters,
   currency,
+  stages,
+  closedView,
+  showStageFilter,
+  filterCount,
+  scope,
   onChange,
 }: {
   filters: PipelineFilters;
   currency: string;
+  stages: PipelineStage[];
+  closedView: boolean;
+  showStageFilter: boolean;
+  filterCount: number;
+  scope: ReturnType<typeof useFilterNames>["scope"];
   onChange: (next: PipelineFilters) => void;
 }) {
   const id = React.useId();
   const [open, setOpen] = React.useState(false);
-  const [draft, setDraft] = React.useState<Draft>({ source: "", min: "", max: "" });
+  const [draft, setDraft] = React.useState<Draft>(draftFrom(filters));
   const sources = useQuery({
     queryKey: ["lead-sources", "filter"],
     queryFn: () => crmApi.listLeadSources({ activeOnly: true }),
@@ -330,103 +299,355 @@ function MoreFilters({
     enabled: open,
   });
 
-  const active = [filters.source, filters.min || filters.max].filter(Boolean).length;
+  const facetParams = React.useMemo(() => {
+    const p = new URLSearchParams();
+    if (filters.pipeline) p.set("pipelineId", filters.pipeline);
+    if (draft.owner) p.set("ownerUserId", draft.owner);
+    if (draft.team) p.set("teamId", draft.team);
+    if (draft.source) p.set("source", draft.source);
+    if (draft.next) p.set("activity", draft.next);
+    const min = cleanAmount(draft.min);
+    const max = cleanAmount(draft.max);
+    if (min) p.set("minValue", min);
+    if (max) p.set("maxValue", max);
+    p.set("status", "all");
+    return p;
+  }, [draft, filters.pipeline]);
+
+  const countriesQuery = useQuery({
+    queryKey: ["leads", "countries", "pipeline-filters", facetParams.toString()],
+    queryFn: () => crmApi.listLeadCountries(facetParams),
+    staleTime: 30_000,
+    enabled: open,
+    placeholderData: (prev) => prev,
+  });
+
   const min = cleanAmount(draft.min);
   const max = cleanAmount(draft.max);
   const invalidAmount = (draft.min.trim() !== "" && min === "") || (draft.max.trim() !== "" && max === "");
   const reversed = min !== "" && max !== "" && Number(min) > Number(max);
   const sym = currencySymbol(currency);
+  const stageOptions =
+    filters.status === "open" ? stages.filter((s) => !s.isWon && !s.isLost) : stages;
+  const showPeople = scope.teamMemberFilter || scope.teamFilter || scope.ownerFilter;
 
   const onOpenChange = (next: boolean) => {
-    if (next) setDraft({ source: filters.source, min: filters.min, max: filters.max });
+    if (next) setDraft(draftFrom(filters));
     setOpen(next);
+  };
+
+  const apply = () => {
+    if (invalidAmount || reversed) return;
+    onChange({
+      ...filters,
+      source: draft.source,
+      min,
+      max,
+      next: closedView ? "" : draft.next,
+      country: draft.country,
+      stage: showStageFilter ? draft.stage : "",
+      team: draft.team,
+      owner: draft.owner,
+      closed: closedView ? draft.closed : "",
+      closedFrom: closedView && draft.closed === "custom" ? draft.closedFrom : "",
+      closedTo: closedView && draft.closed === "custom" ? draft.closedTo : "",
+      page: 1,
+    });
+    setOpen(false);
   };
 
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
-        <Button variant="outline" size="lg" className={cn(active > 0 && "border-brand/40 text-brand-ink")}>
-          <SlidersHorizontal aria-hidden />
-          More filters
-          {active > 0 ? (
-            <span className="ml-0.5 inline-flex min-w-5 items-center justify-center rounded-full bg-brand-soft px-1.5 text-caption tabular-nums text-brand-ink">
-              {active}
+        <Button
+          variant="outline"
+          size="lg"
+          className={cn("h-9 gap-1.5", filterCount > 0 && "border-brand/40 text-brand-ink")}
+        >
+          <SlidersHorizontal className="size-4" aria-hidden />
+          Filters
+          {filterCount > 0 ? (
+            <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-brand-soft px-1.5 text-caption tabular-nums text-brand-ink">
+              {filterCount}
             </span>
           ) : null}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-80 rounded-column p-4">
+      <PopoverContent align="end" className="w-[22rem] rounded-column p-0 shadow-lift">
+        <div className="border-b border-line px-4 py-3">
+          <p className="text-sm font-semibold text-ink">Filters</p>
+          <p className="text-caption text-ink-muted">Narrow the leads shown on this pipeline.</p>
+        </div>
         <form
-          className="space-y-4"
+          className="max-h-[min(28rem,70vh)] space-y-4 overflow-y-auto px-4 py-3 crm-scroll"
           onSubmit={(e) => {
             e.preventDefault();
-            if (invalidAmount || reversed) return;
-            onChange({ ...filters, source: draft.source, min, max, page: 1 });
-            setOpen(false);
+            apply();
           }}
         >
-          <div className="space-y-1.5">
-            <Label htmlFor={`${id}-source`}>Source</Label>
-            <Select value={draft.source || ANY} onValueChange={(v) => setDraft((d) => ({ ...d, source: v === ANY ? "" : v }))}>
-              <SelectTrigger id={`${id}-source`} className="h-9">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ANY}>Any source</SelectItem>
-                {draft.source && !(sources.data ?? []).some((s) => s.name === draft.source) ? (
-                  <SelectItem value={draft.source}>{draft.source}</SelectItem>
-                ) : null}
-                {(sources.data ?? []).map((s) => (
-                  <SelectItem key={s.id} value={s.name}>
-                    {s.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <fieldset className="space-y-1.5">
-            <legend className="text-sm font-medium text-foreground">Value range</legend>
-            <div className="flex items-center gap-2">
-              <AmountInput
-                label="Minimum value"
-                symbol={sym}
-                placeholder="Min"
-                value={draft.min}
-                onChange={(v) => setDraft((d) => ({ ...d, min: v }))}
-              />
-              <span className="text-ink-muted" aria-hidden>
-                –
-              </span>
-              <AmountInput
-                label="Maximum value"
-                symbol={sym}
-                placeholder="Max"
-                value={draft.max}
-                onChange={(v) => setDraft((d) => ({ ...d, max: v }))}
-              />
-            </div>
-            {invalidAmount || reversed ? (
-              <p className="text-caption text-danger" role="alert">
-                {invalidAmount ? "Enter whole amounts, like 5000." : "Minimum is more than maximum."}
-              </p>
+          {showPeople ? (
+            <section className="space-y-2">
+              <p className="text-caption font-medium uppercase tracking-wide text-ink-muted">People</p>
+              {scope.teamMemberFilter ? (
+                <TeamMemberFilterChip
+                  value={draft.owner || "all"}
+                  onChange={(owner) => setDraft((d) => ({ ...d, owner: owner === "all" ? "" : owner }))}
+                />
+              ) : (
+                <OrgScopeSelects
+                  teamId={draft.team}
+                  ownerUserId={draft.owner}
+                  onTeamChange={(team) => setDraft((d) => ({ ...d, team, owner: "" }))}
+                  onOwnerChange={(owner) => setDraft((d) => ({ ...d, owner }))}
+                  showTeam={scope.teamFilter}
+                  showOwner={scope.ownerFilter}
+                />
+              )}
+            </section>
+          ) : null}
+
+          <section className="space-y-2">
+            <p className="text-caption font-medium uppercase tracking-wide text-ink-muted">Pipeline</p>
+            {closedView ? (
+              <div className="space-y-2">
+                <Label>Closed date</Label>
+                <div role="radiogroup" aria-label="Closed date" className="flex flex-wrap gap-1.5">
+                  {CLOSED_RANGE_OPTIONS.filter((o) => o.value !== "custom").map((o) => {
+                    const on = draft.closed === o.value;
+                    return (
+                      <button
+                        key={o.value || "any"}
+                        type="button"
+                        role="radio"
+                        aria-checked={on}
+                        onClick={() =>
+                          setDraft((d) => ({ ...d, closed: o.value as ClosedRange, closedFrom: "", closedTo: "" }))
+                        }
+                        className={cn(
+                          "h-8 rounded-full border px-3 text-[0.8125rem] font-medium transition-colors",
+                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          on
+                            ? "border-brand bg-brand text-primary-foreground"
+                            : "border-line bg-surface text-ink-secondary hover:bg-surface-muted hover:text-ink",
+                        )}
+                      >
+                        {o.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <div className="space-y-1">
+                    <Label htmlFor={`${id}-from`} className="text-caption text-ink-muted">
+                      From
+                    </Label>
+                    <DatePicker
+                      id={`${id}-from`}
+                      value={draft.closedFrom}
+                      max={draft.closedTo || undefined}
+                      onChange={(closedFrom) =>
+                        setDraft((d) => ({
+                          ...d,
+                          closed: closedFrom || d.closedTo ? "custom" : "",
+                          closedFrom,
+                        }))
+                      }
+                      placeholder="Any"
+                      uiSize="md"
+                      clearable
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor={`${id}-to`} className="text-caption text-ink-muted">
+                      To
+                    </Label>
+                    <DatePicker
+                      id={`${id}-to`}
+                      value={draft.closedTo}
+                      min={draft.closedFrom || undefined}
+                      onChange={(closedTo) =>
+                        setDraft((d) => ({
+                          ...d,
+                          closed: d.closedFrom || closedTo ? "custom" : "",
+                          closedTo,
+                        }))
+                      }
+                      placeholder="Any"
+                      uiSize="md"
+                      clearable
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <Label htmlFor={`${id}-next`}>Next action</Label>
+                <Select
+                  value={draft.next || ANY}
+                  onValueChange={(v) =>
+                    setDraft((d) => ({ ...d, next: (v === ANY ? "" : v) as NextActionFilter }))
+                  }
+                >
+                  <SelectTrigger id={`${id}-next`} className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {NEXT_ACTION_OPTIONS.map((o) => (
+                      <SelectItem key={o.value || ANY} value={o.value || ANY}>
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {showStageFilter ? (
+              <div className="space-y-1.5">
+                <Label htmlFor={`${id}-stage`}>Stage</Label>
+                <Select
+                  value={draft.stage || ANY}
+                  onValueChange={(v) => setDraft((d) => ({ ...d, stage: v === ANY ? "" : v }))}
+                >
+                  <SelectTrigger id={`${id}-stage`} className="h-9">
+                    <SelectValue placeholder="Any" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-72">
+                    <SelectItem value={ANY}>Any</SelectItem>
+                    {draft.stage && !stageOptions.some((s) => s.id === draft.stage) ? (
+                      <SelectItem value={draft.stage}>Unknown stage</SelectItem>
+                    ) : null}
+                    {stageOptions.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             ) : null}
-          </fieldset>
-          <div className="flex items-center justify-between gap-2 pt-1">
+            <div className="space-y-1.5">
+              <Label htmlFor={`${id}-country`}>Country</Label>
+              <Select
+                value={draft.country || "all"}
+                onValueChange={(v) => setDraft((d) => ({ ...d, country: v === "all" ? "" : v }))}
+              >
+                <SelectTrigger id={`${id}-country`} className="h-9">
+                  <SelectValue placeholder="All countries" />
+                </SelectTrigger>
+                <SelectContent className="max-h-72">
+                  <SelectItem value="all">All countries</SelectItem>
+                  {draft.country && !(countriesQuery.data ?? []).some((o) => o.country === draft.country) ? (
+                    <SelectItem value={draft.country}>{countryFilterLabel(draft.country)}</SelectItem>
+                  ) : null}
+                  {(countriesQuery.data ?? []).map((o) => (
+                    <SelectItem key={o.country} value={o.country}>
+                      {`${countryFilterLabel(o.country)} (${o.count.toLocaleString("en-AU")})`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </section>
+
+          <section className="space-y-2">
+            <p className="text-caption font-medium uppercase tracking-wide text-ink-muted">Details</p>
+            <div className="space-y-1.5">
+              <Label htmlFor={`${id}-source`}>Source</Label>
+              <Select
+                value={draft.source || ANY}
+                onValueChange={(v) => setDraft((d) => ({ ...d, source: v === ANY ? "" : v }))}
+              >
+                <SelectTrigger id={`${id}-source`} className="h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ANY}>Any source</SelectItem>
+                  {draft.source && !(sources.data ?? []).some((s) => s.name === draft.source) ? (
+                    <SelectItem value={draft.source}>{draft.source}</SelectItem>
+                  ) : null}
+                  {(sources.data ?? []).map((s) => (
+                    <SelectItem key={s.id} value={s.name}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <fieldset className="space-y-1.5">
+              <legend className="text-sm font-medium text-foreground">Lead value</legend>
+              <div className="flex items-center gap-2">
+                <AmountInput
+                  label="Minimum value"
+                  symbol={sym}
+                  placeholder="Min"
+                  value={draft.min}
+                  onChange={(v) => setDraft((d) => ({ ...d, min: v }))}
+                />
+                <span className="text-ink-muted" aria-hidden>
+                  –
+                </span>
+                <AmountInput
+                  label="Maximum value"
+                  symbol={sym}
+                  placeholder="Max"
+                  value={draft.max}
+                  onChange={(v) => setDraft((d) => ({ ...d, max: v }))}
+                />
+              </div>
+              {invalidAmount || reversed ? (
+                <p className="text-caption text-danger" role="alert">
+                  {invalidAmount ? "Enter whole amounts, like 5000." : "Minimum is more than maximum."}
+                </p>
+              ) : null}
+            </fieldset>
+          </section>
+
+          <div className="sticky bottom-0 -mx-4 flex items-center justify-between gap-2 border-t border-line bg-surface px-4 py-3">
             <Button
               type="button"
               variant="ghost"
-              onClick={() => setDraft({ source: "", min: "", max: "" })}
+              onClick={() =>
+                setDraft({
+                  source: "",
+                  min: "",
+                  max: "",
+                  next: "",
+                  country: "",
+                  stage: "",
+                  team: "",
+                  owner: "",
+                  closed: "",
+                  closedFrom: "",
+                  closedTo: "",
+                })
+              }
             >
               Reset
             </Button>
             <Button type="submit" disabled={invalidAmount || reversed}>
-              Apply filters
+              Apply
             </Button>
           </div>
         </form>
       </PopoverContent>
     </Popover>
   );
+}
+
+function draftFrom(filters: PipelineFilters): Draft {
+  return {
+    source: filters.source,
+    min: filters.min,
+    max: filters.max,
+    next: filters.next,
+    country: filters.country,
+    stage: filters.stage,
+    team: filters.team,
+    owner: filters.owner,
+    closed: filters.closed,
+    closedFrom: filters.closedFrom,
+    closedTo: filters.closedTo,
+  };
 }
 
 function AmountInput({

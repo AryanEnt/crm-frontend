@@ -58,5 +58,11 @@ export function cardFromLead(lead: Lead, fallback: LeadBoardCard): LeadBoardCard
     tags: lead.tags ?? [],
     nextActivityAt: lead.nextActivityAt ?? null,
     stageEnteredAt: lead.stageEnteredAt ?? fallback.stageEnteredAt,
+    negotiationTag: lead.negotiationTag ?? fallback.negotiationTag ?? "",
+    negotiationRemarks: lead.negotiationRemarks ?? fallback.negotiationRemarks ?? "",
+    contactRating: lead.contactRating ?? fallback.contactRating ?? null,
+    contactRemarks: lead.contactRemarks ?? fallback.contactRemarks ?? "",
+    documentDelayRemarks: lead.documentDelayRemarks ?? fallback.documentDelayRemarks ?? "",
+    documentDelayRemarksAt: lead.documentDelayRemarksAt ?? fallback.documentDelayRemarksAt ?? null,
   };
 }
