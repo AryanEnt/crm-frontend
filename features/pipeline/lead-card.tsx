@@ -23,7 +23,9 @@ import { ContactRatingControl } from "./contact-rating-control";
 import { DocumentDelayRemarksControl } from "./document-delay-remarks-control";
 import { NegotiationTagControl } from "./negotiation-tag-control";
 import { isNegotiationStage } from "./negotiation-tag";
-import { isClientsStage } from "./nurturing-stages";
+import { FileReceivedControl } from "./file-received-control";
+import { isClientsStage, isFileDeliveredStage, isOutcomeStage } from "./nurturing-stages";
+import { OutcomeLetterControl } from "./outcome-letter-control";
 import { formatDate } from "./pipeline-format";
 import { OwnerAvatar } from "./pipeline-ui";
 import { formatStageAgeLabel, stageAge, type StageAgeTone } from "./stage-age";
@@ -104,6 +106,8 @@ export function LeadCard({
   const showMenu = !overlay && canEdit && !!stages?.length;
   const showNegotiationTag = !overlay && isNegotiationStage(stage?.name);
   const showClientsEmail = !overlay && isClientsStage(stage?.name) && !!stages?.length;
+  const showFileReceived = !overlay && isFileDeliveredStage(stage?.name);
+  const showOutcomeLetter = !overlay && isOutcomeStage(stage?.name);
 
   return (
     <article
@@ -205,6 +209,8 @@ export function LeadCard({
       {showClientsEmail ? (
         <ClientsEmailControl lead={lead} stages={stages!} canEdit={!!canEdit} />
       ) : null}
+      {showFileReceived ? <FileReceivedControl lead={lead} canEdit={!!canEdit} /> : null}
+      {showOutcomeLetter ? <OutcomeLetterControl lead={lead} canEdit={!!canEdit} /> : null}
       {!overlay ? <DocumentDelayRemarksControl lead={lead} canEdit={!!canEdit} /> : null}
     </article>
   );

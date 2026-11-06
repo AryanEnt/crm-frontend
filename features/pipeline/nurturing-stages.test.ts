@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { isClientsStage, isFileDeliveredStage } from "./nurturing-stages.ts";
+import { isClientsStage, isFileDeliveredStage, isOutcomeStage } from "./nurturing-stages.ts";
 
 describe("nurturing stage helpers", () => {
   it("recognises Clients", () => {
@@ -13,5 +13,11 @@ describe("nurturing stage helpers", () => {
     assert.equal(isFileDeliveredStage("File Delivered"), true);
     assert.equal(isFileDeliveredStage("Documents Sent"), true);
     assert.equal(isFileDeliveredStage("Clients"), false);
+  });
+
+  it("recognises Outcome", () => {
+    assert.equal(isOutcomeStage("Outcome"), true);
+    assert.equal(isOutcomeStage("outcome"), true);
+    assert.equal(isOutcomeStage("Clients"), false);
   });
 });
