@@ -2,12 +2,14 @@
 
 import * as React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, Download, Eye, FileText, Loader2, Replace } from "lucide-react";
+import { ChevronDown, Download, Eye, FilePlus2, FileText, Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/features/auth/auth-provider";
@@ -19,7 +21,7 @@ import { crmApi, type CrmDocument, type LeadBoardCard } from "@/lib/api/crm";
 import { cn } from "@/lib/utils";
 import {
   cardDocAcceptAttr,
-  pickLatestCardDoc,
+  listCardDocs,
   validateCardDocFile,
   type LeadCardDocControlConfig,
 } from "./card-doc-file";
@@ -36,7 +38,7 @@ const TONE_READONLY = {
   brand: "border-brand/35 bg-brand-soft/70 text-brand",
 } as const;
 
-/** Compact board-card file control: upload, view, download, or replace (PDF/JPG/PNG). */
+/** Compact board-card file control: upload one or more PDF/JPG/PNG, then view or download each. */
 export function LeadCardDocControl({
   lead,
   canEdit,
@@ -48,11 +50,15 @@ export function LeadCardDocControl({
 }) {
   const { can, user } = useAuth();
   const qc = useQueryClient();
+  const inputId = React.useId();
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [viewing, setViewing] = React.useState<CrmDocument | null>(null);
-  const [busy, setBusy] = React.useState<"upload" | "replace" | null>(null);
+  const [busy, setBusy] = React.useState(false);
+  const [deletingId, setDeletingId] = React.useState<string | null>(null);
   const canManage = canEdit && canAttachLeadScreenshot(can, user);
+  const canDelete =
+    can("documents:delete") || (canEdit && user?.roleCode === "sales_executive");
   const tone = config.tone ?? "success";
 
   const docsQuery = useQuery({
@@ -60,9 +66,10 @@ export function LeadCardDocControl({
     queryFn: () => crmApi.listDocuments(new URLSearchParams({ leadId: lead.id, limit: "50", offset: "0" })),
   });
 
-  const doc = pickLatestCardDoc(docsQuery.data?.data ?? [], config.match);
-  const hasDoc = Boolean(doc);
-  const loading = docsQuery.isLoading || docsQuery.isFetching;
+  const matched = listCardDocs(docsQuery.data?.data ?? [], config.match);
+  const count = matched.length;
+  const hasDocs = count > 0;
+  const initialLoading = docsQuery.isLoading && !docsQuery.data;
 
   const refresh = async () => {
     await Promise.all([
@@ -73,62 +80,133 @@ export function LeadCardDocControl({
     ]);
   };
 
-  const upload = async (file: File | undefined, replace: boolean) => {
-    if (inputRef.current) inputRef.current.value = "";
-    if (!file || !canManage) return;
-    const err = validateCardDocFile(file, config.label);
-    if (err) {
-      toast.error(err);
+  const uploadFiles = async (picked: File[]) => {
+    if (picked.length === 0) return;
+    if (!canManage) {
+      toast.error("Couldn't receive file", { description: "You don't have permission to upload here." });
       return;
     }
 
-    const body = new FormData();
-    body.append("file", file);
-    body.append("name", file.name.trim() || config.label);
-    body.append("type", config.type);
-    body.append("category", config.category);
-    body.append("leadId", lead.id);
+    const list = picked;
+    for (const file of list) {
+      const err = validateCardDocFile(file, config.label);
+      if (err) {
+        toast.error("Couldn't receive file", { description: `${file.name} — ${err}` });
+        return;
+      }
+    }
 
-    setBusy(replace ? "replace" : "upload");
+    const toastId = toast.loading(
+      list.length === 1 ? `Receiving ${list[0]!.name}…` : `Receiving ${list.length} files…`,
+      { description: lead.fullName },
+    );
+
+    setBusy(true);
+    let ok = 0;
+    let lastError: string | null = null;
+    const receivedNames: string[] = [];
     try {
-      if (replace && doc) {
-        await crmApi.uploadDocument(body, doc.id);
-        toast.success(`${config.label} replaced`);
-      } else {
-        await crmApi.uploadDocument(body);
-        toast.success(`${config.label} added`);
+      for (const file of list) {
+        const body = new FormData();
+        body.append("file", file);
+        body.append("name", file.name.trim() || config.label);
+        body.append("type", config.type);
+        body.append("category", config.category);
+        body.append("leadId", lead.id);
+        try {
+          await crmApi.uploadDocument(body);
+          ok += 1;
+          receivedNames.push(file.name.trim() || config.label);
+        } catch (e) {
+          lastError = e instanceof Error && e.message ? e.message : `Couldn't upload ${file.name}`;
+        }
       }
       await refresh();
+      if (ok === list.length) {
+        toast.success(ok === 1 ? `${config.label} received` : `${ok} files received`, {
+          id: toastId,
+          description:
+            ok === 1
+              ? `${receivedNames[0]} · ${lead.fullName}`
+              : `${receivedNames.slice(0, 2).join(", ")}${ok > 2 ? ` +${ok - 2} more` : ""} · ${lead.fullName}`,
+        });
+      } else if (ok > 0) {
+        toast.error(`${ok} of ${list.length} files received`, {
+          id: toastId,
+          description: lastError ?? "Some files could not be saved. Try again.",
+        });
+      } else {
+        toast.error(`Couldn't receive ${config.label.toLowerCase()}`, {
+          id: toastId,
+          description: lastError ?? "The upload failed. Check the file and try again.",
+        });
+      }
     } catch (e) {
-      toast.error(
-        e instanceof Error && e.message ? e.message : `Couldn't upload the ${config.label.toLowerCase()}.`,
-      );
+      toast.error(`Couldn't receive ${config.label.toLowerCase()}`, {
+        id: toastId,
+        description: e instanceof Error && e.message ? e.message : "Something went wrong. Try again.",
+      });
     } finally {
-      setBusy(null);
+      setBusy(false);
     }
   };
 
-  const openPicker = (mode: "upload" | "replace") => {
-    if (!canManage || busy) return;
-    inputRef.current?.setAttribute("data-mode", mode);
-    inputRef.current?.click();
+  const removeDoc = async (d: CrmDocument) => {
+    if (!canDelete) return;
+    if (!window.confirm(`Delete “${d.name}”?`)) return;
+    setDeletingId(d.id);
+    const toastId = toast.loading(`Deleting ${d.name}…`);
+    try {
+      await crmApi.deleteDocument(d.id);
+      if (viewing?.id === d.id) setViewing(null);
+      await refresh();
+      toast.success("File deleted", { id: toastId, description: d.name });
+    } catch (err) {
+      toast.error("Couldn't delete file", {
+        id: toastId,
+        description: err instanceof Error && err.message ? err.message : "Try again.",
+      });
+    } finally {
+      setDeletingId(null);
+    }
   };
 
-  const chipLabel = hasDoc
-    ? doc!.name || config.label
-    : loading
+  const chipLabel = !hasDocs
+    ? initialLoading
       ? `Checking ${config.label.toLowerCase()}…`
-      : config.addLabel;
+      : config.addLabel
+    : count === 1
+      ? matched[0]!.name || config.label
+      : `${config.label} · ${count}`;
 
-  const chipTitle = hasDoc
-    ? [doc!.name, doc!.sizeBytes ? formatSize(doc!.sizeBytes) : null, "View, download, or replace"]
-        .filter(Boolean)
-        .join(" · ")
-    : `Attach the ${config.label.toLowerCase()} (PDF, JPG, or PNG)`;
+  const chipTitle = !hasDocs
+    ? `Attach ${config.label.toLowerCase()} files (PDF, JPG, or PNG)`
+    : count === 1
+      ? [matched[0]!.name, matched[0]!.sizeBytes ? formatSize(matched[0]!.sizeBytes) : null, "View, download, or add more"]
+          .filter(Boolean)
+          .join(" · ")
+      : `${count} ${config.label.toLowerCase()} files — view, download, or add more`;
 
-  if (!canManage && !hasDoc) return null;
+  const fileInput = canManage ? (
+    <input
+      id={inputId}
+      ref={inputRef}
+      type="file"
+      multiple
+      accept={cardDocAcceptAttr()}
+      className="hidden"
+      tabIndex={-1}
+      onChange={(event) => {
+        const picked = event.target.files ? Array.from(event.target.files) : [];
+        event.target.value = "";
+        void uploadFiles(picked);
+      }}
+    />
+  ) : null;
 
-  if (!canManage && hasDoc) {
+  if (!canManage && !hasDocs) return null;
+
+  if (!canManage && hasDocs) {
     return (
       <div
         className="mt-2"
@@ -136,20 +214,57 @@ export function LeadCardDocControl({
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.stopPropagation()}
       >
-        <button
-          type="button"
-          title={chipTitle}
-          onClick={() => setViewing(doc)}
-          className={cn(
-            "inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[0.6875rem] font-medium",
-            TONE_READONLY[tone],
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-          )}
-          aria-label={`View ${config.label.toLowerCase()}: ${doc!.name}`}
-        >
-          <FileText className="size-3 shrink-0" aria-hidden />
-          <span className="truncate">{chipLabel}</span>
-        </button>
+        {count === 1 ? (
+          <button
+            type="button"
+            title={chipTitle}
+            onClick={() => setViewing(matched[0]!)}
+            className={cn(
+              "inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[0.6875rem] font-medium",
+              TONE_READONLY[tone],
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            )}
+            aria-label={`View ${config.label.toLowerCase()}: ${matched[0]!.name}`}
+          >
+            <FileText className="size-3 shrink-0" aria-hidden />
+            <span className="truncate">{chipLabel}</span>
+          </button>
+        ) : (
+          <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                title={chipTitle}
+                className={cn(
+                  "inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-left text-[0.6875rem] font-medium",
+                  TONE_READONLY[tone],
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                )}
+                aria-label={`${config.label}: ${count} files`}
+              >
+                <FileText className="size-3 shrink-0" aria-hidden />
+                <span className="truncate">{chipLabel}</span>
+                <ChevronDown className="size-3 shrink-0 opacity-60" aria-hidden />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-60">
+              <DropdownMenuLabel>{config.label}</DropdownMenuLabel>
+              {matched.map((d) => (
+                <DocMenuRow
+                  key={d.id}
+                  doc={d}
+                  deleting={deletingId === d.id}
+                  canDelete={canDelete}
+                  onView={() => {
+                    setMenuOpen(false);
+                    setViewing(d);
+                  }}
+                  onDelete={() => void removeDoc(d)}
+                />
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
         <DocumentViewer doc={viewing} onClose={() => setViewing(null)} />
       </div>
     );
@@ -162,12 +277,14 @@ export function LeadCardDocControl({
       onClick={(e) => e.stopPropagation()}
       onKeyDown={(e) => e.stopPropagation()}
     >
-      {hasDoc ? (
+      {fileInput}
+
+      {hasDocs ? (
         <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              disabled={Boolean(busy)}
+              disabled={busy}
               title={chipTitle}
               className={cn(
                 "inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-left text-[0.6875rem] font-medium",
@@ -175,83 +292,118 @@ export function LeadCardDocControl({
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 "disabled:opacity-60",
               )}
-              aria-label={`${config.label}: ${doc!.name}`}
+              aria-label={`${config.label}: ${count} file${count === 1 ? "" : "s"}`}
             >
               {busy ? (
                 <Loader2 className="size-3 shrink-0 animate-spin" aria-hidden />
               ) : (
                 <FileText className="size-3 shrink-0" aria-hidden />
               )}
-              <span className="truncate">{busy === "replace" ? "Replacing…" : chipLabel}</span>
+              <span className="truncate">{busy ? "Uploading…" : chipLabel}</span>
               <ChevronDown className="size-3 shrink-0 opacity-60" aria-hidden />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-44">
-            <DropdownMenuItem
-              onSelect={() => {
-                setMenuOpen(false);
-                setViewing(doc);
-              }}
-            >
-              <Eye className="size-3.5" aria-hidden />
-              View
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <a href={crmApi.downloadDocumentUrl(doc!.id)} download={doc!.name}>
-                <Download className="size-3.5" aria-hidden />
-                Download
-              </a>
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              disabled={Boolean(busy)}
-              onSelect={(e) => {
-                e.preventDefault();
-                setMenuOpen(false);
-                openPicker("replace");
-              }}
-            >
-              <Replace className="size-3.5" aria-hidden />
-              Replace…
+          <DropdownMenuContent align="start" className="w-60">
+            <DropdownMenuLabel>{config.label}</DropdownMenuLabel>
+            {matched.map((d) => (
+              <DocMenuRow
+                key={d.id}
+                doc={d}
+                deleting={deletingId === d.id}
+                canDelete={canDelete}
+                onView={() => {
+                  setMenuOpen(false);
+                  setViewing(d);
+                }}
+                onDelete={() => void removeDoc(d)}
+              />
+            ))}
+            <DropdownMenuSeparator />
+            {/* Native label keeps the file dialog in the same user gesture (dnd-safe). */}
+            <DropdownMenuItem asChild disabled={busy} onSelect={(e) => e.preventDefault()}>
+              <label htmlFor={inputId} className="cursor-pointer">
+                <Plus className="size-3.5" aria-hidden />
+                Add another…
+              </label>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       ) : (
-        <button
-          type="button"
-          disabled={Boolean(busy) || loading}
+        <label
+          htmlFor={busy || initialLoading ? undefined : inputId}
           title={chipTitle}
-          onClick={() => openPicker("upload")}
-          className={cn(
-            "inline-flex max-w-full items-center gap-1 rounded-full border border-dashed px-2 py-0.5 text-left text-[0.6875rem] font-medium",
-            "border-line text-ink-muted hover:border-line-strong hover:text-ink",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            "disabled:opacity-60",
-          )}
           aria-label={config.addLabel}
+          aria-disabled={busy || initialLoading}
+          className={cn(
+            "inline-flex max-w-full cursor-pointer items-center gap-1 rounded-full border border-dashed px-2 py-0.5 text-left text-[0.6875rem] font-medium",
+            "border-line text-ink-muted hover:border-line-strong hover:text-ink",
+            "focus-within:outline-none focus-within:ring-2 focus-within:ring-ring",
+            (busy || initialLoading) && "pointer-events-none cursor-not-allowed opacity-60",
+          )}
         >
-          {busy === "upload" || loading ? (
+          {busy || initialLoading ? (
             <Loader2 className="size-3 shrink-0 animate-spin" aria-hidden />
           ) : (
-            <FileText className="size-3 shrink-0" aria-hidden />
+            <FilePlus2 className="size-3 shrink-0" aria-hidden />
           )}
-          <span className="truncate">{busy === "upload" ? "Uploading…" : chipLabel}</span>
-        </button>
+          <span className="truncate">{busy ? "Uploading…" : chipLabel}</span>
+        </label>
       )}
 
-      <input
-        ref={inputRef}
-        type="file"
-        accept={cardDocAcceptAttr()}
-        className="hidden"
-        tabIndex={-1}
-        aria-hidden
-        onChange={(event) => {
-          const mode = inputRef.current?.getAttribute("data-mode") === "replace" ? "replace" : "upload";
-          void upload(event.target.files?.[0], mode === "replace");
-        }}
-      />
-
       <DocumentViewer doc={viewing} onClose={() => setViewing(null)} />
+    </div>
+  );
+}
+
+function DocMenuRow({
+  doc,
+  deleting,
+  canDelete,
+  onView,
+  onDelete,
+}: {
+  doc: CrmDocument;
+  deleting?: boolean;
+  canDelete?: boolean;
+  onView: () => void;
+  onDelete?: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-0.5 px-1 py-0.5">
+      <DropdownMenuItem className="min-w-0 flex-1" onSelect={onView} title={doc.name}>
+        <Eye className="size-3.5 shrink-0" aria-hidden />
+        <span className="truncate">{doc.name}</span>
+      </DropdownMenuItem>
+      <a
+        href={crmApi.downloadDocumentUrl(doc.id)}
+        download={doc.name}
+        aria-label={`Download ${doc.name}`}
+        title="Download"
+        className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-ink-muted hover:bg-surface-muted hover:text-ink"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <Download className="size-3.5" aria-hidden />
+      </a>
+      {canDelete ? (
+        <button
+          type="button"
+          aria-label={`Delete ${doc.name}`}
+          title="Delete"
+          disabled={deleting}
+          className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-ink-muted hover:bg-danger/10 hover:text-danger disabled:opacity-60"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onDelete?.();
+          }}
+        >
+          {deleting ? (
+            <Loader2 className="size-3.5 animate-spin" aria-hidden />
+          ) : (
+            <Trash2 className="size-3.5" aria-hidden />
+          )}
+        </button>
+      ) : null}
     </div>
   );
 }

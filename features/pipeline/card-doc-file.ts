@@ -39,15 +39,23 @@ export function validateCardDocFile(file: File, label: string): string | null {
   return null;
 }
 
+/** Matching docs with a file, newest first. */
+export function listCardDocs(
+  docs: CrmDocument[],
+  match: (d: CrmDocument) => boolean,
+): CrmDocument[] {
+  return docs
+    .filter((d) => match(d) && Boolean(d.fileKey))
+    .sort((a, b) => {
+      const left = a.uploadedDate || a.createdAt || "";
+      const right = b.uploadedDate || b.createdAt || "";
+      return right.localeCompare(left);
+    });
+}
+
 export function pickLatestCardDoc(
   docs: CrmDocument[],
   match: (d: CrmDocument) => boolean,
 ): CrmDocument | null {
-  const hits = docs.filter((d) => match(d) && Boolean(d.fileKey));
-  if (hits.length === 0) return null;
-  return hits.reduce((best, d) => {
-    const a = best.uploadedDate || best.createdAt || "";
-    const b = d.uploadedDate || d.createdAt || "";
-    return b > a ? d : best;
-  });
+  return listCardDocs(docs, match)[0] ?? null;
 }
