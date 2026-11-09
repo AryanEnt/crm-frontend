@@ -68,6 +68,35 @@ function formatWhen(v?: string | null) {
   return new Date(v).toLocaleDateString();
 }
 
+/** Single-line cell text so every column shares the same vertical rhythm. */
+function CellText({
+  children,
+  empty = false,
+  mono = false,
+  className,
+  title,
+}: {
+  children: React.ReactNode;
+  empty?: boolean;
+  mono?: boolean;
+  className?: string;
+  title?: string;
+}) {
+  return (
+    <span
+      title={title}
+      className={cn(
+        "block truncate text-cell leading-5",
+        empty ? "text-ink-muted" : "text-ink-secondary",
+        mono && "font-mono text-caption tabular-nums",
+        className,
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
 function stageMeta(lead: Lead, pipelines: Pipeline[]) {
   const pipeline = pipelines.find((p) => p.id === lead.pipelineId);
   const stage = pipeline?.stages.find((s) => s.id === lead.stageId);
@@ -164,61 +193,82 @@ export function LeadsListView({
         accessorKey: "fullName",
         header: ({ column }) => <SortableHeader column={column} title="Lead" />,
         enableHiding: false,
-        cell: ({ row }) => <EntityCell name={row.original.fullName} subtitle={row.original.jobTitle || undefined} />,
+        size: 220,
+        cell: ({ row }) => (
+          <EntityCell
+            name={row.original.fullName}
+            subtitle={row.original.jobTitle || undefined}
+          />
+        ),
       },
       {
         accessorKey: "employer",
         header: "Company",
-        cell: ({ row }) =>
-          row.original.employer ? (
-            <span className="block max-w-[180px] truncate text-ink-secondary">{row.original.employer}</span>
-          ) : (
-            <span className="text-ink-muted">—</span>
-          ),
+        size: 150,
+        cell: ({ row }) => {
+          const value = row.original.employer?.trim();
+          return (
+            <CellText empty={!value} title={value || undefined}>
+              {value || "—"}
+            </CellText>
+          );
+        },
       },
       {
         id: "contact",
         header: "Contact",
+        size: 170,
         cell: ({ row }) => {
           const { phone, email } = row.original;
-          if (!phone && !email) return <span className="text-ink-muted">—</span>;
+          if (!phone && !email) return <CellText empty>—</CellText>;
+          const primary = phone || email || "";
+          const secondary = phone && email ? email : null;
           return (
-            <span className="flex min-w-0 max-w-[220px] flex-col gap-0.5 leading-tight">
-              {phone ? (
-                <span className="flex min-w-0 flex-wrap items-center gap-1">
-                  <span className="font-mono text-caption tabular-nums text-ink-secondary">{phone}</span>
-                  <PhoneValidationBadge lead={row.original} />
+            <div className="min-w-0">
+              <span className="flex min-w-0 items-center gap-1">
+                <CellText mono={Boolean(phone)} title={primary}>
+                  {primary}
+                </CellText>
+                {phone ? <PhoneValidationBadge lead={row.original} /> : null}
+              </span>
+              {secondary ? (
+                <span className="block truncate text-caption leading-4 text-ink-muted" title={secondary}>
+                  {secondary}
                 </span>
               ) : null}
-              {email ? <span className="truncate text-caption text-ink-muted">{email}</span> : null}
-            </span>
+            </div>
           );
         },
       },
       {
         accessorKey: "country",
         header: "Country",
+        size: 110,
         cell: ({ row }) => {
           const label = formatLeadCountry(row.original.country);
-          return label === "—" ? (
-            <span className="text-ink-muted">—</span>
-          ) : (
-            <span className="block max-w-[140px] truncate text-ink-secondary">{label}</span>
+          return (
+            <CellText empty={label === "—"} title={label === "—" ? undefined : label}>
+              {label}
+            </CellText>
           );
         },
       },
       {
         id: "stage",
         header: "Stage",
+        size: 120,
         cell: ({ row }) => {
           const meta = stageMeta(row.original, pipelines);
-          if (!meta) return <span className="text-meta">{row.original.stageName ?? "—"}</span>;
+          if (!meta) {
+            return <CellText empty={!row.original.stageName}>{row.original.stageName ?? "—"}</CellText>;
+          }
           return (
             <span
               className={cn(
-                "inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-caption font-medium",
+                "inline-flex max-w-full items-center truncate rounded-full px-2 py-0.5 text-caption font-medium",
                 stageBadgeClass[meta.slot],
               )}
+              title={meta.name}
             >
               {meta.name}
             </span>
@@ -227,24 +277,26 @@ export function LeadsListView({
       },
       {
         accessorKey: "potentialValue",
-        header: ({ column }) => <SortableHeader column={column} title="Est. value" />,
+        header: ({ column }) => <SortableHeader column={column} title="Est. value" align="right" />,
         meta: { label: "Estimated value", align: "right" },
+        size: 120,
         cell: ({ row }) =>
           row.original.potentialValue != null ? (
-            <span className="tabular-nums text-ink" title="Estimated value">
+            <CellText className="text-ink tabular-nums" title="Estimated value">
               {formatLeadMoney(row.original.potentialValue, row.original.currency)}
-            </span>
+            </CellText>
           ) : (
-            <span className="text-ink-muted">—</span>
+            <CellText empty>—</CellText>
           ),
       },
       {
         accessorKey: "nextActivityAt",
         header: ({ column }) => <SortableHeader column={column} title="Next action" />,
         meta: { label: "Next action" },
+        size: 130,
         cell: ({ row }) =>
           row.original.status === "won" || row.original.status === "lost" ? (
-            <span className="text-meta capitalize">{row.original.status}</span>
+            <CellText className="capitalize">{row.original.status}</CellText>
           ) : (
             <NextStepChip at={row.original.nextActivityAt} />
           ),
@@ -252,6 +304,7 @@ export function LeadsListView({
       {
         accessorKey: "ownerName",
         header: "Owner",
+        size: 150,
         cell: ({ row }) => (
           <InlineSelectCell
             label="owner"
@@ -265,12 +318,12 @@ export function LeadsListView({
             }}
           >
             {row.original.ownerName ? (
-              <span className="flex min-w-0 items-center gap-2 text-ink-secondary">
-                <Avatar name={row.original.ownerName} size="sm" />
-                <span className="truncate">{row.original.ownerName}</span>
+              <span className="flex min-w-0 items-center gap-2">
+                <Avatar name={row.original.ownerName} size="sm" className="shrink-0" />
+                <CellText title={row.original.ownerName}>{row.original.ownerName}</CellText>
               </span>
             ) : (
-              <span className="text-meta">Unassigned</span>
+              <CellText empty>Unassigned</CellText>
             )}
           </InlineSelectCell>
         ),
@@ -278,12 +331,21 @@ export function LeadsListView({
       {
         accessorKey: "source",
         header: "Source",
-        cell: ({ row }) => <span className="text-sm text-foreground-muted">{row.original.source || "—"}</span>,
+        size: 110,
+        cell: ({ row }) => {
+          const value = row.original.source?.trim();
+          return (
+            <CellText empty={!value} title={value || undefined}>
+              {value || "—"}
+            </CellText>
+          );
+        },
       },
       {
         accessorKey: "priority",
         header: ({ column }) => <SortableHeader column={column} title="Priority" />,
         meta: { label: "Priority" },
+        size: 100,
         cell: ({ row }) => {
           const level = priorityFromString(row.original.priority);
           return (
@@ -297,16 +359,18 @@ export function LeadsListView({
                 await refreshLeads();
               }}
             >
-              <span className="inline-flex items-center gap-1.5 capitalize text-ink-secondary">
+              <span className="inline-flex items-center gap-1.5 capitalize text-cell text-ink-secondary">
                 {level === "high" || level === "urgent" ? (
                   <span
                     aria-hidden
                     className={cn(
-                      "size-1.5 rounded-full",
+                      "size-1.5 shrink-0 rounded-full",
                       level === "urgent" ? "bg-priority-urgent" : "bg-priority-high",
                     )}
                   />
-                ) : null}
+                ) : (
+                  <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-transparent" />
+                )}
                 {level}
               </span>
             </InlineSelectCell>
@@ -317,13 +381,29 @@ export function LeadsListView({
         accessorKey: "lastActivityAt",
         header: ({ column }) => <SortableHeader column={column} title="Last activity" />,
         meta: { label: "Last activity" },
-        cell: ({ row }) => <span className="text-meta text-data">{formatWhen(row.original.lastActivityAt)}</span>,
+        size: 120,
+        cell: ({ row }) => {
+          const value = formatWhen(row.original.lastActivityAt);
+          return (
+            <CellText empty={value === "—"} className="tabular-nums">
+              {value}
+            </CellText>
+          );
+        },
       },
       {
         accessorKey: "createdAt",
         header: ({ column }) => <SortableHeader column={column} title="Created" />,
         meta: { label: "Created" },
-        cell: ({ row }) => <span className="text-meta text-data">{formatWhen(row.original.createdAt)}</span>,
+        size: 110,
+        cell: ({ row }) => {
+          const value = formatWhen(row.original.createdAt);
+          return (
+            <CellText empty={value === "—"} className="tabular-nums">
+              {value}
+            </CellText>
+          );
+        },
       },
     ],
     [canAssignLeads, canEditLeads, ownerOptions, ownersQuery.isLoading, pipelines, refreshLeads],

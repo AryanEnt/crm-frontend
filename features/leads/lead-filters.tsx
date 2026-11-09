@@ -152,13 +152,13 @@ function CountryFilterSelect({
       onValueChange={(v) => onChange(v === "all" ? "" : v)}
     >
       <SelectTrigger
-        className={cn("h-8 w-[180px] text-xs", value && "border-brand-border bg-brand-soft text-brand")}
-        aria-label="Country"
+        className={cn("h-8 min-w-[11.5rem] text-xs", value && "border-brand-border bg-brand-soft text-brand")}
+        aria-label="Country of residency"
       >
-        <SelectValue placeholder="All Countries" />
+        <SelectValue placeholder="Country of residency" />
       </SelectTrigger>
       <SelectContent className="max-h-72">
-        <SelectItem value="all">All Countries</SelectItem>
+        <SelectItem value="all">Country of residency</SelectItem>
         {!selectedStillPresent && value ? (
           <SelectItem value={value}>{countryFilterLabel(value)}</SelectItem>
         ) : null}

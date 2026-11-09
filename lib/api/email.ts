@@ -245,6 +245,7 @@ export type EmailTemplate = {
   name: string;
   subject: string;
   bodyHtml: string;
+  signatureHtml?: string;
   category: string;
   variables: string[];
   isActive: boolean;

@@ -549,13 +549,13 @@ function FiltersPanel({
               </div>
             ) : null}
             <div className="space-y-1.5">
-              <Label htmlFor={`${id}-country`}>Country</Label>
+              <Label htmlFor={`${id}-country`}>Country of residency</Label>
               <Select
                 value={draft.country || "all"}
                 onValueChange={(v) => setDraft((d) => ({ ...d, country: v === "all" ? "" : v }))}
               >
                 <SelectTrigger id={`${id}-country`} className="h-9">
-                  <SelectValue placeholder="All countries" />
+                  <SelectValue placeholder="Country of residency" />
                 </SelectTrigger>
                 <SelectContent className="max-h-72">
                   <SelectItem value="all">All countries</SelectItem>

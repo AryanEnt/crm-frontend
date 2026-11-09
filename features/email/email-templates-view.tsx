@@ -37,16 +37,15 @@ const SAMPLE_FOLLOW_UP = {
 
 Thank you for taking the time to speak with me today.
 
-I wanted to follow up regarding {{company_name}} and share the next steps we discussed. If anything has changed on your side, reply to this email and I will adjust.
-
-Best regards,
+I wanted to follow up regarding {{company_name}} and share the next steps we discussed. If anything has changed on your side, reply to this email and I will adjust.`,
+  signature: `Best regards,
 {{lead_owner}}`,
 };
 
-type FormState = { name: string; subject: string; bodyHtml: string };
+type FormState = { name: string; subject: string; bodyHtml: string; signatureHtml: string };
 
 function emptyForm(): FormState {
-  return { name: "", subject: "", bodyHtml: "" };
+  return { name: "", subject: "", bodyHtml: "", signatureHtml: "" };
 }
 
 function sampleForm(): FormState {
@@ -54,6 +53,7 @@ function sampleForm(): FormState {
     name: SAMPLE_FOLLOW_UP.name,
     subject: SAMPLE_FOLLOW_UP.subject,
     bodyHtml: textToHtml(SAMPLE_FOLLOW_UP.body),
+    signatureHtml: textToHtml(SAMPLE_FOLLOW_UP.signature),
   };
 }
 
@@ -93,7 +93,12 @@ export function EmailTemplatesView() {
 
   const openEdit = (t: EmailTemplate) => {
     setEditingId(t.id);
-    setForm({ name: t.name, subject: t.subject, bodyHtml: t.bodyHtml });
+    setForm({
+      name: t.name,
+      subject: t.subject,
+      bodyHtml: t.bodyHtml,
+      signatureHtml: t.signatureHtml ?? "",
+    });
     setEditorKey((k) => k + 1);
     setEditorOpen(true);
   };
@@ -104,6 +109,7 @@ export function EmailTemplatesView() {
         name: body.name.trim(),
         subject: body.subject.trim(),
         bodyHtml: body.bodyHtml,
+        signatureHtml: body.signatureHtml,
         category: "general",
         variables: TEMPLATE_VAR_KEYS,
       };
@@ -124,6 +130,7 @@ export function EmailTemplatesView() {
         name: s.name,
         subject: s.subject,
         bodyHtml: s.bodyHtml,
+        signatureHtml: s.signatureHtml,
         category: "general",
         variables: TEMPLATE_VAR_KEYS,
       });
@@ -141,6 +148,7 @@ export function EmailTemplatesView() {
         name: template.name,
         subject: template.subject,
         bodyHtml: template.bodyHtml,
+        signatureHtml: template.signatureHtml ?? "",
         category: template.category || "general",
         variables: template.variables?.length ? template.variables : TEMPLATE_VAR_KEYS,
         isActive,
@@ -310,13 +318,15 @@ export function EmailTemplatesView() {
             </div>
           </ModalHeader>
 
-          <div className="flex min-h-0 flex-1 flex-col p-5">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-5">
             <TemplateMessageEditor
               key={editorKey}
               subject={form.subject}
               onSubjectChange={(subject) => setForm((f) => ({ ...f, subject }))}
               bodyHtml={form.bodyHtml}
               onBodyChange={(bodyHtml) => setForm((f) => ({ ...f, bodyHtml }))}
+              signatureHtml={form.signatureHtml}
+              onSignatureChange={(signatureHtml) => setForm((f) => ({ ...f, signatureHtml }))}
             />
           </div>
 
