@@ -3,18 +3,18 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
-/** Soft filled fields: no visible border until hover or focus, so the form reads as a few calm blocks. */
+/** Soft lavender-friendly fields; focus uses brand ring. */
 export const FIELD_CONTROL =
-  "h-11 w-full min-w-0 rounded-2xl border border-transparent bg-surface-muted px-3.5 text-body text-ink transition-[border-color,background-color,box-shadow] duration-150 placeholder:text-ink-muted hover:border-line focus-visible:border-brand focus-visible:bg-surface focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand/15 disabled:cursor-not-allowed disabled:opacity-60 aria-[invalid=true]:border-danger aria-[invalid=true]:bg-danger-soft aria-[invalid=true]:focus-visible:ring-danger/20";
+  "h-10 w-full min-w-0 rounded-xl border border-line/80 bg-surface px-3 text-body text-ink shadow-xs transition-[border-color,box-shadow,background-color] duration-150 placeholder:text-ink-muted hover:border-brand/35 focus-visible:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/20 disabled:cursor-not-allowed disabled:opacity-60 aria-[invalid=true]:border-danger aria-[invalid=true]:bg-danger-soft/40 aria-[invalid=true]:focus-visible:ring-danger/20";
 
 /** Classes for Radix/cmdk trigger buttons so they line up with text fields. */
 export const TRIGGER_CONTROL =
-  "h-11 rounded-2xl border border-transparent bg-surface-muted px-3.5 text-body shadow-none hover:border-line hover:bg-surface-muted focus-visible:border-brand focus-visible:ring-4 focus-visible:ring-brand/15 aria-[invalid=true]:border-danger";
+  "h-10 rounded-xl border border-line/80 bg-surface px-3 text-body shadow-xs hover:border-brand/35 hover:bg-surface focus-visible:border-brand focus-visible:ring-2 focus-visible:ring-brand/20 aria-[invalid=true]:border-danger";
 
 export const CHIP =
-  "inline-flex h-9 items-center gap-1.5 rounded-full border px-3.5 text-cell font-medium transition-[color,background-color,border-color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand/20";
-export const CHIP_IDLE = "border-transparent bg-surface-muted text-ink-secondary hover:border-line hover:text-ink";
-export const CHIP_ACTIVE = "border-brand bg-brand text-primary-foreground shadow-sm";
+  "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-caption font-medium transition-[color,background-color,border-color,box-shadow,transform] duration-150 hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/20";
+export const CHIP_IDLE = "border-line/80 bg-surface text-ink-secondary hover:border-brand/30 hover:bg-brand-soft/50 hover:text-ink";
+export const CHIP_ACTIVE = "border-brand/45 bg-brand-soft text-brand shadow-xs";
 
 export type FieldA11y = {
   id: string;
@@ -62,18 +62,18 @@ export function LeadField({
           *
         </span>
       ) : null}
-      {optional ? <span className="font-normal text-ink-muted"> (optional)</span> : null}
+      {optional ? <span className="font-normal text-ink-muted"> · optional</span> : null}
     </>
   );
   return (
     <div className={cn("flex min-w-0 flex-col gap-1.5", className)}>
       <div className="flex items-baseline justify-between gap-2">
         {group ? (
-          <span id={labelId} className="text-cell font-semibold text-ink">
+          <span id={labelId} className="text-caption font-medium text-ink-secondary">
             {text}
           </span>
         ) : (
-          <label id={labelId} htmlFor={id} className="text-cell font-semibold text-ink">
+          <label id={labelId} htmlFor={id} className="text-caption font-medium text-ink-secondary">
             {text}
           </label>
         )}

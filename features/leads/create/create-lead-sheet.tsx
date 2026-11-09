@@ -2,21 +2,26 @@
 
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
+import {
+  BriefcaseBusiness,
+  CalendarDays,
+  NotebookPen,
+  UserRoundPlus,
+  X,
+} from "lucide-react";
 import { FormProvider, useFormContext, useFormState, useWatch, type FieldErrors } from "react-hook-form";
 import { focusFirstInvalid, useZodForm } from "@/components/forms";
 import { CustomFieldsSection } from "@/components/forms/custom-fields-section";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import {
-  Drawer,
-  DrawerBody,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-} from "@/components/ui/drawer";
 import { LoadingState } from "@/components/ui/loading-state";
+import {
+  Modal,
+  ModalContent,
+  ModalDescription,
+  ModalHeader,
+  ModalTitle,
+} from "@/components/ui/modal";
 import { useAuth } from "@/features/auth/auth-provider";
 import type { SessionUser } from "@/features/auth/types";
 import { canAttachLeadScreenshot } from "@/features/leads/can-attach-screenshot";
@@ -44,7 +49,7 @@ import { FIELD_CONTROL } from "./field-ui";
 import { formatFollowUp, fromLocalInput } from "./follow-up";
 import { MoreDetailsAccordion } from "./more-details-accordion";
 import { DEFAULT_PHONE_COUNTRY, detectDialCountry, formatPhone } from "./phone";
-import { ProfileSection, WorkSection } from "./profile-section";
+import { WorkSection } from "./profile-section";
 import { QuickAddFields } from "./quick-add-fields";
 import { SalesSection, useOwnerChoices } from "./sales-section";
 import { loadSourceUsage, pickDefaultSource, rankSources } from "./source-usage";
@@ -53,6 +58,8 @@ import { useCreateLead } from "./use-create-lead";
 const FORM_ID = "create-lead-form";
 
 type Settings = Record<string, string>;
+
+const REQUIRED_KEYS = ["fullName", "source", "country", "nationality", "location"] as const;
 
 export type CreateLeadSheetProps = {
   open: boolean;
@@ -119,9 +126,10 @@ export function CreateLeadSheet({ open, onOpenChange, pipelineId, onCreated, lea
 
   return (
     <>
-      <Drawer open={open} onOpenChange={(next) => (next ? onOpenChange(true) : requestClose())}>
-        <DrawerContent
+      <Modal open={open} onOpenChange={(next) => (next ? onOpenChange(true) : requestClose())}>
+        <ModalContent
           ref={contentRef}
+          showClose={false}
           onOpenAutoFocus={(e) => e.preventDefault()}
           onPointerDownOutside={(e) => {
             if (confirmDiscard) e.preventDefault();
@@ -129,50 +137,40 @@ export function CreateLeadSheet({ open, onOpenChange, pipelineId, onCreated, lea
           onInteractOutside={(e) => {
             if (confirmDiscard) e.preventDefault();
           }}
-          overlayClassName="z-[60]"
-          className="z-[60] max-w-none bg-surface sm:w-[620px] sm:max-w-[620px] motion-reduce:data-[state=closed]:animate-none motion-reduce:data-[state=open]:animate-none"
-        >
-          <DrawerHeader className="border-b-0 px-6 pb-2 pt-6">
-            <DrawerTitle className="flex items-center gap-2 text-xl font-bold tracking-tight">
-              {lead ? (
-                <>
-                  <span aria-hidden>✏️</span>Edit lead
-                </>
-              ) : (
-                <>
-                  <span aria-hidden>✨</span>New lead
-                </>
-              )}
-            </DrawerTitle>
-            <DrawerDescription className="text-cell">
-              {lead
-                ? "Country, nationality and location are required."
-                : "Name, country, nationality and location are required. Everything else can wait."}
-            </DrawerDescription>
-          </DrawerHeader>
-          {ready && user ? (
-            <CreateLeadForm
-              key={lead?.id ?? "new"}
-              lead={lead ?? undefined}
-              existingReferral={lead ? (referralQuery.data ?? null) : undefined}
-              user={user}
-              pipelines={pipelinesQuery.data ?? []}
-              settings={settingsQuery.data}
-              sources={sourcesQuery.data ?? []}
-              initialPipelineId={pipelineId}
-              pasteTarget={contentRef}
-              hasChangesRef={hasChangesRef}
-              onCancel={requestClose}
-              onClose={() => onOpenChange(false)}
-              onCreated={lead ? onSaved : onCreated}
-            />
-          ) : (
-            <DrawerBody className="px-6">
-              <LoadingState compact label="Getting the form ready…" />
-            </DrawerBody>
+          overlayClassName="z-[60] bg-[#2e2474]/25 backdrop-blur-[2px]"
+          className={cn(
+            "create-lead-aurora z-[60] flex flex-col gap-0 overflow-hidden border-0 p-0 shadow-xl",
+            "inset-0 left-0 top-0 h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 rounded-none",
+            "sm:inset-auto sm:left-1/2 sm:top-1/2 sm:h-auto sm:max-h-[min(92vh,900px)] sm:w-[min(980px,calc(100%-2rem))] sm:max-w-[980px] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-[28px] sm:border sm:border-[color:var(--aurora-line)]",
+            "motion-reduce:data-[state=closed]:animate-none motion-reduce:data-[state=open]:animate-none",
           )}
-        </DrawerContent>
-      </Drawer>
+        >
+          <div className="create-lead-shell flex min-h-0 flex-1 flex-col">
+            <CreateLeadHeader editing={Boolean(lead)} onClose={requestClose} />
+            {ready && user ? (
+              <CreateLeadForm
+                key={lead?.id ?? "new"}
+                lead={lead ?? undefined}
+                existingReferral={lead ? (referralQuery.data ?? null) : undefined}
+                user={user}
+                pipelines={pipelinesQuery.data ?? []}
+                settings={settingsQuery.data}
+                sources={sourcesQuery.data ?? []}
+                initialPipelineId={pipelineId}
+                pasteTarget={contentRef}
+                hasChangesRef={hasChangesRef}
+                onCancel={requestClose}
+                onClose={() => onOpenChange(false)}
+                onCreated={lead ? onSaved : onCreated}
+              />
+            ) : (
+              <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-10">
+                <LoadingState compact label="Getting the form ready…" />
+              </div>
+            )}
+          </div>
+        </ModalContent>
+      </Modal>
       <ConfirmDialog
         open={confirmDiscard}
         onOpenChange={setConfirmDiscard}
@@ -185,7 +183,6 @@ export function CreateLeadSheet({ open, onOpenChange, pipelineId, onCreated, lea
         confirmLabel="Discard"
         cancelLabel="Keep editing"
         destructive
-        // The edit sheet is z-60 so it sits above the lead panel. This prompt has to be higher, or Discard is painted under that overlay and the click never lands.
         className="z-[80]"
         overlayClassName="z-[80]"
         onConfirm={() => {
@@ -195,6 +192,55 @@ export function CreateLeadSheet({ open, onOpenChange, pipelineId, onCreated, lea
         }}
       />
     </>
+  );
+}
+
+function CreateLeadHeader({ editing, onClose }: { editing: boolean; onClose: () => void }) {
+  return (
+    <ModalHeader className="shrink-0 border-b border-[color:var(--aurora-line)] px-5 py-4 sm:px-7 sm:py-5">
+      <div className="flex items-start gap-3 pr-10">
+        <span className="mt-0.5 inline-flex size-10 shrink-0 items-center justify-center rounded-2xl bg-brand-soft text-brand shadow-xs ring-1 ring-brand/15">
+          <UserRoundPlus aria-hidden className="size-5" />
+        </span>
+        <div className="min-w-0 space-y-0.5">
+          <ModalTitle className="text-lg font-semibold tracking-tight text-ink sm:text-xl">
+            {editing ? "Edit lead" : "Create New Lead"}
+          </ModalTitle>
+          <ModalDescription className="text-caption text-ink-muted sm:text-cell">
+            {editing
+              ? "Update this lead’s details in your sales pipeline."
+              : "Add a potential customer to your sales pipeline."}
+          </ModalDescription>
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Close"
+        className="absolute right-3 top-3 inline-flex size-9 items-center justify-center rounded-xl text-ink-muted transition-colors hover:bg-brand-soft hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/25 sm:right-4 sm:top-4"
+      >
+        <X aria-hidden className="size-4" />
+      </button>
+    </ModalHeader>
+  );
+}
+
+function RequiredProgress({ values }: { values: CreateLeadInput }) {
+  const filled = REQUIRED_KEYS.filter((key) => String(values[key] ?? "").trim().length > 0).length;
+  const total = REQUIRED_KEYS.length;
+  const pct = Math.round((filled / total) * 100);
+  return (
+    <div className="flex items-center gap-3" aria-label={`${filled} of ${total} required fields complete`}>
+      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-brand-soft">
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-[#9c86f0] via-brand to-[#5a63d8] transition-[width] duration-300 ease-standard"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <span className="shrink-0 text-caption tabular-nums text-ink-muted">
+        {filled}/{total} required
+      </span>
+    </div>
   );
 }
 
@@ -235,7 +281,6 @@ function buildDefaults({
 const NEXT_FIELD =
   'input:not([type="hidden"]):not([type="file"]):not([type="checkbox"]):not([type="radio"]):not([disabled]), textarea:not([disabled]), button[role="combobox"]:not([disabled])';
 
-/** Enter in a single-line field moves on, like Tab, skipping collapsed sections. */
 function focusNextField(root: HTMLElement, current: HTMLElement) {
   const fields = Array.from(root.querySelectorAll<HTMLElement>(NEXT_FIELD)).filter(
     (el) => !el.closest("[inert]") && el.getClientRects().length > 0,
@@ -271,7 +316,6 @@ function CreateLeadForm({
   onCreated?: (lead: Lead) => void;
 }) {
   const { can } = useAuth();
-  // Sales executives always own what they create; the API enforces the assign scope for everyone else.
   const canAssignOwner = can("leads:assign") && user.roleCode !== "sales_executive";
   const canAttachScreenshot = canAttachLeadScreenshot(can, user);
   const timeZone = user.timezone || undefined;
@@ -282,7 +326,6 @@ function CreateLeadForm({
       sources.map((s) => ({ name: s.name, usageCount: s.usageCount, position: s.position })),
       loadSourceUsage(user.id),
     );
-    // A lead can carry a source that has since been retired; keep it pickable.
     const current = lead?.source.trim();
     return current && !ranked.some((s) => s.toLowerCase() === current.toLowerCase()) ? [...ranked, current] : ranked;
   });
@@ -328,7 +371,6 @@ function CreateLeadForm({
       .map(sectionForField)
       .filter((s): s is DetailSection => s !== null);
     if (sections.length) setOpenSections((prev) => new Set([...prev, ...sections]));
-    // Wait a frame so a section that just opened is no longer inert.
     requestAnimationFrame(() => focusFirstInvalid(bodyRef.current));
   };
 
@@ -359,9 +401,8 @@ function CreateLeadForm({
     },
   });
 
-  // When editing, only a phone or email the user changed is worth checking.
   const phoneChanged = !editing || values.phone !== editing.initial.phone || values.phoneCountry !== editing.initial.phoneCountry;
-  const emailChanged = !editing || values.email.trim() !== editing.initial.email.trim();
+  const emailChanged = !editing || values.email.trim().toLowerCase() !== editing.initial.email.trim().toLowerCase();
   const lookedUp = useDuplicateCheck({
     phone: phoneChanged ? values.phone : "",
     phoneCountry: values.phoneCountry,
@@ -373,15 +414,20 @@ function CreateLeadForm({
   const matches: DuplicateMatch[] = (serverMatches.length ? serverMatches : lookedUp).filter(
     (m) => !acknowledged.has(duplicateKey(m)),
   );
-  // "Create anyway" on the live check skips the server's duplicate review for those same matches.
-  const force = lookedUp.length > 0 && lookedUp.every((m) => acknowledged.has(duplicateKey(m)));
+  // After the SE confirms possible matches, every subsequent save skips the soft block.
+  const force =
+    acknowledged.size > 0 ||
+    (lookedUp.length > 0 && lookedUp.every((m) => acknowledged.has(duplicateKey(m))));
 
   const onCreateAnyway = () => {
+    const keys = (serverMatches.length ? serverMatches : lookedUp).map(duplicateKey);
+    setAcknowledged((prev) => new Set([...prev, ...keys]));
+    // One click: confirm and finish create/save with the duplicate check skipped.
     if (serverMatches.length) {
       void createLead.confirmDuplicates();
       return;
     }
-    setAcknowledged((prev) => new Set([...prev, ...lookedUp.map(duplicateKey)]));
+    void createLead.submit({ force: true });
   };
 
   const submit = (andAnother = false) => void createLead.submit({ andAnother, force });
@@ -416,18 +462,15 @@ function CreateLeadForm({
   const stageName = pipeline?.stages.find((s) => s.id === values.stageId)?.name;
   const followUp = fromLocalInput(values.nextActivityAt);
   const salesSummary = [
-    canAssignOwner && values.ownerUserId && values.ownerUserId !== user.id ? `Owner ${ownerName(values.ownerUserId) ?? ""}`.trim() : null,
+    canAssignOwner && values.ownerUserId && values.ownerUserId !== user.id
+      ? `Owner ${ownerName(values.ownerUserId) ?? ""}`.trim()
+      : null,
     !editing && (values.pipelineId !== defaults.pipelineId || values.stageId !== defaults.stageId) ? stageName : null,
     followUp ? `Follow up ${formatFollowUp(followUp)}` : null,
   ]
     .filter(Boolean)
     .join(" · ");
-  const role = values.jobTitle.trim() || values.occupation.trim();
-  const workSummary = [
-    role && values.employer.trim() ? `${role} at ${values.employer.trim()}` : role || values.employer.trim(),
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const workSummary = [values.jobTitle.trim(), values.employer.trim()].filter(Boolean).join(" · ");
   const tagCount = parseTags(values.tags).length;
   const notesSummary = [
     values.notes.trim() ? "Note added" : null,
@@ -437,11 +480,25 @@ function CreateLeadForm({
     .join(" · ");
   const sectionInvalid = (section: DetailSection) =>
     (DETAIL_SECTION_FIELDS[section] as readonly string[]).some((f) => f in errors);
+  const anzscoLabel =
+    lead?.anzscoCode && lead.anzscoTitle ? `${lead.anzscoCode} — ${lead.anzscoTitle}` : null;
+
+  const toggleSection = (id: DetailSection) =>
+    setOpenSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   return (
     <FormProvider {...form}>
       <div className="flex min-h-0 flex-1 flex-col" onKeyDown={onKeyDown}>
-        <div ref={bodyRef} className="crm-scroll min-h-0 flex-1 overflow-y-auto px-6 py-5">
+        <div className="shrink-0 border-b border-[color:var(--aurora-line)] px-5 py-2.5 sm:px-7">
+          <RequiredProgress values={values} />
+        </div>
+
+        <div ref={bodyRef} className="crm-scroll min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-7 sm:py-6">
           <form
             id={FORM_ID}
             ref={formRef}
@@ -450,7 +507,7 @@ function CreateLeadForm({
               e.preventDefault();
               submit();
             }}
-            className="flex flex-col gap-6"
+            className="mx-auto flex max-w-[52rem] flex-col gap-3 pb-2"
           >
             <QuickAddFields
               nameRef={nameRef}
@@ -464,27 +521,20 @@ function CreateLeadForm({
               pasteTarget={pasteTarget}
               extractEnabled={!editing && env.features.leadScreenshotExtract}
               onApplyExtract={applyExtract}
+              showScreenshot={canAttachScreenshot}
+              anzscoLabel={anzscoLabel}
             />
-            <ProfileSection
-              anzscoLabel={lead?.anzscoCode && lead.anzscoTitle ? `${lead.anzscoCode} — ${lead.anzscoTitle}` : null}
-            />
+
             <MoreDetailsAccordion<DetailSection>
               open={openSections}
-              onToggle={(id) =>
-                setOpenSections((prev) => {
-                  const next = new Set(prev);
-                  if (next.has(id)) next.delete(id);
-                  else next.add(id);
-                  return next;
-                })
-              }
+              onToggle={toggleSection}
               sections={[
                 {
                   id: "sales",
-                  title: "Follow-up and owner",
-                  emoji: "📅",
+                  title: "Follow-up and Ownership",
+                  icon: CalendarDays,
                   summary: salesSummary || undefined,
-                  placeholder: editing ? "Set a reminder or owner" : "Set a reminder, owner or stage",
+                  placeholder: "Set a reminder, owner or stage",
                   invalid: sectionInvalid("sales"),
                   content: (
                     <SalesSection
@@ -499,8 +549,8 @@ function CreateLeadForm({
                 },
                 {
                   id: "work",
-                  title: "Job details",
-                  emoji: "🧑‍💼",
+                  title: "Job Details",
+                  icon: BriefcaseBusiness,
                   summary: workSummary || undefined,
                   placeholder: "Occupation, title and employer",
                   invalid: sectionInvalid("work"),
@@ -520,10 +570,10 @@ function CreateLeadForm({
                 },
                 {
                   id: "notes",
-                  title: "Notes",
-                  emoji: "📝",
+                  title: "Notes & Tags",
+                  icon: NotebookPen,
                   summary: notesSummary || undefined,
-                  placeholder: "Notes or tags",
+                  placeholder: "Add notes or tags to remember important details",
                   invalid: sectionInvalid("notes"),
                   content: (
                     <>
@@ -537,37 +587,45 @@ function CreateLeadForm({
           </form>
         </div>
 
-        <DrawerFooter className="flex-wrap justify-between gap-y-2 border-t-0 px-6 pb-5 pt-3 shadow-[0_-8px_16px_-12px_var(--line-strong)]">
+        <div className="shrink-0 border-t border-[color:var(--aurora-line)] bg-surface/90 px-5 py-3.5 backdrop-blur-sm sm:px-7 sm:py-4">
           {createLead.formError ? (
-            <p role="alert" className="w-full rounded-xl bg-danger-soft px-3 py-2 text-caption text-danger">
+            <p role="alert" className="mb-3 rounded-xl bg-danger-soft px-3 py-2 text-caption text-danger">
               {createLead.formError}
             </p>
           ) : null}
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-full px-2 py-1 text-cell font-medium text-ink-muted hover:text-ink focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand/20"
-          >
-            Cancel
-          </button>
-          <div className="flex flex-wrap items-center gap-2">
-            {editing ? null : (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="rounded-xl px-3 py-2 text-cell font-medium text-ink-muted transition-colors hover:bg-brand-soft hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/25"
+            >
+              Cancel
+            </button>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {editing ? null : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="lg"
+                  disabled={isSubmitting}
+                  onClick={() => submit(true)}
+                  className="h-10 rounded-xl border-brand/25 bg-surface px-4 hover:border-brand/40 hover:bg-brand-soft/60"
+                >
+                  Save and add another
+                </Button>
+              )}
               <Button
-                type="button"
-                variant="outline"
+                type="submit"
+                form={FORM_ID}
                 size="lg"
-                disabled={isSubmitting}
-                onClick={() => submit(true)}
-                className="h-10 rounded-full px-4"
+                loading={isSubmitting}
+                className="create-lead-primary h-10 rounded-xl px-5 font-semibold hover:bg-transparent"
               >
-                Save and add another
+                {editing ? "Save changes" : "Create Lead"}
               </Button>
-            )}
-            <Button type="submit" form={FORM_ID} size="lg" loading={isSubmitting} className="h-10 rounded-full px-5 font-semibold">
-              {editing ? "Save changes" : "Create lead"}
-            </Button>
+            </div>
           </div>
-        </DrawerFooter>
+        </div>
       </div>
     </FormProvider>
   );
@@ -578,8 +636,8 @@ function NotesField() {
   const id = React.useId();
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className="text-cell font-semibold text-ink">
-        Notes
+      <label htmlFor={id} className="text-caption font-medium text-ink-secondary">
+        Notes <span className="font-normal text-ink-muted">· optional</span>
       </label>
       <textarea
         id={id}
@@ -598,7 +656,7 @@ function TagsField() {
   const hintId = `${id}-hint`;
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className="text-cell font-semibold text-ink">
+      <label htmlFor={id} className="text-caption font-medium text-ink-secondary">
         Tags <span className="font-normal text-ink-muted">· optional</span>
       </label>
       <input

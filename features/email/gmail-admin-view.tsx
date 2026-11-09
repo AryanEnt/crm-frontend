@@ -32,7 +32,7 @@ export function GmailAdminView() {
     <div className="space-y-6">
       <PageHeader
         title="Email sync"
-        description="Health of Google sign-in, company IMAP/SMTP, and automatic inbox updates. Individual mailboxes stay on each user’s Email accounts page."
+        description="Health of Google sign-in, company IMAP/SMTP, and automatic inbox updates. Team Leads connect sales executive mailboxes under Team Email."
       />
       {!h.configured ? (
         <div className="rounded-xl border border-border bg-surface p-5">

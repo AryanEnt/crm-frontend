@@ -768,6 +768,64 @@ body {
   background-image: linear-gradient(140deg, #9c86f0 0%, var(--brand) 55%, #5a63d8 100%);
 }
 
+/*
+  —— Create Lead Aurora ——
+  Scoped lavender Gen Z surface for the create/edit lead modal only.
+*/
+.create-lead-aurora {
+  --aurora-canvas: #faf8fe;
+  --aurora-lavender: #efe8fe;
+  --aurora-line: color-mix(in srgb, #c5aef8 34%, transparent);
+  --aurora-pink: #f7e8ff;
+  --aurora-blue: #e8f0fd;
+
+  --brand: #6b58d3;
+  --brand-hover: #5a47c2;
+  --brand-active: #4b3aa8;
+  --brand-ink: #2e2474;
+  --brand-soft: #f1ecfe;
+  --brand-border: color-mix(in srgb, var(--brand) 38%, var(--surface));
+  --ring: var(--brand);
+  --primary: var(--brand);
+  --primary-hover: var(--brand-hover);
+  --line: color-mix(in srgb, #c5aef8 42%, #e8e4f4);
+  --line-strong: color-mix(in srgb, #9c86f0 36%, #d4cceb);
+  --surface-muted: color-mix(in srgb, var(--aurora-lavender) 55%, white);
+}
+
+.create-lead-aurora .create-lead-shell {
+  background:
+    radial-gradient(120% 80% at 0% 0%, rgb(247 232 255 / 0.55), transparent 42%),
+    radial-gradient(90% 70% at 100% 0%, rgb(232 240 253 / 0.5), transparent 40%),
+    linear-gradient(180deg, #fffdff 0%, #faf8fe 100%);
+}
+
+.create-lead-aurora .create-lead-panel {
+  background: rgb(255 255 255 / 0.82);
+  border: 1px solid var(--aurora-line);
+  box-shadow: 0 1px 2px rgb(72 56 150 / 0.04);
+}
+
+.create-lead-aurora .create-lead-primary {
+  background-image: linear-gradient(135deg, #9c86f0 0%, #6b58d3 52%, #5a63d8 100%);
+  color: #fff;
+  border: none;
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.22) inset,
+    0 10px 20px -12px rgb(72 56 150 / 0.55);
+}
+
+.create-lead-aurora .create-lead-primary:hover:not(:disabled) {
+  filter: brightness(1.04);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.28) inset,
+    0 14px 24px -12px rgb(72 56 150 / 0.6);
+}
+
+.create-lead-aurora .create-lead-primary:active:not(:disabled) {
+  filter: brightness(0.97);
+}
+
 /* Mostly solid warm white with a lavender cast; the blur only softens the glow behind it. */
 .aurora-card {
   background: linear-gradient(

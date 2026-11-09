@@ -11,7 +11,6 @@ import {
   CalendarDays,
   Check,
   ChevronRight,
-  Clock3,
   Columns3,
   ListChecks,
   Plus,
@@ -20,7 +19,6 @@ import {
   TrendingUp,
   UserPlus,
   Users,
-  Wallet,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -30,10 +28,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/ui/error-state";
 import { Avatar } from "@/components/ui/console/avatar";
 import { useQuickCreateOptional } from "@/components/forms/quick-create-provider";
+import { LEAD_PIPELINE_ID } from "@/features/leads/lead-board-state";
 import { formatLeadMoney } from "@/features/leads/lead-format";
+import { pipelineWorkHref } from "@/features/pipeline/pipeline-filters";
 import { LeadMyDaySection, LeadPipelineStrip } from "@/features/dashboard/lead-my-day";
 import { useAuth } from "@/features/auth/auth-provider";
-import { crmApi, type Activity, type LeadOwnerRow, type TargetProgress } from "@/lib/api/crm";
+import { crmApi, type Activity, type LeadDayItem, type LeadOwnerRow, type TargetProgress } from "@/lib/api/crm";
 import { adminApi } from "@/lib/api/admin";
 import { ActivityQuickCreateDialog } from "@/features/activities/activity-quick-create";
 import { activityHref } from "@/features/activities/activity-href";
@@ -75,6 +75,26 @@ function dayKey(value: string | Date, timeZone: string) {
 
 const eventAt = (a: Activity) => a.startAt || a.dueAt || a.createdAt;
 const relatedName = (a: Activity) => a.leadName || a.customerName || a.dealTitle || "";
+
+/** Prefer a readable type label when the title is blank or just the type repeated. */
+function activityLabel(a: Activity): string {
+  const title = a.title?.trim() ?? "";
+  const type = a.typeName?.trim() ?? "";
+  if (!title) return type || "Follow-up";
+  if (type) {
+    const words = title.toLowerCase().split(/\s+/).filter(Boolean);
+    if (words.length > 0 && words.every((w) => w === type.toLowerCase())) return type;
+  }
+  return title;
+}
+
+type FocusNextUp = {
+  title: string;
+  related: string;
+  at: string | null;
+  href?: string;
+  tone: "overdue" | "today" | "upcoming";
+};
 
 export function DashboardView() {
   const { user, can } = useAuth();
@@ -202,18 +222,70 @@ export function DashboardView() {
   const overdueTotal = overdueQuery.data?.total ?? overdue.length;
   const todayKey = dayKey(now, timezone);
   const todayCount = activities.filter((a) => dayKey(eventAt(a), timezone) === todayKey).length;
-  const nextUp = activities
-    .filter((a) => {
-      const at = a.startAt || a.dueAt;
-      return at != null && new Date(at).getTime() >= now.getTime() && a.displayStatus !== "completed";
-    })
-    .sort((a, b) => new Date(a.startAt || a.dueAt!).getTime() - new Date(b.startAt || b.dueAt!).getTime())[0];
+
+  // Focus card follows lead next-actions (same source as the KPI strip), not a random week calendar row.
+  const focusOverdueCount = myDayQuery.data?.counts.overdue ?? overdueTotal;
+  const focusTodayCount = myDayQuery.data?.counts.today ?? todayCount;
+  const focusLead: LeadDayItem | null =
+    myDayQuery.data?.overdue?.[0] ?? myDayQuery.data?.today?.[0] ?? null;
+
+  const nextActivity: Activity | undefined = (() => {
+    const open = (a: Activity) => a.displayStatus !== "completed" && a.status !== "cancelled";
+    const byWhen = (a: Activity, b: Activity) =>
+      new Date(a.startAt || a.dueAt || 0).getTime() - new Date(b.startAt || b.dueAt || 0).getTime();
+    const overdueOpen = overdue.filter(open).sort(byWhen)[0];
+    if (overdueOpen) return overdueOpen;
+    const todayOpen = activities
+      .filter((a) => open(a) && dayKey(eventAt(a), timezone) === todayKey)
+      .sort(byWhen)[0];
+    if (todayOpen) return todayOpen;
+    return activities
+      .filter((a) => {
+        const at = a.startAt || a.dueAt;
+        return open(a) && at != null && new Date(at).getTime() >= now.getTime();
+      })
+      .sort(byWhen)[0];
+  })();
+
+  const focusNextUp: FocusNextUp | undefined = (() => {
+    if (focusLead?.nextActivityAt) {
+      const tone =
+        myDayQuery.data?.overdue?.[0]?.id === focusLead.id
+          ? "overdue"
+          : ("today" as const);
+      return {
+        title: focusLead.nextActivityTitle?.trim() || "Follow-up",
+        related: focusLead.fullName,
+        at: focusLead.nextActivityAt,
+        href: linkTo(`/pipeline?leadId=${encodeURIComponent(focusLead.id)}`),
+        tone,
+      };
+    }
+    if (!nextActivity) return undefined;
+    const at = nextActivity.startAt || nextActivity.dueAt || null;
+    const tone =
+      nextActivity.displayStatus === "overdue" || (at && new Date(at) < now)
+        ? "overdue"
+        : at && dayKey(at, timezone) === todayKey
+          ? "today"
+          : "upcoming";
+    return {
+      title: activityLabel(nextActivity),
+      related: relatedName(nextActivity),
+      at,
+      href: linkTo(activityHref(nextActivity)),
+      tone,
+    };
+  })();
 
   const overview = overviewQuery.data;
   const leadCurrency = overview?.currency ?? "AUD";
 
   const kpiLoading =
-    (isTeamLead && teamMetaQuery.isLoading) || (canViewLeads && overviewQuery.isLoading) || overdueQuery.isLoading;
+    (isTeamLead && teamMetaQuery.isLoading) ||
+    (canViewLeads && overviewQuery.isLoading) ||
+    overdueQuery.isLoading ||
+    weekQuery.isLoading;
 
   if (weekQuery.isError && overdueQuery.isError) {
     return (
@@ -295,31 +367,6 @@ export function DashboardView() {
         </div>
       ) : null}
 
-      <section className="grid gap-4 lg:grid-cols-3">
-        <FocusCard
-          className={showTargets || quickActions.length > 0 ? "lg:col-span-2" : "lg:col-span-3"}
-          loading={overdueQuery.isLoading || weekQuery.isLoading}
-          overdueTotal={overdueTotal}
-          todayCount={todayCount}
-          weekTotal={weekTotal}
-          nextUp={nextUp}
-          timezone={timezone}
-          team={isTeamLead}
-          overdueHref={linkTo(OVERDUE_HREF)}
-          calendarHref={linkTo("/calendar")}
-          nextUpHref={nextUp ? linkTo(activityHref(nextUp)) : undefined}
-        />
-        {showTargets ? (
-          <TargetCard
-            loading={targetsQuery.isLoading}
-            target={targetsQuery.data?.data?.[0]}
-            href={linkTo("/targets")}
-          />
-        ) : (
-          <QuickActionsCard actions={quickActions} />
-        )}
-      </section>
-
       <section aria-label="Key numbers" className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {kpiLoading ? (
           Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)
@@ -339,66 +386,85 @@ export function DashboardView() {
               hint={overview ? `${formatLeadMoney(overview.openValue, leadCurrency)} open value` : "In team scope"}
               icon={Target}
               tone="info"
-              href={linkTo("/leads")}
+              href={linkTo("/pipeline")}
             />
             <StatCard
-              label="Overdue activities"
-              value={overdueTotal}
-              hint={overdueTotal > 0 ? "Needs attention" : "All clear"}
+              label="Overdue"
+              value={myDayQuery.data?.counts.overdue ?? overdueTotal}
+              hint={overdueTotal > 0 ? "Needs you now" : "All clear"}
               icon={AlarmClock}
-              tone={overdueTotal > 0 ? "warning" : "success"}
-              href={linkTo(OVERDUE_HREF)}
+              tone={(myDayQuery.data?.counts.overdue ?? overdueTotal) > 0 ? "warning" : "success"}
+              href={linkTo(pipelineWorkHref("overdue", LEAD_PIPELINE_ID))}
             />
             <StatCard
-              label="Upcoming (7 days)"
-              value={weekTotal}
-              hint="Scheduled activities"
+              label="No next step"
+              value={overview?.noNextActivity ?? myDayQuery.data?.counts.noNextAction}
+              hint="Open leads with nothing booked"
               icon={CalendarClock}
               tone="neutral"
-              href={linkTo("/calendar")}
+              href={linkTo(pipelineWorkHref("none", LEAD_PIPELINE_ID))}
             />
           </>
         ) : (
           <>
             <StatCard
-              label="Open pipeline"
-              value={overview?.openValue ?? 0}
-              format={(n) => formatLeadMoney(n, leadCurrency)}
-              hint={overview ? `${formatLeadMoney(overview.weightedValue, leadCurrency)} weighted` : "Open lead value"}
-              icon={Wallet}
-              tone="brand"
-              href={linkTo("/pipeline")}
+              label="Overdue"
+              value={myDayQuery.data?.counts.overdue ?? overdueTotal}
+              hint={(myDayQuery.data?.counts.overdue ?? overdueTotal) > 0 ? "Clear these first" : "All clear"}
+              icon={AlarmClock}
+              tone={(myDayQuery.data?.counts.overdue ?? overdueTotal) > 0 ? "warning" : "success"}
+              href={linkTo(pipelineWorkHref("overdue", LEAD_PIPELINE_ID))}
             />
             <StatCard
-              label="Open leads"
-              value={overview?.openLeads}
-              hint={overview ? `${overview.noNextActivity} without a next action` : "In progress"}
+              label="Due today"
+              value={myDayQuery.data?.counts.today ?? todayCount}
+              hint="On your plan today"
+              icon={CalendarClock}
+              tone="brand"
+              href={linkTo(pipelineWorkHref("today", LEAD_PIPELINE_ID))}
+            />
+            <StatCard
+              label="No next step"
+              value={overview?.noNextActivity ?? myDayQuery.data?.counts.noNextAction}
+              hint="Book a follow-up"
               icon={Target}
               tone="info"
-              href={linkTo("/leads")}
+              href={linkTo(pipelineWorkHref("none", LEAD_PIPELINE_ID))}
             />
             <StatCard
-              label="Overdue"
-              value={overdueTotal}
-              hint={overdueTotal > 0 ? "Activities to clear" : "All clear"}
-              icon={AlarmClock}
-              tone={overdueTotal > 0 ? "warning" : "success"}
-              href={linkTo(OVERDUE_HREF)}
-            />
-            <StatCard
-              label="Win rate"
-              value={overview?.winRate}
-              format={(n) => `${n.toFixed(1)}%`}
-              hint={
-                overview
-                  ? `${overview.wonLeads} won · ${overview.lostLeads} lost this quarter`
-                  : "Won ÷ (won + lost)"
-              }
+              label="Stuck"
+              value={myDayQuery.data?.counts.stale ?? overview?.stale}
+              hint="Quiet for 7+ days"
               icon={TrendingUp}
-              tone="success"
-              href={linkTo("/analytics")}
+              tone={(myDayQuery.data?.counts.stale ?? overview?.stale ?? 0) > 0 ? "warning" : "success"}
+              href={linkTo(pipelineWorkHref("stuck", LEAD_PIPELINE_ID))}
             />
           </>
+        )}
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-3">
+        <FocusCard
+          className={showTargets || quickActions.length > 0 ? "lg:col-span-2" : "lg:col-span-3"}
+          loading={
+            overdueQuery.isLoading ||
+            weekQuery.isLoading ||
+            (canViewLeads && myDayQuery.isLoading)
+          }
+          overdueTotal={focusOverdueCount}
+          todayCount={focusTodayCount}
+          nextUp={focusNextUp}
+          timezone={timezone}
+          team={isTeamLead}
+        />
+        {showTargets ? (
+          <TargetCard
+            loading={targetsQuery.isLoading}
+            target={targetsQuery.data?.data?.[0]}
+            href={linkTo("/targets")}
+          />
+        ) : (
+          <QuickActionsCard actions={quickActions} />
         )}
       </section>
 
@@ -448,9 +514,10 @@ export function DashboardView() {
         {showTargets && quickActions.length > 0 ? <QuickActionsCard actions={quickActions} /> : null}
       </section>
 
+      {isTeamLead ? (
       <section className="grid gap-4 lg:grid-cols-2">
         <ActivityListCard
-          heading={isTeamLead ? "Team’s week" : "Your week"}
+          heading="Team’s week"
           icon={CalendarDays}
           count={weekTotal}
           viewAllHref={linkTo("/calendar")}
@@ -491,6 +558,7 @@ export function DashboardView() {
           now={now}
         />
       </section>
+      ) : null}
 
       <ActivityQuickCreateDialog
         open={createOpen}
@@ -633,32 +701,26 @@ function FocusCard({
   loading,
   overdueTotal,
   todayCount,
-  weekTotal,
   nextUp,
   timezone,
   team,
-  overdueHref,
-  calendarHref,
-  nextUpHref,
 }: {
   className?: string;
   loading: boolean;
   overdueTotal: number;
   todayCount: number;
-  weekTotal: number;
-  nextUp?: Activity;
+  nextUp?: FocusNextUp;
   timezone: string;
   team: boolean;
-  overdueHref?: string;
-  calendarHref?: string;
-  nextUpHref?: string;
 }) {
   const headline =
     overdueTotal > 0
-      ? `${overdueTotal} ${overdueTotal === 1 ? "activity needs" : "activities need"} clearing first`
+      ? `${overdueTotal} overdue follow-up${overdueTotal === 1 ? "" : "s"} to clear first`
       : todayCount > 0
-        ? `${todayCount} ${todayCount === 1 ? "thing" : "things"} on ${team ? "the team’s" : "your"} plan today`
-        : "A clear day. Plan ahead.";
+        ? `${todayCount} follow-up${todayCount === 1 ? "" : "s"} on ${team ? "the team’s" : "your"} plan today`
+        : nextUp
+          ? "Nothing due today — next booked follow-up below"
+          : "A clear day. Plan ahead.";
 
   return (
     <div
@@ -676,23 +738,10 @@ function FocusCard({
         <h2 className="mt-1 text-[1.125rem] font-semibold tracking-tight text-ink">{headline}</h2>
       )}
 
-      <div className="mt-4 grid grid-cols-3 gap-3">
-        <FocusTile
-          label="Overdue"
-          value={overdueTotal}
-          loading={loading}
-          tone={overdueTotal > 0 ? "warning" : "success"}
-          icon={overdueTotal > 0 ? AlarmClock : Check}
-          href={overdueHref}
-        />
-        <FocusTile label="Today" value={todayCount} loading={loading} tone="brand" icon={Clock3} href={calendarHref} />
-        <FocusTile label="Next 7 days" value={weekTotal} loading={loading} tone="info" icon={CalendarDays} href={calendarHref} />
-      </div>
-
       {loading ? (
         <Skeleton className="mt-4 h-12 w-full rounded-lg" />
       ) : nextUp ? (
-        <NextUpRow activity={nextUp} timezone={timezone} href={nextUpHref} />
+        <NextUpRow item={nextUp} timezone={timezone} />
       ) : (
         <p className="mt-4 rounded-lg border border-dashed border-line bg-surface/70 px-3 py-3 text-body text-ink-muted">
           Nothing else coming up. Book a follow-up to keep leads moving.
@@ -702,76 +751,57 @@ function FocusCard({
   );
 }
 
-function FocusTile({
-  label,
-  value,
-  loading,
-  tone,
-  icon: Icon,
-  href,
-}: {
-  label: string;
-  value: number;
-  loading: boolean;
-  tone: Tone;
-  icon: LucideIcon;
-  href?: string;
-}) {
+function NextUpRow({ item, timezone }: { item: FocusNextUp; timezone: string }) {
+  const when = item.at
+    ? formatInTimezone(item.at, timezone, {
+        weekday: "short",
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : "—";
   const body = (
     <>
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-label">{label}</span>
-        <span className={cn("flex size-6 items-center justify-center rounded-md", TONE_ICON[tone])}>
-          <Icon className="size-3.5" aria-hidden />
-        </span>
-      </div>
-      <p className="mt-1.5 text-numeral">{loading ? <Skeleton className="h-7 w-10" /> : <CountUp value={value} />}</p>
-    </>
-  );
-  const className = "block rounded-lg border border-line bg-surface/90 p-3 backdrop-blur-sm";
-  return href ? (
-    <Link
-      href={href}
-      className={cn(
-        className,
-        "transition-[border-color,box-shadow] duration-150 hover:border-line-strong hover:shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-      )}
-    >
-      {body}
-    </Link>
-  ) : (
-    <div className={className}>{body}</div>
-  );
-}
-
-function NextUpRow({ activity, timezone, href }: { activity: Activity; timezone: string; href?: string }) {
-  const related = relatedName(activity);
-  const body = (
-    <>
-      <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-brand text-primary-foreground">
+      <span
+        className={cn(
+          "flex size-9 shrink-0 items-center justify-center rounded-lg text-primary-foreground",
+          item.tone === "overdue" ? "bg-danger" : item.tone === "today" ? "bg-brand" : "bg-ink-secondary",
+        )}
+      >
         <CalendarClock className="size-4" aria-hidden />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block text-caption font-medium text-ink-muted">Next up</span>
+        <span className="block text-caption font-medium text-ink-muted">
+          {item.tone === "overdue" ? "Overdue now" : item.tone === "today" ? "Due today" : "Next up"}
+        </span>
         <span className="block truncate text-body font-medium text-ink">
-          {activity.title}
-          {related ? <span className="font-normal text-ink-secondary"> · {related}</span> : null}
+          {item.title}
+          {item.related ? <span className="font-normal text-ink-secondary"> · {item.related}</span> : null}
         </span>
       </span>
-      <span className="shrink-0 rounded-full bg-surface-muted px-2 py-0.5 text-caption font-medium tabular-nums text-ink-secondary">
-        {formatInTimezone(activity.startAt || activity.dueAt, timezone, {
-          weekday: "short",
-          hour: "numeric",
-          minute: "2-digit",
-        })}
+      <span
+        className={cn(
+          "shrink-0 rounded-full px-2 py-0.5 text-caption font-medium tabular-nums",
+          item.tone === "overdue"
+            ? "bg-danger-soft text-danger"
+            : item.tone === "today"
+              ? "bg-brand-soft text-brand-ink"
+              : "bg-surface-muted text-ink-secondary",
+        )}
+      >
+        {when}
       </span>
-      {href ? <ChevronRight aria-hidden className="size-4 shrink-0 text-ink-subtle transition-transform group-hover/next:translate-x-0.5" /> : null}
+      {item.href ? (
+        <ChevronRight
+          aria-hidden
+          className="size-4 shrink-0 text-ink-subtle transition-transform group-hover/next:translate-x-0.5"
+        />
+      ) : null}
     </>
   );
   const className = "mt-4 flex items-center gap-3 rounded-lg border border-line bg-surface p-2.5";
-  return href ? (
+  return item.href ? (
     <Link
-      href={href}
+      href={item.href}
       className={cn(
         className,
         "group/next transition-[border-color,box-shadow] hover:border-line-strong hover:shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -1170,7 +1200,7 @@ function ActivityListCard({
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-body font-medium text-ink group-hover/row:text-brand">
-                      {a.title}
+                      {activityLabel(a)}
                     </span>
                     <span className="block truncate text-meta">{sub}</span>
                   </span>

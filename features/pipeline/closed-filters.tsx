@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ArrowDownUp, CalendarRange, Columns3, Rows3 } from "lucide-react";
+import { ArrowDownUp, CalendarRange } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { CLOSED_RANGE_OPTIONS, closedRangeLabel, type ClosedRange } from "./closed-range";
-import { CLOSED_SORT_OPTIONS, type ClosedSortKey, type ClosedView, type PipelineFilters, type SortOrder } from "./pipeline-filters";
+import { CLOSED_SORT_OPTIONS, type ClosedSortKey, type PipelineFilters, type SortOrder } from "./pipeline-filters";
 
 type Props = { filters: PipelineFilters; onChange: (next: PipelineFilters) => void };
 
@@ -25,7 +25,7 @@ export function ClosedDateFilter({ filters, onChange }: Props) {
   const [open, setOpen] = React.useState(false);
   const [from, setFrom] = React.useState("");
   const [to, setTo] = React.useState("");
-  const verb = filters.status === "complete" ? "Complete" : filters.status === "won" ? "Won" : "Lost";
+  const verb = filters.status === "complete" ? "Outcome" : filters.status === "won" ? "Purchased" : "Lost";
   const reversed = Boolean(from && to && from > to);
 
   const apply = (closed: ClosedRange, closedFrom = "", closedTo = "") => {
@@ -121,8 +121,8 @@ export function ClosedSortSelect({ filters, onChange }: Props) {
         onChange({ ...filters, sort, order, page: 1 });
       }}
     >
-      <SelectTrigger className="h-9 w-[184px]" aria-label="Sort">
-        <ArrowDownUp className="size-4 text-ink-muted" aria-hidden />
+      <SelectTrigger className="h-9 w-auto max-w-[11.5rem] gap-1.5" aria-label="Sort">
+        <ArrowDownUp className="size-4 shrink-0 text-ink-muted" aria-hidden />
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
@@ -133,37 +133,5 @@ export function ClosedSortSelect({ filters, onChange }: Props) {
         ))}
       </SelectContent>
     </Select>
-  );
-}
-
-const VIEWS: { value: ClosedView; label: string; Icon: typeof Columns3 }[] = [
-  { value: "board", label: "Board", Icon: Columns3 },
-  { value: "table", label: "Table", Icon: Rows3 },
-];
-
-export function ClosedViewToggle({ filters, onChange }: Props) {
-  return (
-    <div role="radiogroup" aria-label="View" className="inline-flex h-9 items-center rounded-full bg-surface-muted p-0.5">
-      {VIEWS.map(({ value, label, Icon }) => {
-        const on = filters.view === value;
-        return (
-          <button
-            key={value}
-            type="button"
-            role="radio"
-            aria-checked={on}
-            onClick={() => onChange({ ...filters, view: value, page: 1 })}
-            className={cn(
-              "inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[0.8125rem] font-medium",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              on ? "bg-surface text-ink shadow-card" : "text-ink-muted hover:text-ink",
-            )}
-          >
-            <Icon className="size-4" aria-hidden />
-            {label}
-          </button>
-        );
-      })}
-    </div>
   );
 }

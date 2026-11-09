@@ -101,23 +101,38 @@ export function ScreenshotField({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <span id={`${id}-label`} className="flex items-baseline justify-between gap-2 text-cell font-semibold text-ink">
-        Screenshot
-        <span className="text-caption font-normal text-ink-muted">Optional</span>
+      <span id={`${id}-label`} className="text-caption font-medium text-ink-secondary">
+        Screenshot <span className="font-normal text-ink-muted">· optional</span>
       </span>
       {file && preview ? (
-        <div className="flex items-center gap-3 rounded-2xl bg-surface-muted p-2">
+        <div className="flex items-center gap-3 rounded-xl border border-line/80 bg-surface p-2.5 shadow-xs">
           {/* eslint-disable-next-line @next/next/no-img-element -- local blob preview */}
-          <img src={preview} alt="Screenshot preview" className="size-14 shrink-0 rounded-control object-cover" />
+          <img src={preview} alt="Screenshot preview" className="size-14 shrink-0 rounded-lg object-cover" />
           <div className="min-w-0 flex-1">
             <p className="truncate text-cell font-medium text-ink">{file.name}</p>
-            <p className="text-caption text-ink-muted">{formatSize(file.size)} · attached when you create the lead</p>
+            <p className="text-caption text-ink-muted">{formatSize(file.size)} · attached on create</p>
+            <div className="mt-1.5 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => inputRef.current?.click()}
+                className="rounded-sm text-caption font-medium text-brand-ink underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                Replace
+              </button>
+              <button
+                type="button"
+                onClick={remove}
+                className="rounded-sm text-caption font-medium text-ink-muted hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                Remove
+              </button>
+            </div>
           </div>
           <button
             type="button"
             aria-label="Remove screenshot"
             onClick={remove}
-            className="inline-flex size-8 shrink-0 items-center justify-center rounded-full text-ink-muted hover:bg-surface-muted hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-ink-muted hover:bg-surface-muted hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <X aria-hidden className="size-4" />
           </button>
@@ -144,15 +159,18 @@ export function ScreenshotField({
             take(dropped);
           }}
           className={cn(
-            "flex w-full items-center gap-3 rounded-2xl border-2 border-dashed px-3.5 py-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand/20",
-            dragOver ? "border-brand bg-brand-soft" : "border-brand-border bg-brand-soft/40 hover:border-brand hover:bg-brand-soft/70",
+            "flex w-full items-center gap-3 rounded-2xl border border-dashed px-3.5 py-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/20",
+            dragOver
+              ? "border-brand bg-brand-soft/70"
+              : "border-brand/30 bg-brand-soft/25 hover:border-brand/50 hover:bg-brand-soft/45",
           )}
         >
-          <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-surface-muted text-ink-muted">
+          <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl border border-brand/20 bg-surface text-brand">
             <ImagePlus aria-hidden className="size-4" />
           </span>
           <span id={`${id}-hint`} className="min-w-0 text-cell text-ink-secondary">
-            Paste, drop or <span className="font-medium text-brand-ink underline-offset-2 hover:underline">browse</span>
+            Drop an image, paste, or{" "}
+            <span className="font-medium text-brand-ink underline-offset-2 hover:underline">browse</span>
           </span>
         </button>
       )}
@@ -168,14 +186,14 @@ export function ScreenshotField({
       />
 
       {file && extractEnabled && !found ? (
-        <Button type="button" variant="outline" size="sm" className="self-start rounded-full" onClick={() => void extract()} disabled={extracting}>
+        <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => void extract()} disabled={extracting}>
           {extracting ? <Loader2 aria-hidden className="animate-spin" /> : <Sparkles aria-hidden />}
           {extracting ? "Reading screenshot…" : "Fill details from screenshot"}
         </Button>
       ) : null}
 
       {found ? (
-        <div role="status" className="rounded-card border border-brand-border bg-brand-soft px-3 py-2.5 text-cell text-ink">
+        <div role="status" className="rounded-xl border border-brand-border bg-brand-soft/70 px-3 py-2.5 text-cell text-ink">
           <p className="font-medium">Found in the screenshot</p>
           <ul className="mt-1 space-y-0.5 text-ink-secondary">
             {found.fullName ? <li>Name: {found.fullName}</li> : null}
@@ -186,7 +204,6 @@ export function ScreenshotField({
             <Button
               type="button"
               size="sm"
-              className="rounded-full"
               onClick={() => {
                 onApplyExtract(found);
                 setFound(null);
@@ -194,7 +211,7 @@ export function ScreenshotField({
             >
               Use these details
             </Button>
-            <Button type="button" size="sm" variant="ghost" className="rounded-full" onClick={() => setFound(null)}>
+            <Button type="button" size="sm" variant="ghost" onClick={() => setFound(null)}>
               Dismiss
             </Button>
           </div>

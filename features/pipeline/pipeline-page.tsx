@@ -14,23 +14,24 @@ import { useLeadUrl } from "@/features/leads/use-lead-url";
 import type { LeadBoardCard, LeadBoardStage } from "@/lib/api/crm";
 import { ClosedBoard } from "./closed-board";
 import { ClosedLeadsTable } from "./closed-leads-table";
+import { OpenLeadsTable } from "./open-leads-table";
 import { PipelineBoard } from "./pipeline-board";
 import { PipelineEmpty } from "./pipeline-empty";
+import { readPipelineDefaultFilters, writePipelineDefaultFilters } from "./pipeline-default-filters";
 import {
   clearAllFilters,
   closedStatusLabel,
   hasNarrowingFilters,
   isClosedStatus,
   parsePipelineFilters,
+  urlHasPipelineFilterParams,
   writePipelineFilters,
   type ClosedOutcome,
   type PipelineFilters,
 } from "./pipeline-filters";
 import { PipelineHeader } from "./pipeline-header";
 import { PipelineBoardSkeleton } from "./pipeline-skeleton";
-import { PipelineStats, PipelineStatsSkeleton } from "./pipeline-stats";
 import { PipelineToolbar } from "./pipeline-toolbar";
-import { SlaAgeLegend } from "./sla-age-legend";
 import { CLOSED_PAGE_SIZE, usePipelineLeads } from "./use-pipeline-leads";
 
 /**
@@ -40,19 +41,39 @@ import { CLOSED_PAGE_SIZE, usePipelineLeads } from "./use-pipeline-leads";
 export function PipelinePage() {
   const router = useRouter();
   const pathname = usePathname();
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const { searchParams, leadId, openLead, closeLead } = useLeadUrl();
   const [createOpen, setCreateOpen] = React.useState(false);
   const [pageSize, setPageSize] = React.useState(CLOSED_PAGE_SIZE);
 
   const filters = React.useMemo(() => parsePipelineFilters(new URLSearchParams(searchParams.toString())), [searchParams]);
+  const persistDefaults = React.useRef(false);
   const setFilters = React.useCallback(
-    (next: PipelineFilters) => {
+    (next: PipelineFilters, opts?: { persist?: boolean }) => {
       const qs = writePipelineFilters(next, new URLSearchParams(searchParams.toString())).toString();
       router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+      if (opts?.persist !== false && persistDefaults.current && user?.id) {
+        writePipelineDefaultFilters(user.id, next);
+      }
     },
-    [pathname, router, searchParams],
+    [pathname, router, searchParams, user?.id],
   );
+
+  const appliedDefault = React.useRef(false);
+  React.useEffect(() => {
+    if (appliedDefault.current) return;
+    const sp = new URLSearchParams(searchParams.toString());
+    if (urlHasPipelineFilterParams(sp)) {
+      appliedDefault.current = true;
+      persistDefaults.current = true;
+      return;
+    }
+    if (!user?.id) return;
+    appliedDefault.current = true;
+    const saved = readPipelineDefaultFilters(user.id);
+    if (saved) setFilters(saved, { persist: false });
+    persistDefaults.current = true;
+  }, [searchParams, setFilters, user?.id]);
 
   const data = usePipelineLeads(filters, pageSize);
   const canEdit = can("leads:edit");
@@ -95,9 +116,9 @@ export function PipelinePage() {
           filtered
             ? "Try a wider date range or removing a filter."
             : status === "complete"
-              ? "Drop a lead onto Complete, and it shows up here."
+              ? "Drop a lead onto Outcome, and it shows up here."
               : status === "won"
-                ? "Drag a lead onto Won, or choose Mark as won from its menu, and it shows up here."
+                ? "Drag a lead onto Purchased, or choose Mark as purchased from its menu, and it shows up here."
                 : "Leads marked as lost appear here with their reason, so patterns are easy to spot."
         }
         action={
@@ -140,13 +161,49 @@ export function PipelinePage() {
     );
   };
 
+  const openEmpty = (
+    <BoardOrEmpty
+      visibleCount={0}
+      status={filters.status}
+      filtered={filtered}
+      totalCount={data.totals.totalCount}
+      newLeadButton={newLeadButton}
+      clearButton={clearButton}
+    >
+      {null}
+    </BoardOrEmpty>
+  );
+
+  const renderOpenTable = () => (
+    <OpenLeadsTable
+      rows={data.openList.rows}
+      total={data.openList.total}
+      loading={data.openList.isLoading}
+      error={data.openList.isError}
+      onRetry={data.openList.retry}
+      pipelines={data.pipelines}
+      sort={filters.sort}
+      order={filters.order}
+      onSortChange={(sort, order) => setFilters({ ...filters, sort, order, page: 1 })}
+      page={filters.page}
+      pageSize={pageSize}
+      onPageChange={(page) => setFilters({ ...filters, page })}
+      onPageSizeChange={(size) => {
+        setPageSize(size);
+        setFilters({ ...filters, page: 1 });
+      }}
+      onOpenLead={openLead}
+      empty={openEmpty}
+    />
+  );
+
   return (
-    <div className="space-y-6 pb-10 text-ink">
+    <div className="space-y-4 pb-10 text-ink">
       <PipelineHeader
         pipelines={data.pipelines}
         pipelineId={data.pipelineId}
         onPipelineChange={(id) => {
-          const next: PipelineFilters = { ...filters, pipeline: id, page: 1 };
+          const next: PipelineFilters = { ...filters, pipeline: id, stage: "", page: 1 };
           if (!isNurturingPipeline(id) && next.status === "complete") next.status = "won";
           setFilters(next);
         }}
@@ -162,35 +219,22 @@ export function PipelinePage() {
         />
       ) : (
         <>
-          {data.isLoading ? (
-            <PipelineStatsSkeleton />
-          ) : (
-            <PipelineStats
-              totals={data.totals}
-              currency={data.currency}
-              status={filters.status}
-              nurturing={nurturing}
-              onStatus={setStatus}
-            />
-          )}
-
           <PipelineToolbar
             filters={filters}
             counts={data.isLoading ? null : data.counts}
             currency={data.currency}
+            stages={data.pipeline?.stages ?? []}
             nurturing={nurturing}
             onChange={setFilters}
           />
-
-          {!data.isLoading && !isClosedStatus(filters.status) && data.openStages.some((s) => (s.slaHours ?? 0) > 0) ? (
-            <SlaAgeLegend />
-          ) : null}
 
           <div aria-busy={data.isFetching || undefined}>
             {data.isLoading ? (
               <PipelineBoardSkeleton />
             ) : isClosedStatus(filters.status) ? (
               renderClosed(filters.status)
+            ) : filters.view === "table" ? (
+              renderOpenTable()
             ) : (
               <BoardOrEmpty
                 visibleCount={filters.status === "all" ? data.counts.all : data.counts.open}

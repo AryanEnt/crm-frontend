@@ -17,9 +17,11 @@ import {
 } from "./create-lead-schema";
 import { DuplicateNotice } from "./duplicate-notice";
 import { FIELD_CONTROL, LeadField } from "./field-ui";
+import { FormSection } from "./form-section";
 import { detectDialCountry, formatPhone, phoneCountry } from "./phone";
 import { PhoneCountryPicker } from "./phone-country-picker";
 import { PriorityPicker } from "./priority-picker";
+import { AboutSection } from "./profile-section";
 import { ScreenshotField } from "./screenshot-field";
 import { SourcePicker } from "./source-picker";
 
@@ -37,6 +39,8 @@ export function QuickAddFields({
   pasteTarget,
   extractEnabled,
   onApplyExtract,
+  showScreenshot = true,
+  anzscoLabel = null,
 }: {
   nameRef: React.RefObject<HTMLInputElement | null>;
   sources: readonly string[];
@@ -49,74 +53,90 @@ export function QuickAddFields({
   pasteTarget: React.RefObject<HTMLElement | null>;
   extractEnabled: boolean;
   onApplyExtract: (found: { fullName?: string; phone?: string; email?: string }) => void;
+  showScreenshot?: boolean;
+  anzscoLabel?: string | null;
 }) {
   const { control, register, formState } = useLeadForm();
   const source = useWatch({ control, name: "source" });
   const name = register("fullName");
 
   return (
-    <div className="flex flex-col gap-5">
-      <LeadField label="Name" required error={formState.errors.fullName?.message}>
-        {(a11y) => (
-          <input
-            {...name}
-            ref={(el) => {
-              name.ref(el);
-              nameRef.current = el;
-            }}
-            {...a11y}
-            aria-required
-            autoFocus
-            autoComplete="off"
-            spellCheck={false}
-            placeholder="Who's the lead?"
-            className={cn(FIELD_CONTROL, "h-12 text-base font-medium")}
-          />
-        )}
-      </LeadField>
+    <div className="flex flex-col gap-3">
+      <FormSection title="Basic information" description="Who they are and how to reach them.">
+        <LeadField label="Full name" required error={formState.errors.fullName?.message}>
+          {(a11y) => (
+            <input
+              {...name}
+              ref={(el) => {
+                name.ref(el);
+                nameRef.current = el;
+              }}
+              {...a11y}
+              aria-required
+              autoFocus
+              autoComplete="off"
+              spellCheck={false}
+              placeholder="Full name"
+              className={cn(FIELD_CONTROL, "h-11 text-[0.9375rem] font-medium")}
+            />
+          )}
+        </LeadField>
 
-      <div className="flex flex-col gap-2">
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 sm:gap-3">
-          <PhoneField />
-          <LeadField label="Email" error={formState.errors.email?.message}>
-            {(a11y) => (
-              <input
-                {...register("email")}
-                {...a11y}
-                type="email"
-                inputMode="email"
-                autoComplete="off"
-                spellCheck={false}
-                placeholder="name@email.com"
-                className={FIELD_CONTROL}
-              />
-            )}
-          </LeadField>
+        <div className="flex flex-col gap-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <LeadField label="Email" optional error={formState.errors.email?.message}>
+              {(a11y) => (
+                <input
+                  {...register("email")}
+                  {...a11y}
+                  type="email"
+                  inputMode="email"
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder="name@email.com"
+                  className={FIELD_CONTROL}
+                />
+              )}
+            </LeadField>
+            <PhoneField />
+          </div>
+          {duplicates.length > 0 ? (
+            <DuplicateNotice
+              matches={duplicates}
+              onCreateAnyway={onCreateAnyway}
+              busy={duplicateBusy}
+              editing={editing}
+              actionLabel={editing ? "Save anyway" : "Create anyway"}
+            />
+          ) : null}
         </div>
-        {duplicates.length > 0 ? (
-          <DuplicateNotice
-            matches={duplicates}
-            onCreateAnyway={onCreateAnyway}
-            busy={duplicateBusy}
-            actionLabel={editing ? "Save anyway" : "Create anyway"}
+
+        {showScreenshot ? (
+          <ScreenshotField
+            file={screenshot}
+            onChange={onScreenshotChange}
+            pasteTarget={pasteTarget}
+            extractEnabled={extractEnabled}
+            onApplyExtract={onApplyExtract}
           />
         ) : null}
-      </div>
+      </FormSection>
 
-      <ScreenshotField
-        file={screenshot}
-        onChange={onScreenshotChange}
-        pasteTarget={pasteTarget}
-        extractEnabled={extractEnabled}
-        onApplyExtract={onApplyExtract}
-      />
+      <FormSection title="About" description="Where they are and what they do.">
+        <AboutSection anzscoLabel={anzscoLabel} />
+      </FormSection>
 
-      <SourceField sources={sources} />
-      {isReferralSource(source) ? <ReferralBlock /> : <SourceDetailField source={source} />}
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-[minmax(0,1fr)_11rem] sm:gap-3">
-        <PriorityField />
-        <ValueField />
-      </div>
+      <FormSection title="Lead source" description="Where this opportunity came from.">
+        <SourceField sources={sources} />
+        {isReferralSource(source) ? <ReferralBlock /> : <SourceDetailField source={source} />}
+      </FormSection>
+
+      <FormSection title="Lead qualification" description="How warm the opportunity feels right now.">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_12rem]">
+          <PriorityField />
+          <ValueField />
+        </div>
+      </FormSection>
     </div>
   );
 }
@@ -129,7 +149,7 @@ function PhoneField() {
   const selectId = React.useId();
 
   return (
-    <LeadField label="Phone" error={fieldState.error?.message}>
+    <LeadField label="Phone" optional error={fieldState.error?.message}>
       {(a11y) => (
         <div className="flex min-w-0 gap-1.5">
           <label htmlFor={selectId} className="sr-only">
@@ -178,7 +198,7 @@ function SourceField({ sources }: { sources: readonly string[] }) {
   const { control, setValue } = useLeadForm();
   const { field, fieldState } = useController({ control, name: "source" });
   return (
-    <LeadField label="Where did they come from?" required group error={fieldState.error?.message}>
+    <LeadField label="Source" required group error={fieldState.error?.message}>
       {(_a11y, labelId) => (
         <SourcePicker
           value={field.value}
@@ -225,7 +245,7 @@ function PriorityField() {
   const { control } = useLeadForm();
   const { field } = useController({ control, name: "priority" });
   return (
-    <LeadField label="How hot is this lead?" group>
+    <LeadField label="Temperature" group>
       {(_a11y, labelId) => <PriorityPicker value={field.value} onChange={field.onChange} labelId={labelId} />}
     </LeadField>
   );
@@ -237,9 +257,9 @@ function ReferralBlock() {
   const meta = useQuery({ queryKey: ["referrals", "meta"], queryFn: () => referralsApi.meta(), staleTime: 5 * 60_000 });
   const error = formState.errors.referral?.message;
   return (
-    <div data-invalid={error ? true : undefined} className="rounded-2xl bg-success-soft/60 p-4">
-      <p className="mb-3 text-cell font-semibold text-ink">
-        <span aria-hidden>🤝 </span>Who referred them?
+    <div data-invalid={error ? true : undefined} className="rounded-2xl border border-brand/20 bg-brand-soft/40 p-4">
+      <p className="mb-3 text-caption font-semibold text-ink">
+        Who referred them?
         <span className="text-danger" aria-hidden>
           {" "}
           *
@@ -259,12 +279,7 @@ function ValueField() {
   const { control } = useLeadForm();
   const { field, fieldState } = useController({ control, name: "potentialValue" });
   return (
-    <LeadField
-      label="Estimated value"
-      optional
-      hint="Rough estimate — you can update it later as you learn more."
-      error={fieldState.error?.message}
-    >
+    <LeadField label="Estimated value" optional error={fieldState.error?.message}>
       {(a11y) => (
         <div className="relative">
           <span aria-hidden className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-body font-medium text-ink-muted">

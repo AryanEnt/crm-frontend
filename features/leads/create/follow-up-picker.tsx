@@ -24,7 +24,7 @@ type Choice = FollowUpPreset | "pick";
 const CHOICES: readonly Choice[] = [...FOLLOW_UP_PRESETS.map((p) => p.value), "pick"];
 const LABELS: Record<Choice, string> = {
   ...(Object.fromEntries(FOLLOW_UP_PRESETS.map((p) => [p.value, p.label])) as Record<FollowUpPreset, string>),
-  pick: "Pick date",
+  pick: "Pick a date",
 };
 
 export function FollowUpPicker({

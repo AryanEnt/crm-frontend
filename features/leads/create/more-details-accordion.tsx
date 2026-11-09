@@ -1,13 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type AccordionSection<T extends string> = {
   id: T;
   title: string;
-  emoji: string;
+  icon: LucideIcon;
   /** One line shown under the title once something in the section is filled. */
   summary?: string;
   /** Shown instead of the summary while the section is empty. */
@@ -31,80 +31,79 @@ export function MoreDetailsAccordion<T extends string>({
 }) {
   const baseId = React.useId();
   return (
-    <section aria-labelledby={`${baseId}-heading`} className="flex flex-col gap-2.5">
-      <h3 id={`${baseId}-heading`} className="flex items-baseline gap-1.5 text-cell font-semibold text-ink">
-        More details
-        <span className="font-normal text-ink-muted">optional, add now or later</span>
-      </h3>
-      <div className="flex flex-col gap-2">
-        {sections.map((s) => {
-          const expanded = open.has(s.id);
-          const panelId = `${baseId}-${s.id}-panel`;
-          const buttonId = `${baseId}-${s.id}-button`;
-          return (
+    <div className="flex flex-col gap-2.5">
+      {sections.map((s) => {
+        const expanded = open.has(s.id);
+        const panelId = `${baseId}-${s.id}-panel`;
+        const buttonId = `${baseId}-${s.id}-button`;
+        const Icon = s.icon;
+        return (
+          <div
+            key={s.id}
+            className={cn(
+              "create-lead-panel overflow-hidden rounded-2xl transition-[border-color,box-shadow,background-color] duration-200",
+              expanded ? "bg-surface shadow-xs" : "hover:border-brand/25 hover:bg-surface",
+              s.invalid && "border-danger shadow-[0_0_0_1px_var(--danger)]",
+            )}
+          >
+            <h3 className="m-0">
+              <button
+                id={buttonId}
+                type="button"
+                aria-expanded={expanded}
+                aria-controls={panelId}
+                onClick={() => onToggle(s.id)}
+                className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand/25"
+              >
+                <span
+                  className={cn(
+                    "inline-flex size-9 shrink-0 items-center justify-center rounded-xl border transition-colors",
+                    expanded
+                      ? "border-brand/25 bg-brand-soft text-brand"
+                      : "border-line/70 bg-surface-muted/60 text-ink-secondary",
+                  )}
+                >
+                  <Icon aria-hidden className="size-4" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-semibold tracking-tight text-ink">{s.title}</span>
+                  <span
+                    className={cn(
+                      "mt-0.5 block truncate text-caption",
+                      s.invalid ? "text-danger" : s.summary ? "text-ink-secondary" : "text-ink-muted",
+                    )}
+                  >
+                    {s.invalid ? "Something here needs a fix" : (s.summary ?? s.placeholder)}
+                  </span>
+                </span>
+                <ChevronDown
+                  aria-hidden
+                  className={cn(
+                    "size-4 shrink-0 text-ink-muted transition-transform duration-200 ease-standard motion-reduce:transition-none",
+                    expanded && "rotate-180 text-brand",
+                  )}
+                />
+              </button>
+            </h3>
             <div
-              key={s.id}
               className={cn(
-                "rounded-2xl border transition-colors duration-150",
-                expanded ? "border-line bg-surface" : "border-transparent bg-surface-muted/70",
-                s.invalid && "border-danger",
+                "grid transition-[grid-template-rows] duration-200 ease-standard motion-reduce:transition-none",
+                expanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
               )}
             >
-              <h4>
-                <button
-                  id={buttonId}
-                  type="button"
-                  aria-expanded={expanded}
-                  aria-controls={panelId}
-                  onClick={() => onToggle(s.id)}
-                  className="flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand/20"
-                >
-                  <span
-                    aria-hidden
-                    className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-surface text-base shadow-xs"
-                  >
-                    {s.emoji}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-body font-semibold text-ink">{s.title}</span>
-                    <span
-                      className={cn(
-                        "block truncate text-caption",
-                        s.invalid ? "text-danger" : s.summary ? "text-brand-ink" : "text-ink-muted",
-                      )}
-                    >
-                      {s.invalid ? "Something here needs a fix" : (s.summary ?? s.placeholder)}
-                    </span>
-                  </span>
-                  <ChevronDown
-                    aria-hidden
-                    className={cn(
-                      "size-4 shrink-0 text-ink-muted transition-transform duration-200 ease-standard motion-reduce:transition-none",
-                      expanded && "rotate-180",
-                    )}
-                  />
-                </button>
-              </h4>
               <div
-                className={cn(
-                  "grid transition-[grid-template-rows] duration-200 ease-standard motion-reduce:transition-none",
-                  expanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
-                )}
+                id={panelId}
+                role="region"
+                aria-labelledby={buttonId}
+                inert={!expanded}
+                className="min-h-0 overflow-hidden"
               >
-                <div
-                  id={panelId}
-                  role="region"
-                  aria-labelledby={buttonId}
-                  inert={!expanded}
-                  className="min-h-0 overflow-hidden"
-                >
-                  <div className="flex flex-col gap-4 px-3.5 pb-4 pt-2">{s.content}</div>
-                </div>
+                <div className="space-y-4 border-t border-line/60 px-4 py-4">{s.content}</div>
               </div>
             </div>
-          );
-        })}
-      </div>
-    </section>
+          </div>
+        );
+      })}
+    </div>
   );
 }

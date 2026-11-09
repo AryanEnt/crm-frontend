@@ -97,7 +97,7 @@ export function NotificationsMenu() {
       writeToastSeen([...seen, newest.id]);
       toast.info(newest.title, { description: newest.body, duration: 5_000 });
     } else if (next > prev) {
-      toast.info("New notification", { description: "A lead has exceeded its stage SLA.", duration: 5_000 });
+      toast.info("New notification", { description: "A lead has been stuck in a stage too long.", duration: 5_000 });
     }
   }, [countQuery.data?.unread, enabled, items]);
 

@@ -178,6 +178,18 @@ export type Lead = {
   wonAt?: string | null;
   lostAt?: string | null;
   lostReason?: string;
+  negotiationTag?: string;
+  negotiationRemarks?: string;
+  contactRating?: number | null;
+  contactRemarks?: string;
+  contactRatedAt?: string | null;
+  contactRatedBy?: string | null;
+  contactRatedByName?: string | null;
+  nextFollowUpRemarks?: string;
+  documentDelayRemarks?: string;
+  documentDelayRemarksAt?: string | null;
+  documentDelayRemarksBy?: string | null;
+  documentDelayRemarksByName?: string | null;
   expectedOutcome: string;
   lastActivityAt?: string | null;
   nextActivityAt?: string | null;
@@ -188,6 +200,22 @@ export type Lead = {
   isArchived: boolean;
   createdAt: string;
   updatedAt: string;
+  createdByUserId?: string | null;
+  phoneCountryCode?: string;
+  phoneValidationStatus?:
+    | "pending"
+    | "valid"
+    | "invalid"
+    | "duplicate"
+    | "invalid_duplicate"
+    | "needs_review";
+  phoneNormalized?: string | null;
+  phoneValidationMessage?: string;
+  phoneDuplicateLeadIds?: string[];
+  phoneDuplicateLeads?: { id: string; fullName: string }[];
+  phoneValidatedAt?: string | null;
+  phoneLastNotifiedAt?: string | null;
+  phoneValidationVersion?: number;
 };
 
 /** Facet row from GET /leads/countries — blank residence maps to "(Unknown)". */
@@ -219,8 +247,25 @@ export type LeadBoardCard = {
   wonAt: string | null;
   lostAt: string | null;
   lostReason: string;
+  negotiationTag?: string;
+  negotiationRemarks?: string;
+  contactRating?: number | null;
+  contactRemarks?: string;
+  nextFollowUpRemarks?: string;
   /** Earliest open document send-by date (set when marking Won). */
   documentDeadlineAt?: string | null;
+  /** Latest overdue document-delay remark. */
+  documentDelayRemarks?: string;
+  documentDelayRemarksAt?: string | null;
+};
+
+export type DocumentDelayRemark = {
+  id: string;
+  leadId: string;
+  body: string;
+  authorUserId: string | null;
+  authorName: string | null;
+  createdAt: string;
 };
 
 export type LeadBoardStage = {
@@ -257,6 +302,8 @@ export type LeadMoveInput = {
   documentDeadline?: string;
   /** Whole amount stored as the lead value when marking Sales Won. */
   closingAmount?: number;
+  /** Optional sale description saved onto the lead when marking Purchased. */
+  purchaseNotes?: string;
   nextActivity?: { title?: string; dueAt: string; typeCode?: string };
 };
 
@@ -265,6 +312,31 @@ export type LeadMoveResult = {
   changed: boolean;
   needsNextActivity: boolean;
   nextActivityId?: string;
+};
+
+/** One stage visit from GET /leads/:id/stage-history (oldest → newest). */
+export type LeadStagePeriod = {
+  id: string;
+  leadId: string;
+  stageId: string;
+  stageName: string;
+  pipelineId: string;
+  enteredAt: string;
+  exitedAt: string | null;
+  durationSeconds: number;
+  movedToStageId: string | null;
+  movedToStageName: string | null;
+  enteredByUserId: string | null;
+  enteredByName: string | null;
+  exitedByUserId: string | null;
+  exitedByName: string | null;
+  isCurrent: boolean;
+  kind: string | null;
+};
+
+export type LeadStageHistory = {
+  periods: LeadStagePeriod[];
+  serverNow: string;
 };
 
 /** 400 details when a closed lead is moved without `reopen`. */
@@ -603,6 +675,11 @@ export const crmApi = {
   getLeadBoardStage: (params: URLSearchParams) =>
     api.get<{ leads: LeadBoardCard[]; hasMore: boolean }>(`/leads/board/stage?${params}`),
   moveLead: (id: string, body: LeadMoveInput) => api.post<LeadMoveResult>(`/leads/${id}/move`, body),
+  getLeadStageHistory: (id: string) => api.get<LeadStageHistory>(`/leads/${id}/stage-history`),
+  listDocumentDelayRemarks: (id: string) =>
+    api.get<DocumentDelayRemark[]>(`/leads/${id}/document-delay-remarks`),
+  addDocumentDelayRemark: (id: string, body: string) =>
+    api.post<{ lead: Lead; remark: DocumentDelayRemark }>(`/leads/${id}/document-delay-remarks`, { body }),
   leadOverview: (params: URLSearchParams) => api.get<LeadOverview>(`/leads/insights/overview?${params}`),
   leadMyDay: (params: URLSearchParams) => api.get<LeadMyDay>(`/leads/insights/my-day?${params}`),
   leadForecast: (params: URLSearchParams) => api.get<LeadForecast>(`/leads/insights/forecast?${params}`),

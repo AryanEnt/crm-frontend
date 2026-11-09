@@ -1,6 +1,26 @@
 import { dayKeyInTimezone, formatInTimezone, resolveTimezone } from "../../lib/timezone.ts";
 
 const DAY_MS = 86_400_000;
+const HOUR_S = 3600;
+const DAY_S = 86_400;
+
+/**
+ * Human-readable stage dwell time, e.g. "35 minutes", "4 hours, 20 minutes",
+ * "1 day, 5 hours", "2 days, 3 hours, 15 minutes".
+ */
+export function formatStageDuration(totalSeconds: number): string {
+  const secs = Math.max(0, Math.trunc(totalSeconds));
+  if (secs < 60) return "Less than a minute";
+  const days = Math.floor(secs / DAY_S);
+  const hours = Math.floor((secs % DAY_S) / HOUR_S);
+  const minutes = Math.floor((secs % HOUR_S) / 60);
+  const parts: string[] = [];
+  if (days > 0) parts.push(`${days} day${days === 1 ? "" : "s"}`);
+  if (hours > 0) parts.push(`${hours} hour${hours === 1 ? "" : "s"}`);
+  if (minutes > 0) parts.push(`${minutes} minute${minutes === 1 ? "" : "s"}`);
+  if (parts.length === 0) return "Less than a minute";
+  return parts.join(", ");
+}
 
 const MONEY_LOCALE = "en-AU";
 

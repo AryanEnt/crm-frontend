@@ -161,11 +161,7 @@ export function EmailWorkspace() {
         <EmptyState
           icon={Mail}
           title="Your company email account has not been connected yet"
-          description="Please contact your Team Lead. If you use Gmail, you can connect it in Email accounts."
-          actionLabel="Email accounts"
-          onAction={() => {
-            window.location.href = "/settings/email";
-          }}
+          description="Please contact your Team Lead. They connect your mailbox from Team Email — you do not need to enter a password."
         />
       </div>
     );
@@ -177,17 +173,17 @@ export function EmailWorkspace() {
         title="Email"
         description={
           teamOnly
-            ? "Viewing team mailboxes — connect your own mailbox to send or reply"
+            ? "Viewing team mailboxes — open Team Email to connect a sales executive’s mailbox"
             : account?.emailAddress
         }
         actions={
           account ? (
             <Button onClick={() => setCompose({ mode: "compose" })}>Compose email</Button>
-          ) : (
-            <Button variant="outline" onClick={() => (window.location.href = "/settings/email")}>
-              Connect your mailbox
+          ) : teamOnly ? (
+            <Button variant="outline" asChild>
+              <Link href="/email/team">Open Team Email</Link>
             </Button>
-          )
+          ) : null
         }
       />
 

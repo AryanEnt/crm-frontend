@@ -37,7 +37,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     staleTime: 60_000,
   });
 
-  const user = sessionQuery.isError ? null : (sessionQuery.data ?? null);
+  // Only treat hard 401 as logged-out. Network / non-JSON blips must not wipe the session UI.
+  const sessionUnauthorized =
+    sessionQuery.isError &&
+    sessionQuery.error instanceof ApiError &&
+    sessionQuery.error.status === 401;
+  const user = sessionUnauthorized ? null : (sessionQuery.data ?? null);
 
   const value = React.useMemo<AuthContextValue>(() => {
     const permissions = user?.permissions ?? [];

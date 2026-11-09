@@ -52,7 +52,7 @@ export function SalesSection({
   const stage = pipeline?.stages.find((s) => s.id === stageId);
 
   return (
-    <>
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <LeadField label="Owner" group>
         {(_a11y, labelId) =>
           canAssignOwner ? (
@@ -68,12 +68,12 @@ export function SalesSection({
               />
             </div>
           ) : (
-            <p className="text-body text-ink">{ownerLabel}</p>
+            <p className="flex h-10 items-center text-body text-ink">{ownerLabel}</p>
           )
         }
       </LeadField>
 
-      <LeadField label="Pipeline and stage" group>
+      <LeadField label="Pipeline and stage" group className={changingStage ? "sm:col-span-2" : undefined}>
         {(_a11y, labelId) =>
           changingStage ? (
             <div role="group" aria-labelledby={labelId}>
@@ -89,29 +89,29 @@ export function SalesSection({
               />
             </div>
           ) : (
-            <p className="flex flex-wrap items-baseline gap-x-2 text-body text-ink">
-              <span>
+            <div className="flex h-10 items-center justify-between gap-2 rounded-xl border border-line/80 bg-surface px-3 shadow-xs">
+              <p className="min-w-0 truncate text-body text-ink">
                 {pipeline?.name ?? "Default pipeline"}
                 <span className="text-ink-muted"> / </span>
                 {stage?.name ?? (editing ? "No stage" : "First stage")}
-              </span>
+              </p>
               {editing ? (
-                <span className="text-caption text-ink-muted">Move it from the board or lead panel</span>
+                <span className="shrink-0 text-caption text-ink-muted">Board / panel</span>
               ) : (
                 <button
                   type="button"
                   onClick={() => setChangingStage(true)}
-                  className="rounded-sm text-cell font-medium text-brand-ink underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="shrink-0 rounded-sm text-caption font-medium text-brand-ink underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   Change
                 </button>
               )}
-            </p>
+            </div>
           )
         }
       </LeadField>
 
-      <LeadField label="When to follow up?" group>
+      <LeadField label="When to follow up?" group className="sm:col-span-2">
         {(a11y, labelId) => (
           <FollowUpPicker
             value={followUp.field.value}
@@ -125,6 +125,6 @@ export function SalesSection({
           />
         )}
       </LeadField>
-    </>
+    </div>
   );
 }

@@ -1,7 +1,6 @@
 "use client";
 
 import { Plus } from "lucide-react";
-import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -21,40 +20,43 @@ export function PipelineHeader({
   pipelines: Pipeline[];
   pipelineId: string;
   onPipelineChange: (id: string) => void;
-  /** Omitted when the user can't create leads. */
   onCreate?: () => void;
 }) {
+  const active = pipelines.find((p) => p.id === pipelineId) ?? pipelines[0];
+  const pipelineLabel = active?.name?.trim() || "Pipeline";
+
   return (
-    <PageHeader
-      display
-      className="mb-0"
-      breadcrumbs={[{ label: "Workspace", href: "/" }, { label: "Pipeline" }]}
-      title="Pipeline"
-      description="Move leads from first contact to a decision."
-      actions={
-        <>
-          {pipelines.length > 1 ? (
-            <Select value={pipelineId || undefined} onValueChange={onPipelineChange}>
-              <SelectTrigger className="h-9 w-[190px]" aria-label="Pipeline">
-                <SelectValue placeholder="Pipeline" />
-              </SelectTrigger>
-              <SelectContent>
-                {pipelines.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : null}
-          {onCreate ? (
-            <Button onClick={onCreate}>
-              <Plus className="size-4" />
-              New lead
-            </Button>
-          ) : null}
-        </>
-      }
-    />
+    <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0">
+        <h1 className="text-display tracking-tight text-ink">{pipelineLabel}</h1>
+        <p className="mt-0.5 text-body text-ink-muted">
+          {/nurtur/i.test(pipelineLabel)
+            ? "Chase documents after a win."
+            : "Tap a lead to work it. Drag to move the stage."}
+        </p>
+      </div>
+      <div className="flex shrink-0 flex-wrap items-center gap-2">
+        {pipelines.length > 1 ? (
+          <Select value={pipelineId || undefined} onValueChange={onPipelineChange}>
+            <SelectTrigger className="h-9 w-[200px]" aria-label="Pipeline">
+              <SelectValue placeholder="Choose pipeline" />
+            </SelectTrigger>
+            <SelectContent>
+              {pipelines.map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : null}
+        {onCreate ? (
+          <Button onClick={onCreate} size="sm">
+            <Plus className="size-4" aria-hidden />
+            New lead
+          </Button>
+        ) : null}
+      </div>
+    </header>
   );
 }

@@ -84,7 +84,7 @@ export function NotificationsPage() {
       <PageHeader
         breadcrumbs={[{ label: "Notifications" }]}
         title="Notifications"
-        description="Stage SLA alerts for leads that have stayed too long in one stage."
+        description="Alerts when a lead stays in one stage longer than the time limit."
         actions={
           unreadOnPage || tab === "unread" ? (
             <Button variant="outline" size="sm" onClick={() => markAll.mutate()} disabled={markAll.isPending}>
@@ -107,7 +107,7 @@ export function NotificationsPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All types</SelectItem>
-            <SelectItem value={SLA_TYPE}>Stage SLA</SelectItem>
+            <SelectItem value={SLA_TYPE}>Stage overdue</SelectItem>
           </SelectContent>
         </Select>
         <Select value={range} onValueChange={(v) => setRange(v as "all" | "7" | "30")}>
@@ -130,7 +130,7 @@ export function NotificationsPage() {
         <EmptyState
           icon={Bell}
           title={tab === "unread" ? "No unread notifications" : "No notifications yet"}
-          description="When a lead stays in a stage past its SLA, you'll see it here."
+          description="When a lead stays in a stage past its time limit, you'll see it here."
         />
       ) : (
         <ul className="divide-y divide-line rounded-lg border border-line bg-surface">
@@ -206,7 +206,7 @@ function NotificationRow({
             <dd className="font-medium text-ink">{sla.daysInStage != null ? `${sla.daysInStage}d` : "—"}</dd>
           </div>
           <div>
-            <dt className="text-ink-muted">SLA</dt>
+            <dt className="text-ink-muted">Stage limit</dt>
             <dd className="font-medium text-ink">{sla.slaDays != null ? `${sla.slaDays}d` : "—"}</dd>
           </div>
         </dl>

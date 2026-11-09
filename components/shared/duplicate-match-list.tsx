@@ -10,6 +10,7 @@ export function matchedOn(reason: string) {
   if (r.includes("email") && r.includes("phone")) return "Same phone and email";
   if (r.includes("email")) return "Same email";
   if (r.includes("phone")) return "Same phone";
+  if (r.includes("name")) return "Same name";
   return reason.trim() || null;
 }
 

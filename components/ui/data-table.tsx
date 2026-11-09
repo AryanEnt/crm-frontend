@@ -161,6 +161,11 @@ export function DataTable<TData, TValue>({
   const filteredCount = table.getFilteredRowModel().rows.length;
   const { pageIndex, pageSize: currentPageSize } = table.getState().pagination;
 
+  const columnWidth = (column: { id: string; getSize: () => number }) => {
+    if (column.id === SELECT_COLUMN_ID) return 40;
+    return column.getSize();
+  };
+
   const head = (
     <thead>
       {headerGroups.map((headerGroup) => (
@@ -169,6 +174,7 @@ export function DataTable<TData, TValue>({
             <TableHead
               key={header.id}
               align={header.column.columnDef.meta?.align}
+              style={{ width: columnWidth(header.column), minWidth: columnWidth(header.column) }}
               className={cn(header.column.id === SELECT_COLUMN_ID && "w-10 pr-0")}
             >
               {header.isPlaceholder
@@ -184,7 +190,7 @@ export function DataTable<TData, TValue>({
   let body: React.ReactNode;
   if (loading) {
     body = (
-      <Table aria-busy="true">
+      <Table aria-busy="true" className="table-fixed">
         {head}
         <tbody>
           {Array.from({ length: 6 }, (_, i) => (
@@ -192,8 +198,9 @@ export function DataTable<TData, TValue>({
               {visibleColumns.map((column, colIndex) => (
                 <td
                   key={column.id}
+                  style={{ width: columnWidth(column), minWidth: columnWidth(column) }}
                   className={cn(
-                    "h-(--table-row-height) px-3 first:pl-4 last:pr-4",
+                    "h-(--table-row-height) overflow-hidden px-3 first:pl-4 last:pr-4",
                     column.id === SELECT_COLUMN_ID && "w-10 pr-0",
                   )}
                 >
@@ -232,7 +239,7 @@ export function DataTable<TData, TValue>({
     );
   } else {
     body = (
-      <Table>
+      <Table className="table-fixed">
         {head}
         <tbody>
           {rows.map((row) => (
@@ -245,6 +252,7 @@ export function DataTable<TData, TValue>({
                 <TableCell
                   key={cell.id}
                   align={cell.column.columnDef.meta?.align}
+                  style={{ width: columnWidth(cell.column), minWidth: columnWidth(cell.column) }}
                   className={cn(cell.column.id === SELECT_COLUMN_ID && "w-10 pr-0")}
                   data-row-ignore={cell.column.id === SELECT_COLUMN_ID ? true : undefined}
                 >
@@ -314,7 +322,7 @@ export function createSelectColumn<TData>(): ColumnDef<TData> {
     ),
     enableSorting: false,
     enableHiding: false,
-    size: 36,
+    size: 40,
   };
 }
 
@@ -333,18 +341,16 @@ export function EntityCell({
 }) {
   const initialsSource = avatarName ?? (typeof name === "string" ? name : "");
   return (
-    <div className="flex min-w-0 items-center gap-2.5 comfortable:gap-3">
-      <Avatar
-        name={initialsSource || "?"}
-        size="sm"
-        className="comfortable:size-8 comfortable:text-caption"
-      />
-      <div className="min-w-0">
+    <div className="flex min-w-0 items-center gap-2.5">
+      <Avatar name={initialsSource || "?"} size="sm" className="shrink-0" />
+      <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-2">
-          <p className="truncate font-medium text-ink">{name}</p>
+          <p className="truncate text-cell font-medium leading-5 text-ink">{name}</p>
           {children}
         </div>
-        {subtitle ? <p className="truncate text-caption text-ink-muted">{subtitle}</p> : null}
+        {subtitle ? (
+          <p className="truncate text-caption leading-4 text-ink-muted">{subtitle}</p>
+        ) : null}
       </div>
     </div>
   );
@@ -353,12 +359,14 @@ export function EntityCell({
 export function SortableHeader({
   column,
   title,
+  align = "left",
 }: {
   column: {
     getIsSorted: () => false | "asc" | "desc";
     toggleSorting: (desc?: boolean) => void;
   };
   title: string;
+  align?: "left" | "right";
 }) {
   const sorted = column.getIsSorted();
   const Arrow = sorted === "asc" ? ArrowUp : sorted === "desc" ? ArrowDown : ArrowUpDown;
@@ -368,6 +376,7 @@ export function SortableHeader({
       className={cn(
         "group/sort -mx-1 inline-flex items-center gap-1 rounded px-1 py-0.5 transition-colors duration-150 hover:text-ink",
         sorted && "text-ink",
+        align === "right" && "w-full flex-row-reverse justify-start",
       )}
       onClick={() => column.toggleSorting(sorted === "asc")}
     >
@@ -375,7 +384,7 @@ export function SortableHeader({
       <Arrow
         aria-hidden
         className={cn(
-          "size-3 transition-opacity duration-150",
+          "size-3 shrink-0 transition-opacity duration-150",
           sorted ? "opacity-100" : "opacity-0 group-hover/sort:opacity-60 group-focus-visible/sort:opacity-60",
         )}
       />

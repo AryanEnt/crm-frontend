@@ -15,14 +15,32 @@ export type RequestOptions = {
 };
 
 async function parseEnvelope<T>(res: Response): Promise<ApiEnvelope<T>> {
-  const contentType = res.headers.get("content-type") ?? "";
-  if (!contentType.includes("application/json")) {
-    throw new ApiError("Unexpected non-JSON response from API", {
-      status: res.status,
-      code: "invalid_response",
-    });
+  const text = await res.text();
+  if (!text.trim()) {
+    throw new ApiError(
+      res.status === 401 || res.status === 403
+        ? "Session expired. Sign in again."
+        : res.status >= 500
+          ? "API returned an empty error. On the host, check API_INTERNAL_URL, backend logs, and SMTP outbound ports."
+          : `Empty response from API (${res.status})`,
+      {
+        status: res.status || 502,
+        code: res.status >= 500 ? "upstream_unavailable" : "invalid_response",
+      },
+    );
   }
-  return (await res.json()) as ApiEnvelope<T>;
+  try {
+    return JSON.parse(text) as ApiEnvelope<T>;
+  } catch {
+    // Next/nginx HTML error pages (often still served by an old hosted build).
+    const looksHtml = /<!doctype html|<html/i.test(text);
+    throw new ApiError(
+      looksHtml
+        ? `Host returned an HTML error page (${res.status}). Redeploy the frontend, set COOKIE_SECURE=false and API_INTERNAL_URL to the backend, then restart.`
+        : `API response was not JSON (${res.status}). Redeploy frontend/backend or check the API is reachable from the Next server.`,
+      { status: res.status || 502, code: "invalid_response" },
+    );
+  }
 }
 
 function resolveUrl(path: string, baseUrl: string) {

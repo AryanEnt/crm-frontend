@@ -168,7 +168,7 @@ export function TableCell({
   return (
     <td
       className={cn(
-        "h-(--table-row-height) px-3 align-middle first:pl-4 last:pr-4",
+        "h-(--table-row-height) overflow-hidden px-3 align-middle first:pl-4 last:pr-4",
         align === "right" && "text-right",
         className,
       )}

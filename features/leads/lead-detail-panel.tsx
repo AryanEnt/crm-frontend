@@ -19,8 +19,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Avatar } from "@/components/ui/console/avatar";
 import {
   Drawer,
@@ -48,11 +46,17 @@ import {
 } from "@/components/ui/modal";
 import { ActivityQuickCreateDialog } from "@/features/activities/activity-quick-create";
 import { leadMovedMessage } from "@/features/activities/lead-moved";
+import { contactRatingLabel, isContactedStage } from "@/features/pipeline/contact-rating";
+import { ContactRatingControl } from "@/features/pipeline/contact-rating-control";
+import { requiresNextFollowUpRemarks } from "@/features/pipeline/next-follow-up-remarks";
+import { NextFollowUpRemarksControl } from "@/features/pipeline/next-follow-up-remarks-control";
 import { useAuth } from "@/features/auth/auth-provider";
 import { CommunicationActions } from "@/features/communications/communication-actions";
 import { EmailComposer } from "@/features/email/email-composer";
+import { RecordEmailSection } from "@/features/email/record-email-section";
 import { LeadAttachments } from "@/features/leads/lead-attachments";
 import { CreateLeadSheet } from "@/features/leads/create/create-lead-sheet";
+import { PhoneValidationBadge, PhoneValidationDetail } from "@/features/leads/phone-validation-badge";
 import { EstimatedValueEditor } from "@/features/leads/estimated-value-editor";
 import {
   daysSince,
@@ -62,9 +66,11 @@ import {
   nextActionTone,
 } from "@/features/leads/lead-format";
 import { isNurturingPipeline } from "@/features/leads/lead-board-state";
+import { LeadHistory } from "@/features/leads/lead-history";
 import { useLeadMove } from "@/features/leads/lead-move";
 import { UnifiedTimeline } from "@/features/timeline/unified-timeline";
-import { crmApi, type Activity, type CrmDocument, type Lead, type PipelineStage } from "@/lib/api/crm";
+import { Textarea } from "@/components/ui/console/textarea";
+import { crmApi, type Activity, type CrmDocument, type Lead, type LeadBoardCard, type PipelineStage } from "@/lib/api/crm";
 import { emailApi } from "@/lib/api/email";
 import { stageBadgeClass } from "@/lib/design-tokens";
 import { cn } from "@/lib/utils";
@@ -72,6 +78,36 @@ import { cn } from "@/lib/utils";
 function formatDate(iso?: string | null) {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+}
+
+function toBoardCard(lead: Lead): LeadBoardCard {
+  return {
+    id: lead.id,
+    fullName: lead.fullName,
+    employer: lead.employer ?? "",
+    phone: lead.phone ?? null,
+    email: lead.email ?? null,
+    potentialValue: lead.potentialValue ?? null,
+    currency: lead.currency ?? "AUD",
+    stageId: lead.stageId ?? null,
+    status: lead.status,
+    ownerUserId: lead.ownerUserId ?? null,
+    ownerName: lead.ownerName ?? null,
+    priority: lead.priority,
+    tags: lead.tags ?? [],
+    lastActivityAt: lead.lastActivityAt ?? null,
+    nextActivityAt: lead.nextActivityAt ?? null,
+    nextActivityTitle: null,
+    nextActivityType: null,
+    expectedCloseAt: lead.expectedCloseAt ?? null,
+    stageEnteredAt: lead.stageEnteredAt ?? lead.createdAt,
+    wonAt: lead.wonAt ?? null,
+    lostAt: lead.lostAt ?? null,
+    lostReason: lead.lostReason ?? "",
+    contactRating: lead.contactRating ?? null,
+    contactRemarks: lead.contactRemarks ?? "",
+    nextFollowUpRemarks: lead.nextFollowUpRemarks ?? "",
+  };
 }
 
 const OPEN_ACTIVITY = new Set(["upcoming", "due", "overdue"]);
@@ -134,7 +170,7 @@ export function LeadDetailPanel({
       }}
     >
       <DrawerContent
-        className="max-w-full bg-surface shadow-[-12px_0_32px_rgba(42,40,56,0.08)] sm:max-w-[600px]"
+        className="max-w-full bg-surface shadow-[-12px_0_32px_rgba(42,40,56,0.08)] sm:max-w-[560px]"
         aria-describedby={undefined}
         onInteractOutside={(e) => {
           if (editOpen) e.preventDefault();
@@ -177,9 +213,6 @@ function PanelBody({
   const [emailOpen, setEmailOpen] = React.useState(false);
   const [messagingOpen, setMessagingOpen] = React.useState(false);
   const [detailTab, setDetailTab] = React.useState("timeline");
-  const [closingAmount, setClosingAmount] = React.useState("");
-  const [closingError, setClosingError] = React.useState(false);
-  const closingInputRef = React.useRef<HTMLInputElement>(null);
 
   const leadQuery = useQuery({ queryKey: ["lead", leadId], queryFn: () => crmApi.getLead(leadId) });
   const pipelinesQuery = useQuery({
@@ -195,15 +228,10 @@ function PanelBody({
     staleTime: 60_000,
   });
 
-  React.useEffect(() => {
-    const estimate = leadQuery.data?.potentialValue;
-    if (estimate == null) return;
-    setClosingAmount((prev) => (prev === "" ? String(Math.round(estimate)) : prev));
-  }, [leadQuery.data?.id, leadQuery.data?.potentialValue]);
-
   const refresh = React.useCallback(() => {
     void qc.invalidateQueries({ queryKey: ["lead", leadId] });
     void qc.invalidateQueries({ queryKey: ["lead", leadId, "document-deadline"] });
+    void qc.invalidateQueries({ queryKey: ["lead", leadId, "stage-history"] });
     void qc.invalidateQueries({ queryKey: ["lead-board"] });
     void qc.invalidateQueries({ queryKey: ["leads"] });
     void qc.invalidateQueries({ queryKey: ["lead-insights"] });
@@ -269,8 +297,10 @@ function PanelBody({
   const wonStage = stages.find((s) => s.isWon);
   const lostStage = stages.find((s) => s.isLost);
   const nurturing = isNurturingPipeline(lead.pipelineId);
-  const parsedClosing = closingAmount.trim() === "" ? null : Number(closingAmount.trim());
-  const closingOk = parsedClosing != null && Number.isInteger(parsedClosing) && parsedClosing >= 0;
+  const estimateAmount =
+    lead.potentialValue != null && Number.isFinite(lead.potentialValue)
+      ? Math.round(lead.potentialValue)
+      : undefined;
 
   const requestStage = (to: PipelineStage, extra?: { closingAmount?: number }) =>
     move.request({
@@ -283,76 +313,69 @@ function PanelBody({
       closingAmount: extra?.closingAmount,
     });
 
+  /** Opens the Purchased confirm (final amount + send-by date); no inline closing field. */
   const handleDealClose = () => {
     if (!wonStage) return;
-    if (!nurturing && !closingOk) {
-      setClosingError(true);
-      closingInputRef.current?.focus();
-      toast.error("Enter the closing amount before closing this deal.");
-      return;
-    }
-    setClosingError(false);
-    requestStage(wonStage, closingOk ? { closingAmount: parsedClosing } : undefined);
+    requestStage(wonStage, !nurturing && estimateAmount != null ? { closingAmount: estimateAmount } : undefined);
   };
+
+  const phoneHref = lead.phone ? `tel:${lead.phone.replace(/[^\d+]/g, "")}` : undefined;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="shrink-0 border-b border-line px-5 pb-4 pt-5 pr-12">
+      <header className="shrink-0 border-b border-line/80 px-5 pb-4 pt-5 pr-12">
         <div className="flex items-start gap-3">
           <Avatar name={lead.fullName} size="lg" />
           <div className="min-w-0 flex-1">
-            <DrawerTitle className="truncate text-lg">{lead.fullName}</DrawerTitle>
-            <DrawerDescription className="truncate">
-              {[lead.employer, lead.jobTitle].filter(Boolean).join(" · ") || lead.source || "Lead"}
+            <DrawerTitle className="truncate text-[1.125rem] font-semibold tracking-tight text-ink">
+              {lead.fullName}
+            </DrawerTitle>
+            <DrawerDescription className="mt-0.5 truncate text-caption text-ink-muted">
+              {[lead.employer, lead.jobTitle].filter(Boolean).join(" · ") || "Lead"}
             </DrawerDescription>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {stage ? <StagePill stage={stage} stages={stages} /> : lead.stageName ? <span className="text-caption text-ink-secondary">{lead.stageName}</span> : null}
+              {lead.wonAt && lead.status !== "lost" ? (
+                <span className="rounded-full bg-stage-won-soft px-2 py-0.5 text-caption font-medium text-stage-won-ink">
+                  Purchased {formatDate(lead.wonAt)}
+                </span>
+              ) : null}
+              <span className="inline-flex items-center gap-1.5 text-caption text-ink-muted">
+                {lead.ownerName ? <Avatar name={lead.ownerName} size="sm" className="size-4 text-[0.5rem]" /> : null}
+                {lead.ownerName ?? "Unassigned"}
+              </span>
+              <PhoneValidationBadge lead={lead} compact />
+            </div>
           </div>
         </div>
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-meta">
-          {stage ? <StagePill stage={stage} stages={stages} /> : lead.stageName ? <span>{lead.stageName}</span> : null}
-          {lead.wonAt && lead.status !== "lost" ? (
-            <span className="rounded-md bg-stage-won-soft px-1.5 py-0.5 text-caption font-medium text-stage-won-ink">
-              Won {formatDate(lead.wonAt)}
-            </span>
-          ) : null}
-          <EstimatedValueEditor
-            leadId={lead.id}
-            value={lead.potentialValue}
-            currency={lead.currency}
-            canEdit={canEdit}
-            onSaved={refresh}
-            compact
-          />
-          <span aria-hidden className="text-ink-subtle">
-            ·
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            {lead.ownerName ? <Avatar name={lead.ownerName} size="sm" className="size-5 text-[0.55rem]" /> : null}
-            {lead.ownerName ?? "Unassigned"}
-          </span>
+
+        <div className="mt-3.5 rounded-xl border border-line/80 bg-surface-muted/40 px-3.5 py-3">
+          {lead.status === "won" && lead.potentialValue != null ? (
+            <div>
+              <p className="text-caption font-medium text-ink-muted">Closed at</p>
+              <p className="mt-0.5 text-lg font-semibold tabular-nums tracking-tight text-ink">
+                {formatLeadMoney(lead.potentialValue, lead.currency)}
+              </p>
+            </div>
+          ) : (
+            <EstimatedValueEditor
+              leadId={lead.id}
+              value={lead.potentialValue}
+              currency={lead.currency}
+              canEdit={canEdit && !closed}
+              onSaved={refresh}
+              prominent
+            />
+          )}
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button size="sm" variant="outline" disabled={!lead.phone && !can("activities:create")}>
-                <Phone className="size-3.5" />
-                Call
-                <ChevronDown className="size-3 opacity-60" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-52">
-              {lead.phone ? (
-                <DropdownMenuItem asChild>
-                  <a href={`tel:${lead.phone.replace(/[^\d+]/g, "")}`}>Dial {lead.phone}</a>
-                </DropdownMenuItem>
-              ) : (
-                <DropdownMenuItem disabled>No phone number</DropdownMenuItem>
-              )}
-              {can("activities:create") ? (
-                <DropdownMenuItem onSelect={() => setActivityOpen({ type: "call" })}>Log a call</DropdownMenuItem>
-              ) : null}
-            </DropdownMenuContent>
-          </DropdownMenu>
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          {canEdit ? (
+            <Button size="sm" variant="outline" onClick={() => onEditOpenChange(true)}>
+              <Pencil className="size-3.5" />
+              Edit details
+            </Button>
+          ) : null}
           {emailAccount && can("email:send") ? (
             <Button size="sm" variant="outline" onClick={() => setEmailOpen(true)}>
               <Mail className="size-3.5" />
@@ -366,7 +389,7 @@ function PanelBody({
               </a>
             </Button>
           ) : (
-            <Button size="sm" variant="outline" disabled title="No email address">
+            <Button size="sm" variant="outline" disabled>
               <Mail className="size-3.5" />
               Email
             </Button>
@@ -374,33 +397,34 @@ function PanelBody({
           {can("activities:create") ? (
             <Button size="sm" variant="outline" onClick={() => setActivityOpen({})}>
               <CalendarPlus className="size-3.5" />
-              Add activity
-            </Button>
-          ) : null}
-          {canEdit ? (
-            <Button size="sm" variant="outline" onClick={() => onEditOpenChange(true)}>
-              <Pencil className="size-3.5" />
-              Edit details
+              Activity
             </Button>
           ) : null}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button size="sm" variant="ghost" aria-label="More actions">
                 <MoreHorizontal className="size-4" />
-                More
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
-              {canEdit ? (
-                <DropdownMenuItem onSelect={() => onEditOpenChange(true)}>
-                  <Pencil className="size-3.5" />
-                  Edit details
+              {phoneHref ? (
+                <DropdownMenuItem asChild>
+                  <a href={phoneHref}>
+                    <Phone className="size-3.5" />
+                    Call
+                  </a>
+                </DropdownMenuItem>
+              ) : null}
+              {can("activities:create") && lead.phone ? (
+                <DropdownMenuItem onSelect={() => setActivityOpen({ type: "call" })}>
+                  <Phone className="size-3.5" />
+                  Log a call
                 </DropdownMenuItem>
               ) : null}
               {can("communications:send") ? (
                 <DropdownMenuItem onSelect={() => setMessagingOpen(true)}>
                   <MessageCircle className="size-3.5" />
-                  WhatsApp &amp; phone calls
+                  WhatsApp &amp; phone
                 </DropdownMenuItem>
               ) : null}
               {can("leads:delete") ? (
@@ -422,25 +446,16 @@ function PanelBody({
       </header>
 
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4 crm-scroll">
-        {stages.length > 0 ? (
-          <StageStepper
-            stages={stages}
-            currentId={lead.stageId ?? null}
-            lead={lead}
-            canEdit={canEdit}
-            busy={move.isPending}
-            showCloseActions={false}
-            onSelect={requestStage}
-          />
-        ) : null}
-
-        {!closed && deadlineQuery.data?.expiryDate ? (
+        {nurturing && !closed && deadlineQuery.data?.expiryDate ? (
           <DocumentDeadlineCard
+            lead={lead}
             doc={deadlineQuery.data}
             timezone={user?.timezone || undefined}
-            nurturing={isNurturingPipeline(lead.pipelineId)}
+            nurturing
+            canEdit={canEdit}
             canViewFiles={can("documents:view")}
             onOpenFiles={() => setDetailTab("files")}
+            onRemarksSaved={() => refresh()}
           />
         ) : null}
 
@@ -459,59 +474,92 @@ function PanelBody({
           />
         ) : null}
 
-        {canEdit && !closed && wonStage && !nurturing ? (
-          <div className="space-y-1.5 rounded-card border border-line p-4">
-            <Label htmlFor="lead-closing-amount" required>
-              Closing amount
-            </Label>
-            <Input
-              ref={closingInputRef}
-              id="lead-closing-amount"
-              inputMode="numeric"
-              value={closingAmount}
-              error={closingError}
-              onChange={(e) => {
-                setClosingAmount(e.target.value.replace(/[^\d]/g, ""));
-                setClosingError(false);
-              }}
-              placeholder={lead.potentialValue != null ? String(Math.round(lead.potentialValue)) : "e.g. 25000"}
-            />
-            <p className="text-meta text-ink-muted">
-              Required before Deal Close. Saved as this lead’s closed value
-              {lead.potentialValue != null ? ` (estimate ${formatLeadMoney(lead.potentialValue, lead.currency)})` : ""}.
-            </p>
-          </div>
-        ) : closed && lead.status === "won" && lead.potentialValue != null ? (
-          <dl>
-            <Fact label="Closing amount" value={formatLeadMoney(lead.potentialValue, lead.currency)} />
-          </dl>
+        {!nurturing && !closed && deadlineQuery.data?.expiryDate ? (
+          <DocumentDeadlineCard
+            lead={lead}
+            doc={deadlineQuery.data}
+            timezone={user?.timezone || undefined}
+            nurturing={false}
+            canEdit={canEdit}
+            canViewFiles={can("documents:view")}
+            onOpenFiles={() => setDetailTab("files")}
+            onRemarksSaved={() => refresh()}
+          />
         ) : null}
 
-        <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3">
-          <div className="min-w-0 sm:col-span-1">
-            <EstimatedValueEditor
-              leadId={lead.id}
-              value={lead.potentialValue}
-              currency={lead.currency}
-              canEdit={canEdit}
-              onSaved={refresh}
-            />
-          </div>
-          <Fact label="Probability" value={lead.probability != null ? `${lead.probability}%` : "—"} />
-          <Fact label="Expected close" value={formatDate(lead.expectedCloseAt)} />
-          <Fact label="Source" value={lead.source || "—"} />
-          <Fact label="In stage" value={`${lead.daysInStage ?? daysSince(lead.stageEnteredAt)}d`} />
-          <Fact label="Created" value={formatDate(lead.createdAt)} />
-        </dl>
+        {stages.length > 0 ? (
+          <StageStepper
+            stages={stages}
+            currentId={lead.stageId ?? null}
+            lead={lead}
+            canEdit={canEdit}
+            busy={move.isPending}
+            showCloseActions={false}
+            onSelect={requestStage}
+          />
+        ) : null}
+
+        <section aria-label="Lead details" className="rounded-xl border border-line/80 bg-surface-muted/25 p-4">
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-3.5">
+            <Fact label="Probability" value={lead.probability != null ? `${lead.probability}%` : "—"} />
+            <Fact label="Expected close" value={formatDate(lead.expectedCloseAt)} />
+            <Fact label="Source" value={lead.source || "—"} />
+            <Fact label="Time in stage" value={`${lead.daysInStage ?? daysSince(lead.stageEnteredAt)}d`} />
+            <Fact label="Created" value={formatDate(lead.createdAt)} />
+          </dl>
+
+          {isContactedStage(lead.stageName) || (lead.contactRating != null && lead.contactRating >= 1) ? (
+            <div className="mt-4 border-t border-line/70 pt-3.5">
+              <p className="text-caption font-medium text-ink-muted">Contact rating</p>
+              {isContactedStage(lead.stageName) ? (
+                <ContactRatingControl
+                  lead={toBoardCard(lead)}
+                  stageName={lead.stageName}
+                  canEdit={canEdit}
+                  layout="panel"
+                />
+              ) : (
+                <p className="mt-1 text-body text-ink">
+                  {contactRatingLabel(lead.contactRating, lead.contactRemarks ?? "") || "—"}
+                  {lead.contactRatedByName ? (
+                    <span className="text-caption text-ink-muted"> · {lead.contactRatedByName}</span>
+                  ) : null}
+                </p>
+              )}
+            </div>
+          ) : null}
+
+          {requiresNextFollowUpRemarks(lead.stageName) || (lead.nextFollowUpRemarks ?? "").trim() ? (
+            <div className="mt-4 border-t border-line/70 pt-3.5">
+              <p className="text-caption font-medium text-ink-muted">Follow-up plan</p>
+              <NextFollowUpRemarksControl
+                lead={toBoardCard(lead)}
+                stageName={lead.stageName}
+                canEdit={canEdit}
+                layout="panel"
+              />
+            </div>
+          ) : null}
+        </section>
 
         <Tabs value={detailTab} onValueChange={setDetailTab}>
-          <TabsList>
+          <TabsList className="h-9 w-full justify-start overflow-x-auto">
             <TabsTrigger value="timeline">Timeline</TabsTrigger>
+            {(can("email:view") || can("email:send")) ? <TabsTrigger value="emails">Emails</TabsTrigger> : null}
+            <TabsTrigger value="history">Stage history</TabsTrigger>
             {can("documents:view") ? <TabsTrigger value="files">Files</TabsTrigger> : null}
             <TabsTrigger value="contact">Contact</TabsTrigger>
           </TabsList>
           <TabsContent value="timeline">
             <UnifiedTimeline leadId={lead.id} />
+          </TabsContent>
+          {(can("email:view") || can("email:send")) ? (
+            <TabsContent value="emails">
+              <RecordEmailSection leadId={lead.id} defaultTo={lead.email} />
+            </TabsContent>
+          ) : null}
+          <TabsContent value="history">
+            <LeadHistory leadId={lead.id} />
           </TabsContent>
           {can("documents:view") ? (
             <TabsContent value="files">
@@ -519,7 +567,7 @@ function PanelBody({
             </TabsContent>
           ) : null}
           <TabsContent value="contact">
-            <ContactSection lead={lead} />
+            <ContactSection lead={lead} onEditPhone={canEdit ? () => onEditOpenChange(true) : undefined} />
           </TabsContent>
         </Tabs>
       </div>
@@ -539,7 +587,7 @@ function PanelBody({
               onClick={handleDealClose}
             >
               <Check className="size-3.5" />
-              {nurturing ? wonStage.name?.trim() || "Complete" : "Deal Close"}
+              {nurturing ? wonStage.name?.trim() || "Outcome" : "Mark as purchased"}
             </Button>
           ) : null}
         </div>
@@ -625,10 +673,11 @@ function StageStepper({
   const currentIdx = open.findIndex((s) => s.id === currentId);
   const closed = lead.status === "won" || lead.status === "lost";
   const nurturing = isNurturingPipeline(lead.pipelineId);
-  const completeLabel = won?.name?.trim() || "Complete";
+  const completeLabel = won?.name?.trim() || "Outcome";
 
   return (
-    <section aria-label="Stage" className="space-y-2.5">
+    <section aria-label="Stage" className="space-y-2">
+      <p className="text-caption font-medium uppercase tracking-wide text-ink-muted">Pipeline</p>
       <ol className="flex gap-1">
         {open.map((s, i) => {
           const reached = !closed && currentIdx >= 0 && i <= currentIdx;
@@ -678,8 +727,8 @@ function StageStepper({
           <span className="font-medium">
             {lead.status === "won"
               ? nurturing
-                ? `Complete ${formatDate(lead.wonAt)}`
-                : `Won ${formatDate(lead.wonAt)}`
+                ? `Outcome ${formatDate(lead.wonAt)}`
+                : `Purchased ${formatDate(lead.wonAt)}`
               : `Lost ${formatDate(lead.lostAt)}`}
           </span>
           {lead.status === "lost" && lead.lostReason ? <span>· {lead.lostReason}</span> : null}
@@ -722,32 +771,70 @@ function StageStepper({
 }
 
 function DocumentDeadlineCard({
+  lead,
   doc,
   timezone,
   nurturing,
+  canEdit,
   canViewFiles,
   onOpenFiles,
+  onRemarksSaved,
 }: {
+  lead: Lead;
   doc: CrmDocument;
   timezone?: string;
   nurturing: boolean;
+  canEdit: boolean;
   canViewFiles: boolean;
   onOpenFiles: () => void;
+  onRemarksSaved: () => void;
 }) {
+  const qc = useQueryClient();
   const copy = documentDeadlineCopy(doc.expiryDate!, timezone);
+  const overdue = copy.tone === "overdue";
+  const historyQuery = useQuery({
+    queryKey: ["lead", lead.id, "document-delay-remarks"],
+    queryFn: () => crmApi.listDocumentDelayRemarks(lead.id),
+    enabled: overdue,
+  });
+  const [draft, setDraft] = React.useState(lead.documentDelayRemarks ?? "");
+  React.useEffect(() => {
+    setDraft(lead.documentDelayRemarks ?? "");
+  }, [lead.documentDelayRemarks, lead.id]);
+
+  const saveMutation = useMutation({
+    mutationFn: (body: string) => crmApi.addDocumentDelayRemark(lead.id, body),
+    onSuccess: () => {
+      toast.success("Delay remarks saved");
+      void qc.invalidateQueries({ queryKey: ["lead", lead.id, "document-delay-remarks"] });
+      void qc.invalidateQueries({ queryKey: ["lead-board"] });
+      onRemarksSaved();
+    },
+    onError: (err) => {
+      toast.error("Couldn't save delay remarks", {
+        description: err instanceof Error && err.message ? err.message : undefined,
+      });
+    },
+  });
+
+  const history = historyQuery.data ?? [];
+  const saved = (lead.documentDelayRemarks ?? "").trim();
+
   return (
     <section
       aria-label="Document deadline"
       className={cn(
-        "rounded-card border p-4",
+        "rounded-xl border px-4 py-3.5",
         copy.tone === "overdue"
-          ? "border-danger/30 bg-danger-soft/40"
+          ? "border-danger/30 bg-danger-soft/35"
           : copy.tone === "today"
-            ? "border-warning/30 bg-warning-soft/50"
-            : "border-brand/25 bg-brand-soft/40",
+            ? "border-warning/30 bg-warning-soft/40"
+            : "border-brand/25 bg-brand-soft/35",
       )}
     >
-      <p className="text-label">{nurturing ? "Send documents by" : "Document send-by date"}</p>
+      <p className="text-caption font-medium uppercase tracking-wide text-ink-muted">
+        {nurturing ? "Send documents by" : "Document send-by"}
+      </p>
       <div className="mt-1.5 flex flex-wrap items-center gap-3">
         <FileText
           className={cn(
@@ -766,6 +853,55 @@ function DocumentDeadlineCard({
           </Button>
         ) : null}
       </div>
+
+      {overdue ? (
+        <div className="mt-4 space-y-3 border-t border-danger/20 pt-3">
+          <div>
+            <p className="text-sm font-semibold text-ink">Delay remarks</p>
+            <p className="text-caption text-ink-muted">
+              Explain why documents are late. Team Leads and admins can see this history.
+            </p>
+          </div>
+          {canEdit ? (
+            <div className="space-y-2">
+              <Textarea
+                rows={3}
+                maxLength={1000}
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                placeholder="e.g. Client travelling; docs expected next week"
+                className="min-h-[72px] text-sm"
+              />
+              <div className="flex justify-end">
+                <Button
+                  size="sm"
+                  loading={saveMutation.isPending}
+                  disabled={!draft.trim() || draft.trim() === saved}
+                  onClick={() => saveMutation.mutate(draft.trim())}
+                >
+                  {saved ? "Update remarks" : "Save remarks"}
+                </Button>
+              </div>
+            </div>
+          ) : saved ? (
+            <p className="text-body text-ink">{saved}</p>
+          ) : (
+            <p className="text-meta text-ink-muted">No remarks yet.</p>
+          )}
+          {history.length > 0 ? (
+            <ol className="space-y-2" aria-label="Delay remarks history">
+              {history.map((r) => (
+                <li key={r.id} className="rounded-md bg-surface/80 px-3 py-2 text-sm">
+                  <p className="text-ink">{r.body}</p>
+                  <p className="mt-1 text-caption text-ink-muted">
+                    {[r.authorName || "Someone", formatDate(r.createdAt)].filter(Boolean).join(" · ")}
+                  </p>
+                </li>
+              ))}
+            </ol>
+          ) : null}
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -802,33 +938,38 @@ function NextActionCard({
     <section
       aria-label="Next action"
       className={cn(
-        "rounded-card border p-4",
+        "rounded-xl border px-4 py-3.5",
         !scheduled && !loading
-          ? "border-warning/30 bg-warning-soft/50"
+          ? "border-warning/35 bg-warning-soft/40"
           : tone === "overdue"
-            ? "border-danger/30 bg-danger-soft/40"
-            : "border-line bg-surface-muted/40",
+            ? "border-danger/30 bg-danger-soft/35"
+            : "border-line/80 bg-surface",
       )}
     >
-      <p className="text-label">Next action</p>
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-caption font-medium uppercase tracking-wide text-ink-muted">Next action</p>
+        {scheduled && tone === "overdue" ? (
+          <span className="rounded-full bg-danger-soft px-2 py-0.5 text-caption font-medium text-danger">Overdue</span>
+        ) : null}
+      </div>
       {loading ? (
-        <p className="mt-1.5 text-meta">Loading…</p>
+        <p className="mt-2 text-caption text-ink-muted">Loading…</p>
       ) : scheduled ? (
-        <div className="mt-1.5 flex flex-wrap items-center gap-3">
+        <div className="mt-2 flex flex-wrap items-center gap-3">
           <CalendarClock
-            className={cn("size-5 shrink-0", tone === "overdue" ? "text-danger" : "text-brand")}
+            className={cn("size-4 shrink-0", tone === "overdue" ? "text-danger" : "text-brand")}
             aria-hidden
           />
           <div className="min-w-0 flex-1">
             <p className="truncate text-body font-medium text-ink">
               {activity?.title || activity?.typeName || "Follow up"}
             </p>
-            <p className={cn("text-meta", tone === "overdue" && "text-danger")}>
+            <p className={cn("text-caption", tone === "overdue" ? "text-danger" : "text-ink-muted")}>
               {formatNextAction(at, timezone)}
               {activity?.typeName && activity.title ? ` · ${activity.typeName}` : ""}
             </p>
           </div>
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <div className="flex shrink-0 items-center gap-1.5">
             {canComplete ? (
               <Button
                 size="sm"
@@ -841,20 +982,19 @@ function NextActionCard({
               </Button>
             ) : null}
             {canCreate ? (
-              <Button size="sm" variant="outline" onClick={onReset}>
+              <Button size="sm" variant="ghost" onClick={onReset} aria-label="Reschedule">
                 <RotateCcw className="size-3.5" />
-                Reset
               </Button>
             ) : null}
           </div>
         </div>
       ) : (
-        <div className="mt-1.5 flex flex-wrap items-center gap-3">
-          <p className="flex-1 text-body text-ink">No next action scheduled</p>
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <p className="flex-1 text-body text-ink-secondary">Nothing booked — set a follow-up so this lead stays moving.</p>
           {canCreate ? (
             <Button size="sm" onClick={onSchedule}>
               <CalendarPlus className="size-3.5" />
-              Schedule next
+              Schedule
             </Button>
           ) : null}
         </div>
@@ -866,13 +1006,13 @@ function NextActionCard({
 function Fact({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="min-w-0">
-      <dt className="text-label">{label}</dt>
+      <dt className="text-caption font-medium text-ink-muted">{label}</dt>
       <dd className="mt-0.5 truncate text-body text-ink">{value}</dd>
     </div>
   );
 }
 
-function ContactSection({ lead }: { lead: Lead }) {
+function ContactSection({ lead, onEditPhone }: { lead: Lead; onEditPhone?: () => void }) {
   const profile: Array<[string, string | number | null | undefined]> = [
     ["Country", lead.country],
     ["Nationality", lead.nationality],
@@ -885,6 +1025,10 @@ function ContactSection({ lead }: { lead: Lead }) {
     ["ANZSCO", lead.anzscoCode ? `${lead.anzscoCode} ${lead.anzscoTitle ?? ""}` : null],
     ["Priority", lead.priority],
     ["Team", lead.teamName],
+    [
+      "Contact rating",
+      contactRatingLabel(lead.contactRating, lead.contactRemarks ?? "") || null,
+    ],
   ];
   const filled = profile.filter(([, v]) => v != null && String(v).trim() !== "");
 
@@ -893,13 +1037,33 @@ function ContactSection({ lead }: { lead: Lead }) {
       <dl className="grid gap-3 sm:grid-cols-2">
         <Fact
           label="Phone"
-          value={lead.phone ? <a className="hover:text-brand" href={`tel:${lead.phone}`}>{lead.phone}</a> : "—"}
+          value={
+            lead.phone ? (
+              <span className="flex min-w-0 flex-wrap items-center gap-2">
+                <a className="truncate hover:text-brand" href={`tel:${lead.phone}`}>
+                  {lead.phone}
+                </a>
+                <PhoneValidationBadge lead={lead} showWhenValid compact />
+              </span>
+            ) : (
+              "—"
+            )
+          }
         />
         <Fact
           label="Email"
-          value={lead.email ? <a className="hover:text-brand" href={`mailto:${lead.email}`}>{lead.email}</a> : "—"}
+          value={
+            lead.email ? (
+              <a className="truncate hover:text-brand" href={`mailto:${lead.email}`}>
+                {lead.email}
+              </a>
+            ) : (
+              "—"
+            )
+          }
         />
       </dl>
+      <PhoneValidationDetail lead={lead} onEditPhone={onEditPhone} />
       {lead.tags.length > 0 ? (
         <div className="flex flex-wrap gap-1.5">
           {lead.tags.map((t) => (

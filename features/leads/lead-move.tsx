@@ -28,6 +28,13 @@ import {
   LostReasonFields,
   useLostReasonDraft,
 } from "@/features/leads/lost-reason-dialog";
+import { isContactRatingBlocker } from "@/features/pipeline/contact-rating";
+import { ContactRatingFields, contactRatingReady } from "@/features/pipeline/contact-rating-fields";
+import {
+  isNextFollowUpRemarksBlocker,
+  nextFollowUpRemarksProblem,
+} from "@/features/pipeline/next-follow-up-remarks";
+import { Textarea } from "@/components/ui/console/textarea";
 
 export { LEAD_LOST_REASONS } from "@/features/leads/lost-reason-dialog";
 
@@ -60,6 +67,7 @@ type MoveVars = Omit<LeadMoveRequest, "lostReason" | "documentDeadline" | "closi
   lostReason?: string;
   documentDeadline?: string;
   closingAmount?: number;
+  purchaseNotes?: string;
 };
 
 type Pending =
@@ -107,6 +115,7 @@ export function useLeadMove({
         lostReason: vars.lostReason,
         documentDeadline: vars.documentDeadline,
         closingAmount: vars.closingAmount,
+        purchaseNotes: vars.purchaseNotes,
       }),
     onMutate: (vars) => ({ rollback: onOptimistic?.(vars) ?? undefined }),
     onSuccess: (result, vars) => {
@@ -142,7 +151,13 @@ export function useLeadMove({
           return;
         }
         setPending({ kind: "blocked", vars, details: err.details });
-        setAnnounce("Stage move blocked. Review the requirements.");
+        setAnnounce(
+          isContactRatingBlocker(err.details)
+            ? "Add a contact rating and remarks before leaving Contacted."
+            : isNextFollowUpRemarksBlocker(err.details)
+              ? "Add next follow-up remarks before moving this lead."
+              : "Stage move blocked. Review the requirements.",
+        );
         return;
       }
       if (err instanceof ApiError && err.status === 400 && isLeadClosedError(err.details)) {
@@ -206,8 +221,9 @@ export function useLeadMove({
         initialAmount={pending?.kind === "won" ? pending.req.closingAmount : undefined}
         loading={mutation.isPending}
         onCancel={() => setPending(null)}
-        onConfirm={(documentDeadline, closingAmount) =>
-          pending?.kind === "won" && mutation.mutate({ ...pending.req, documentDeadline, closingAmount })
+        onConfirm={(documentDeadline, closingAmount, purchaseNotes) =>
+          pending?.kind === "won" &&
+          mutation.mutate({ ...pending.req, documentDeadline, closingAmount, purchaseNotes })
         }
       />
       <ReopenModal
@@ -223,8 +239,37 @@ export function useLeadMove({
           mutation.mutate({ ...pending.req, reopen: true, lostReason: lostReason ?? pending.req.lostReason })
         }
       />
+      <ContactRatingMoveModal
+        open={pending?.kind === "blocked" && isContactRatingBlocker(pending.details)}
+        leadName={pending?.kind === "blocked" ? pending.vars.leadName : ""}
+        destinationName={pending?.kind === "blocked" ? pending.vars.to.name : ""}
+        leadId={pending?.kind === "blocked" ? pending.vars.leadId : ""}
+        movePending={mutation.isPending}
+        onCancel={() => setPending(null)}
+        onForce={() => pending?.kind === "blocked" && mutation.mutate({ ...pending.vars, force: true })}
+        onSavedAndMove={() => pending?.kind === "blocked" && mutation.mutate(pending.vars)}
+      />
+      <NextFollowUpMoveModal
+        open={
+          pending?.kind === "blocked" &&
+          !isContactRatingBlocker(pending.details) &&
+          isNextFollowUpRemarksBlocker(pending.details)
+        }
+        leadName={pending?.kind === "blocked" ? pending.vars.leadName : ""}
+        destinationName={pending?.kind === "blocked" ? pending.vars.to.name : ""}
+        leadId={pending?.kind === "blocked" ? pending.vars.leadId : ""}
+        movePending={mutation.isPending}
+        onCancel={() => setPending(null)}
+        onSavedAndMove={() => pending?.kind === "blocked" && mutation.mutate(pending.vars)}
+      />
       <RequirementsModal
+        open={
+          pending?.kind === "blocked" &&
+          !isContactRatingBlocker(pending.details) &&
+          !isNextFollowUpRemarksBlocker(pending.details)
+        }
         details={pending?.kind === "blocked" ? pending.details : null}
+        destinationName={pending?.kind === "blocked" ? pending.vars.to.name : ""}
         loading={mutation.isPending}
         onCancel={() => setPending(null)}
         onForce={() => pending?.kind === "blocked" && mutation.mutate({ ...pending.vars, force: true })}
@@ -248,35 +293,41 @@ function WonDeadlineDialog({
   initialAmount?: number;
   loading: boolean;
   onCancel: () => void;
-  onConfirm: (documentDeadline: string, closingAmount: number) => void;
+  onConfirm: (documentDeadline: string, closingAmount: number, purchaseNotes: string) => void;
 }) {
   const [deadline, setDeadline] = React.useState("");
   const [amount, setAmount] = React.useState("");
+  const [description, setDescription] = React.useState("");
   const [wasOpen, setWasOpen] = React.useState(open);
   if (open !== wasOpen) {
     setWasOpen(open);
     if (open) {
       setDeadline("");
       setAmount(initialAmount != null ? String(initialAmount) : "");
+      setDescription("");
     }
   }
   const today = React.useMemo(() => new Date().toISOString().slice(0, 10), []);
   const parsed = amount.trim() === "" ? null : Number(amount.trim());
   const amountOk = parsed != null && Number.isInteger(parsed) && parsed >= 0;
+  const name = leadName.trim() || "this lead";
   return (
     <Modal open={open} onOpenChange={(o) => !o && onCancel()}>
       <ModalContent>
         <ModalHeader>
-          <ModalTitle>Close deal for {leadName || "this lead"}</ModalTitle>
+          <ModalTitle>
+            Mark <span className="text-brand">{name}</span> as purchased
+          </ModalTitle>
           <ModalDescription>
-            Enter the closing amount, then choose when documents must be sent. We&apos;ll move the lead into Nurturing
-            and track that send-by date there.
+            Confirm the final sale amount
+            {initialAmount != null ? ` (estimate was ${initialAmount.toLocaleString("en-AU")})` : ""}, add any sale
+            notes, then pick when documents must be sent. We&apos;ll move the lead into Nurturing after this.
           </ModalDescription>
         </ModalHeader>
         <div className="space-y-3">
           <div className="space-y-1.5">
             <Label htmlFor="closing-amount" required>
-              Closing amount
+              Final amount
             </Label>
             <Input
               id="closing-amount"
@@ -286,6 +337,20 @@ function WonDeadlineDialog({
               placeholder="e.g. 25000"
               autoFocus={!amount}
             />
+            <p className="text-meta text-ink-muted">What the customer actually paid or committed to.</p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="purchase-description">Description</Label>
+            <Textarea
+              id="purchase-description"
+              rows={3}
+              maxLength={2000}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="e.g. Full package paid via bank transfer; welcome pack to follow"
+              className="min-h-[4.5rem] resize-none text-sm"
+            />
+            <p className="text-meta text-ink-muted">Saved on the lead for the nurturing team.</p>
           </div>
           <div className="space-y-1.5">
             <Label required>Send documents by</Label>
@@ -300,9 +365,9 @@ function WonDeadlineDialog({
           <Button
             loading={loading}
             disabled={!deadline || !amountOk}
-            onClick={() => amountOk && onConfirm(deadline, parsed)}
+            onClick={() => amountOk && onConfirm(deadline, parsed, description.trim())}
           >
-            Deal Close — move to Nurturing
+            Confirm purchased
           </Button>
         </ModalFooter>
       </ModalContent>
@@ -330,7 +395,7 @@ function ReopenModal({
   onConfirm: (lostReason?: string) => void;
 }) {
   const r = useLostReasonDraft(open);
-  const closedAs = status === "won" ? "Won" : "Lost";
+  const closedAs = status === "won" ? "Purchased" : "Lost";
   return (
     <Modal open={open} onOpenChange={(o) => !o && onCancel()}>
       <ModalContent>
@@ -359,34 +424,265 @@ function ReopenModal({
   );
 }
 
+function friendlyRequirementLabel(raw: string): string {
+  const key = raw.trim().toLowerCase();
+  const known: Record<string, string> = {
+    contact_rating: "Contact rating",
+    contact_remarks: "Contact remarks",
+    next_follow_up_remarks: "Next follow-up remarks",
+    email: "Email",
+    phone: "Phone",
+    source: "Source",
+    value: "Estimated value",
+    company: "Company",
+    owner: "Owner",
+  };
+  if (known[key]) return known[key];
+  return raw
+    .replace(/[_-]+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function NextFollowUpMoveModal({
+  open,
+  leadName,
+  destinationName,
+  leadId,
+  movePending,
+  onCancel,
+  onSavedAndMove,
+}: {
+  open: boolean;
+  leadName: string;
+  destinationName: string;
+  leadId: string;
+  movePending: boolean;
+  onCancel: () => void;
+  onSavedAndMove: () => void;
+}) {
+  const [remarks, setRemarks] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
+  const [wasOpen, setWasOpen] = React.useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) {
+      setRemarks("");
+      setSaving(false);
+    }
+  }
+
+  const problem = nextFollowUpRemarksProblem(remarks);
+  const canSave = !problem;
+  const busy = saving || movePending;
+
+  const [wasMovePending, setWasMovePending] = React.useState(movePending);
+  if (movePending !== wasMovePending) {
+    setWasMovePending(movePending);
+    if (!movePending) setSaving(false);
+  }
+
+  const saveAndMove = async () => {
+    if (!canSave || !leadId || busy) return;
+    setSaving(true);
+    try {
+      await crmApi.updateLead(leadId, {
+        nextFollowUpRemarks: remarks.trim(),
+        forceUpdate: true,
+      });
+      onSavedAndMove();
+    } catch (err) {
+      toast.error("Couldn't save follow-up remarks", {
+        description: err instanceof Error && err.message ? err.message : undefined,
+      });
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal open={open} onOpenChange={(o) => !o && !busy && onCancel()}>
+      <ModalContent className="max-w-md">
+        <ModalHeader>
+          <ModalTitle>What&apos;s the next follow-up?</ModalTitle>
+          <ModalDescription>
+            Every lead on Contacted through Lost needs a documented next action before moving
+            {destinationName ? ` to ${destinationName}` : ""}
+            {leadName ? `. Working on ${leadName}.` : "."}
+          </ModalDescription>
+        </ModalHeader>
+        <div className="space-y-1.5">
+          <Label htmlFor="next-follow-up-move-remarks" required>
+            Next follow-up remarks
+          </Label>
+          <Textarea
+            id="next-follow-up-move-remarks"
+            value={remarks}
+            onChange={(e) => setRemarks(e.target.value)}
+            disabled={busy}
+            rows={4}
+            autoFocus
+            placeholder="e.g. Call Thursday to review fee options and send brochure"
+            className="min-h-[5.5rem] resize-none"
+          />
+          <p className="text-caption text-ink-muted">
+            Team leads use this to monitor follow-up plans across the pipeline.
+          </p>
+        </div>
+        <ModalFooter>
+          <Button variant="outline" onClick={onCancel} disabled={busy}>
+            Cancel
+          </Button>
+          <Button loading={busy} disabled={!canSave} onClick={() => void saveAndMove()}>
+            Save and move
+          </Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
+  );
+}
+
+function ContactRatingMoveModal({
+  open,
+  leadName,
+  destinationName,
+  leadId,
+  movePending,
+  onCancel,
+  onForce,
+  onSavedAndMove,
+}: {
+  open: boolean;
+  leadName: string;
+  destinationName: string;
+  leadId: string;
+  movePending: boolean;
+  onCancel: () => void;
+  onForce: () => void;
+  onSavedAndMove: () => void;
+}) {
+  const [rating, setRating] = React.useState(0);
+  const [remarks, setRemarks] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
+  const [wasOpen, setWasOpen] = React.useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) {
+      setRating(0);
+      setRemarks("");
+      setSaving(false);
+    }
+  }
+
+  const canSave = contactRatingReady(rating, remarks);
+  const busy = saving || movePending;
+
+  // Clear local saving once the follow-up move finishes (success or another blocker).
+  const [wasMovePending, setWasMovePending] = React.useState(movePending);
+  if (movePending !== wasMovePending) {
+    setWasMovePending(movePending);
+    if (!movePending) setSaving(false);
+  }
+
+  const saveAndMove = async () => {
+    if (!canSave || !leadId || busy) return;
+    setSaving(true);
+    try {
+      await crmApi.updateLead(leadId, {
+        contactRating: rating,
+        contactRemarks: remarks.trim(),
+        forceUpdate: true,
+      });
+      onSavedAndMove();
+    } catch (err) {
+      toast.error("Couldn't save contact rating", {
+        description: err instanceof Error && err.message ? err.message : undefined,
+      });
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal open={open} onOpenChange={(o) => !o && !busy && onCancel()}>
+      <ModalContent>
+        <ModalHeader>
+          <ModalTitle>How was the contact?</ModalTitle>
+          <ModalDescription>
+            Add a star rating and a short note before leaving Contacted
+            {destinationName ? ` for ${destinationName}` : ""}
+            {leadName ? ` (${leadName})` : ""}.
+          </ModalDescription>
+        </ModalHeader>
+        <ContactRatingFields
+          rating={rating}
+          remarks={remarks}
+          onRatingChange={setRating}
+          onRemarksChange={setRemarks}
+          disabled={busy}
+          remarksId="contact-rating-move-remarks"
+        />
+        <ModalFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-between">
+          <Button variant="outline" onClick={onCancel} disabled={busy}>
+            Cancel
+          </Button>
+          <div className="flex w-full flex-col-reverse gap-2 sm:w-auto sm:flex-row">
+            <Button variant="ghost" loading={movePending && !saving} disabled={busy} onClick={onForce}>
+              Move anyway
+            </Button>
+            <Button loading={busy} disabled={!canSave} onClick={() => void saveAndMove()}>
+              Save and move
+            </Button>
+          </div>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
+  );
+}
+
 function RequirementsModal({
+  open,
   details,
+  destinationName,
   loading,
   onCancel,
   onForce,
 }: {
+  open: boolean;
   details: StageMoveError | null;
+  destinationName: string;
   loading: boolean;
   onCancel: () => void;
   onForce: () => void;
 }) {
   const items = [
-    ...(details?.missingFields ?? []).map((f) => ({ key: `f-${f}`, label: "Field", value: f })),
-    ...(details?.missingActivities ?? []).map((a) => ({ key: `a-${a}`, label: "Activity", value: a })),
-    ...(details?.missingDocuments ?? []).map((d) => ({ key: `d-${d}`, label: "Document", value: d })),
+    ...(details?.missingFields ?? []).map((f) => ({
+      key: `f-${f}`,
+      label: "Field",
+      value: friendlyRequirementLabel(f),
+    })),
+    ...(details?.missingActivities ?? []).map((a) => ({
+      key: `a-${a}`,
+      label: "Activity",
+      value: friendlyRequirementLabel(a),
+    })),
+    ...(details?.missingDocuments ?? []).map((d) => ({
+      key: `d-${d}`,
+      label: "Document",
+      value: friendlyRequirementLabel(d),
+    })),
   ];
+  const stageLabel = destinationName || "this stage";
   return (
-    <Modal open={!!details} onOpenChange={(o) => !o && onCancel()}>
+    <Modal open={open} onOpenChange={(o) => !o && onCancel()}>
       <ModalContent>
         <ModalHeader>
-          <ModalTitle>Before moving to {details?.stageName ?? "this stage"}</ModalTitle>
+          <ModalTitle>Before moving to {stageLabel}</ModalTitle>
           <ModalDescription>This stage expects a few things first. Complete them, or move anyway.</ModalDescription>
         </ModalHeader>
         <ul className="space-y-1.5 text-sm">
           {items.map((i) => (
             <li key={i.key} className="flex items-baseline gap-2">
               <span className="w-16 shrink-0 text-meta">{i.label}</span>
-              <span className="font-medium text-ink">{i.value.replace(/_/g, " ")}</span>
+              <span className="font-medium text-ink">{i.value}</span>
             </li>
           ))}
         </ul>

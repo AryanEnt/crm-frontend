@@ -2,8 +2,8 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { ChevronsLeft, ChevronsRight, Menu, X } from "lucide-react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { ChevronDown, ChevronsLeft, ChevronsRight, Menu, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getNavForRole, isNavActive, isSuperAdminRole, type NavItem } from "@/lib/navigation";
 import { canAccessPath } from "@/lib/permissions";
@@ -22,7 +22,16 @@ type SidebarProps = {
 };
 
 function filterItems(items: NavItem[], permissions: string[]) {
-  return items.filter((item) => canAccessPath(permissions, item.href.split("?")[0]));
+  return items
+    .map((item) => ({
+      ...item,
+      children: item.children?.filter((child) => canAccessPath(permissions, child.href.split("?")[0])),
+    }))
+    .filter((item) => {
+      if (!canAccessPath(permissions, item.href.split("?")[0])) return false;
+      if (item.children) return item.children.length > 0;
+      return true;
+    });
 }
 
 /** Room for Next's dev-only indicator, which floats over the bottom-left corner. */
@@ -30,6 +39,8 @@ const DEV_INDICATOR_SPACE = process.env.NODE_ENV === "development" ? "pb-16" : u
 
 export function Sidebar({ collapsed, onCollapsedChange, mobileOpen, onMobileOpenChange }: SidebarProps) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const search = searchParams.toString();
   const { permissions, user } = useAuth();
   const isControlCenter = isSuperAdminRole(user?.roleCode);
   const nav = getNavForRole(user?.roleCode);
@@ -112,13 +123,24 @@ export function Sidebar({ collapsed, onCollapsedChange, mobileOpen, onMobileOpen
                 <ul className="space-y-0.5" aria-labelledby={section.title && !collapsed ? headingId : undefined}>
                   {items.map((item) => (
                     <li key={`${item.href}-${item.label}`}>
-                      <NavLink
-                        item={item}
-                        active={isNavActive(pathname, item.href)}
-                        collapsed={collapsed}
-                        count={counts[item.href]}
-                        onNavigate={closeMobile}
-                      />
+                      {item.children?.length ? (
+                        <NavGroup
+                          item={item}
+                          pathname={pathname}
+                          search={search}
+                          collapsed={collapsed}
+                          counts={counts}
+                          onNavigate={closeMobile}
+                        />
+                      ) : (
+                        <NavLink
+                          item={item}
+                          active={isNavActive(pathname, item.href, search)}
+                          collapsed={collapsed}
+                          count={counts[item.href]}
+                          onNavigate={closeMobile}
+                        />
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -172,6 +194,158 @@ export function Sidebar({ collapsed, onCollapsedChange, mobileOpen, onMobileOpen
   );
 }
 
+function CountBadge({ count, active, attention }: { count: number; active: boolean; attention?: boolean }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-caption font-medium tabular-nums",
+        attention
+          ? "bg-danger-soft text-danger"
+          : active
+            ? "bg-surface text-ink-secondary"
+            : "bg-surface-muted text-ink-muted",
+      )}
+    >
+      {count}
+    </span>
+  );
+}
+
+function NavGroup({
+  item,
+  pathname,
+  search,
+  collapsed,
+  counts,
+  onNavigate,
+}: {
+  item: NavItem;
+  pathname: string;
+  search: string;
+  collapsed: boolean;
+  counts: Record<string, number | undefined>;
+  onNavigate: () => void;
+}) {
+  const children = item.children ?? [];
+  const childActive = children.some((child) => isNavActive(pathname, child.href, search));
+  const groupActive = childActive || isNavActive(pathname, item.href, search);
+  const [open, setOpen] = React.useState(groupActive);
+
+  React.useEffect(() => {
+    if (groupActive) setOpen(true);
+  }, [groupActive]);
+
+  const overdueTotal = children.reduce((sum, child) => sum + (counts[child.href] ?? 0), 0);
+  const Icon = item.icon;
+
+  if (collapsed) {
+    const link = (
+      <Link
+        href={item.href}
+        onClick={onNavigate}
+        aria-current={groupActive ? "page" : undefined}
+        aria-label={item.label}
+        className={cn(
+          "group relative flex h-8 items-center justify-center rounded-control text-cell font-medium transition-colors duration-150 ease-standard",
+          groupActive ? "bg-surface-muted text-ink" : "text-ink-secondary hover:bg-surface-muted/60 hover:text-ink",
+        )}
+      >
+        <span
+          aria-hidden
+          className={cn(
+            "absolute -left-2.5 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-r-full bg-brand transition-opacity duration-150 ease-standard",
+            groupActive ? "opacity-100" : "opacity-0",
+          )}
+        />
+        <Icon
+          aria-hidden
+          className={cn(
+            "size-4 shrink-0 transition-colors duration-150",
+            groupActive ? "text-brand" : "text-ink-muted group-hover:text-ink",
+          )}
+          strokeWidth={groupActive ? 2.25 : 2}
+        />
+      </Link>
+    );
+    const tip = children
+      .map((child) => {
+        const n = counts[child.href];
+        return n === undefined ? child.label : `${child.label} · ${n}`;
+      })
+      .join(" · ");
+    return (
+      <Tooltip content={tip || item.label} side="right" delay={150}>
+        {link}
+      </Tooltip>
+    );
+  }
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className={cn(
+          "group relative flex h-8 w-full items-center gap-2.5 rounded-control px-2.5 text-cell font-medium transition-colors duration-150 ease-standard",
+          groupActive ? "bg-surface-muted text-ink" : "text-ink-secondary hover:bg-surface-muted/60 hover:text-ink",
+        )}
+      >
+        <span
+          aria-hidden
+          className={cn(
+            "absolute -left-2.5 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-r-full bg-brand transition-opacity duration-150 ease-standard",
+            groupActive && !childActive ? "opacity-100" : "opacity-0",
+          )}
+        />
+        <Icon
+          aria-hidden
+          className={cn(
+            "size-4 shrink-0 transition-colors duration-150",
+            groupActive ? "text-brand" : "text-ink-muted group-hover:text-ink",
+          )}
+          strokeWidth={groupActive ? 2.25 : 2}
+        />
+        <span className="min-w-0 flex-1 truncate text-left tracking-tight">{item.label}</span>
+        {overdueTotal > 0 ? <CountBadge count={overdueTotal} active={groupActive} attention /> : null}
+        <ChevronDown
+          aria-hidden
+          className={cn(
+            "size-3.5 shrink-0 text-ink-muted transition-transform duration-150 ease-standard",
+            open && "rotate-180",
+          )}
+        />
+      </button>
+      {open ? (
+        <ul className="mt-0.5 ml-4 space-y-0.5 border-l border-line pl-2">
+          {children.map((child) => {
+            const active = isNavActive(pathname, child.href, search);
+            const count = counts[child.href];
+            return (
+              <li key={`${child.href}-${child.label}`}>
+                <Link
+                  href={child.href}
+                  onClick={onNavigate}
+                  aria-current={active ? "page" : undefined}
+                  className={cn(
+                    "group relative flex h-8 items-center gap-2 rounded-control px-2.5 text-cell font-medium transition-colors duration-150 ease-standard",
+                    active ? "bg-surface-muted text-ink" : "text-ink-secondary hover:bg-surface-muted/60 hover:text-ink",
+                  )}
+                >
+                  <span className="min-w-0 flex-1 truncate tracking-tight">{child.label}</span>
+                  {count !== undefined ? (
+                    <CountBadge count={count} active={active} attention={count > 0} />
+                  ) : null}
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 function NavLink({
   item,
   active,
@@ -216,16 +390,7 @@ function NavLink({
       {collapsed ? null : (
         <>
           <span className="min-w-0 flex-1 truncate tracking-tight">{item.label}</span>
-          {count !== undefined ? (
-            <span
-              className={cn(
-                "inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-caption font-medium tabular-nums",
-                active ? "bg-surface text-ink-secondary" : "bg-surface-muted text-ink-muted",
-              )}
-            >
-              {count}
-            </span>
-          ) : null}
+          {count !== undefined ? <CountBadge count={count} active={active} /> : null}
         </>
       )}
     </Link>

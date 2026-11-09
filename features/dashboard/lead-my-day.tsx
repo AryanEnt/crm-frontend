@@ -92,8 +92,8 @@ function itemMeta(bucket: LeadDayBucket, item: LeadDayItem, timezone?: string): 
         : "Never contacted";
     case "recentlyWon":
       return item.wonAt
-        ? `Won ${new Date(item.wonAt).toLocaleDateString(undefined, { day: "numeric", month: "short" })}`
-        : "Won";
+        ? `Purchased ${new Date(item.wonAt).toLocaleDateString(undefined, { day: "numeric", month: "short" })}`
+        : "Purchased";
     case "recentlyCreated":
       return `Added ${new Date(item.createdAt).toLocaleDateString(undefined, { day: "numeric", month: "short" })}`;
     default:

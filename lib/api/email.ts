@@ -245,11 +245,18 @@ export type EmailTemplate = {
   name: string;
   subject: string;
   bodyHtml: string;
+  signatureHtml?: string;
   category: string;
   variables: string[];
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+};
+
+export type ComposeAttachmentPayload = {
+  filename: string;
+  mimeType: string;
+  contentBase64: string;
 };
 
 export type ComposePayload = {
@@ -267,6 +274,7 @@ export type ComposePayload = {
   threadId?: string;
   scheduledAt?: string;
   send?: boolean;
+  attachments?: ComposeAttachmentPayload[];
 };
 
 function qs(params: Record<string, string | undefined>) {
@@ -341,7 +349,10 @@ export const emailApi = {
       unresolved: string[];
       canSend: boolean;
     }>("/email/preview", body),
-  listTemplates: () => api.get<EmailTemplate[]>("/email/templates"),
+  listTemplates: (opts?: { includeInactive?: boolean }) => {
+    const q = opts?.includeInactive ? "?includeInactive=true" : "";
+    return api.get<EmailTemplate[]>(`/email/templates${q}`);
+  },
   createTemplate: (body: unknown) => api.post<EmailTemplate>("/email/templates", body),
   updateTemplate: (id: string, body: unknown) =>
     api.patch<EmailTemplate>(`/email/templates/${id}`, body),

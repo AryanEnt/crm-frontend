@@ -20,7 +20,7 @@ export async function POST(req: Request) {
   let access = await readAccessToken();
   if (!access) {
     const rotated = await refreshAccessTokens();
-    access = rotated?.accessToken ?? "";
+    access = rotated.status === "ok" ? rotated.data.accessToken : "";
   }
   if (!access) {
     return NextResponse.json(

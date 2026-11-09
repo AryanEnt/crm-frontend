@@ -24,6 +24,7 @@ import type { LeadBoardCard, LeadBoardStage } from "@/lib/api/crm";
 import { useMediaQuery } from "@/lib/use-media-query";
 import { cn } from "@/lib/utils";
 import { LeadCard } from "./lead-card";
+import type { BoardSortKey, SortOrder } from "./pipeline-filters";
 import { PipelineColumn, stageDropId } from "./pipeline-column";
 import { StageDot, stageSlot } from "./pipeline-ui";
 import type { PipelineData } from "./use-pipeline-leads";
@@ -54,7 +55,8 @@ export function PipelineBoard({
   onOpenLead: (leadId: string) => void;
   onMove: (lead: LeadBoardCard, to: LeadBoardStage) => void;
 }) {
-  const { board, stages, openStages, wonStage, lostStage, currency } = data;
+  const { board, stages, openStages, wonStage, lostStage, currency, stageSortFor, setStageSort, sortingStage, stageHasOverride } =
+    data;
   const columns = showClosedColumns ? stages : openStages;
   const isDesktop = useMediaQuery("(min-width: 768px)", true);
   const [active, setActive] = React.useState<LeadBoardCard | null>(null);
@@ -107,6 +109,10 @@ export function PipelineBoard({
         onLoadMore={(s) => void data.loadMore(s)}
         onOpen={onOpenLead}
         onMove={onMove}
+        stageSortFor={stageSortFor}
+        stageHasOverride={stageHasOverride}
+        sortingStage={sortingStage}
+        onStageSortChange={(stageId, sort) => void setStageSort(stageId, sort)}
       />
     );
   }
@@ -122,21 +128,29 @@ export function PipelineBoard({
       accessibility={{ announcements }}
     >
       <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-4 crm-scroll">
-        {columns.map((stage) => (
-          <PipelineColumn
-            key={stage.id}
-            stage={stage}
-            stages={stages}
-            slot={stageSlot(stage, stages)}
-            currency={currency}
-            canEdit={canEdit}
-            dndEnabled
-            loadingMore={data.loadingMore === stage.id}
-            onLoadMore={() => void data.loadMore(stage)}
-            onOpen={onOpenLead}
-            onMove={onMove}
-          />
-        ))}
+        {columns.map((stage) => {
+          const sort = stageSortFor(stage.id);
+          return (
+            <PipelineColumn
+              key={stage.id}
+              stage={stage}
+              stages={stages}
+              slot={stageSlot(stage, stages)}
+              currency={currency}
+              canEdit={canEdit}
+              dndEnabled
+              loadingMore={data.loadingMore === stage.id}
+              onLoadMore={() => void data.loadMore(stage)}
+              onOpen={onOpenLead}
+              onMove={onMove}
+              boardSort={sort.sort}
+              boardOrder={sort.order}
+              sortOverridden={stageHasOverride(stage.id)}
+              sorting={sortingStage === stage.id}
+              onBoardSortChange={(nextSort, nextOrder) => void setStageSort(stage.id, { sort: nextSort, order: nextOrder })}
+            />
+          );
+        })}
       </div>
 
       {active && canEdit && (wonStage || lostStage) ? (
@@ -172,17 +186,17 @@ function OutcomeDropZone({
   const { setNodeRef, isOver } = useDroppable({ id: kind === "won" ? OUTCOME_WON : OUTCOME_LOST, disabled });
   const won = kind === "won";
   const Icon = won ? Trophy : CircleX;
-  const success = complete ? "Complete" : "Won";
+  const success = complete ? "Outcome" : "Purchased";
   const hint = disabled
     ? won
       ? complete
-        ? "Already complete"
-        : "Already won"
+        ? "Already at Outcome"
+        : "Already purchased"
       : "Already lost"
     : won
       ? complete
-        ? "Drop to complete"
-        : "Drop to close as won"
+        ? "Drop to mark Outcome"
+        : "Drop to mark Purchased"
       : "Drop to close · add a reason";
   return (
     <div
@@ -225,6 +239,10 @@ function MobileStages({
   onLoadMore,
   onOpen,
   onMove,
+  stageSortFor,
+  stageHasOverride,
+  sortingStage,
+  onStageSortChange,
 }: {
   columns: LeadBoardStage[];
   stages: LeadBoardStage[];
@@ -234,6 +252,10 @@ function MobileStages({
   onLoadMore: (stage: LeadBoardStage) => void;
   onOpen: (leadId: string) => void;
   onMove: (lead: LeadBoardCard, to: LeadBoardStage) => void;
+  stageSortFor: PipelineData["stageSortFor"];
+  stageHasOverride: PipelineData["stageHasOverride"];
+  sortingStage: string | null;
+  onStageSortChange: (stageId: string, sort: { sort: BoardSortKey; order: SortOrder }) => void;
 }) {
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const selected = columns.find((s) => s.id === selectedId) ?? columns[0];
@@ -294,6 +316,11 @@ function MobileStages({
           onOpen={onOpen}
           onMove={onMove}
           className="w-full"
+          boardSort={stageSortFor(selected.id).sort}
+          boardOrder={stageSortFor(selected.id).order}
+          sortOverridden={stageHasOverride(selected.id)}
+          sorting={sortingStage === selected.id}
+          onBoardSortChange={(sort, order) => onStageSortChange(selected.id, { sort, order })}
         />
       </div>
     </div>

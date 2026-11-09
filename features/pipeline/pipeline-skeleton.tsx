@@ -1,5 +1,4 @@
 import { Skeleton } from "@/components/ui/skeleton";
-import { PipelineStatsSkeleton } from "./pipeline-stats";
 
 export function PipelineBoardSkeleton({ columns = 5 }: { columns?: number }) {
   return (
@@ -43,7 +42,6 @@ export function PipelineSkeleton() {
         </div>
         <Skeleton className="h-9 w-28" />
       </div>
-      <PipelineStatsSkeleton />
       <div className="flex flex-wrap items-center gap-2" aria-hidden>
         <Skeleton className="h-9 w-full rounded-full sm:w-72" />
         <Skeleton className="h-9 w-64 rounded-full" />

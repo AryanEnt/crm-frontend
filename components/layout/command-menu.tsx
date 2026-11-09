@@ -146,7 +146,10 @@ export function CommandMenu({ open, onOpenChange, onQuickCreate }: CommandMenuPr
   }
 
   getNavForRole(user?.roleCode).forEach((section, index) => {
-    const items = section.items.filter((item) => canAccessPath(permissions, item.href.split("?")[0]));
+    const items = section.items
+      .filter((item) => canAccessPath(permissions, item.href.split("?")[0]))
+      .flatMap((item) => (item.children?.length ? item.children : [item]))
+      .filter((item) => canAccessPath(permissions, item.href.split("?")[0]));
     if (items.length === 0) return;
     groups.push({
       id: `nav-${index}`,
