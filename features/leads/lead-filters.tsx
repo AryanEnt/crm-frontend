@@ -152,7 +152,7 @@ function CountryFilterSelect({
       onValueChange={(v) => onChange(v === "all" ? "" : v)}
     >
       <SelectTrigger
-        className={cn("h-8 min-w-[11.5rem] text-xs", value && "border-brand-border bg-brand-soft text-brand")}
+        className={cn("h-8 w-[160px] text-xs", value && "border-brand-border bg-brand-soft text-brand")}
         aria-label="Country of residency"
       >
         <SelectValue placeholder="Country of residency" />

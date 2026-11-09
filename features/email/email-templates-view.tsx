@@ -283,10 +283,10 @@ export function EmailTemplatesView() {
         }}
       >
         <ModalContent
-          className="flex h-[min(92vh,840px)] w-[calc(100%-2rem)] max-w-4xl flex-col gap-0 overflow-hidden p-0"
+          className="flex h-[min(92dvh,840px)] max-h-[92dvh] w-[calc(100%-1rem)] max-w-4xl flex-col gap-0 overflow-hidden p-0 sm:w-[calc(100%-2rem)]"
           showClose
         >
-          <ModalHeader className="border-b border-border px-5 py-4 pr-12">
+          <ModalHeader className="shrink-0 border-b border-border px-5 py-4 pr-12">
             <ModalTitle>{editingId ? "Edit template" : "New template"}</ModalTitle>
             <ModalDescription className="sr-only">
               Write the email your team will send to clients.
@@ -318,7 +318,7 @@ export function EmailTemplatesView() {
             </div>
           </ModalHeader>
 
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-5">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 py-3 sm:px-5 sm:py-4">
             <TemplateMessageEditor
               key={editorKey}
               subject={form.subject}
@@ -330,7 +330,7 @@ export function EmailTemplatesView() {
             />
           </div>
 
-          <ModalFooter className="border-t border-border px-5 py-3">
+          <ModalFooter className="shrink-0 border-t border-border px-5 py-3">
             <Button type="button" variant="ghost" onClick={closeEditor}>
               Cancel
             </Button>

@@ -221,19 +221,19 @@ export function LeadsListView({
         cell: ({ row }) => {
           const { phone, email } = row.original;
           if (!phone && !email) return <CellText empty>—</CellText>;
-          const primary = phone || email || "";
-          const secondary = phone && email ? email : null;
           return (
-            <div className="min-w-0">
-              <span className="flex min-w-0 items-center gap-1">
-                <CellText mono={Boolean(phone)} title={primary}>
-                  {primary}
-                </CellText>
-                {phone ? <PhoneValidationBadge lead={row.original} /> : null}
-              </span>
-              {secondary ? (
-                <span className="block truncate text-caption leading-4 text-ink-muted" title={secondary}>
-                  {secondary}
+            <div className="flex min-w-0 flex-col gap-0.5">
+              {phone ? (
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <CellText mono title={phone}>
+                    {phone}
+                  </CellText>
+                  <PhoneValidationBadge lead={row.original} compact />
+                </span>
+              ) : null}
+              {email ? (
+                <span className="block truncate text-caption leading-4 text-ink-muted" title={email}>
+                  {email}
                 </span>
               ) : null}
             </div>

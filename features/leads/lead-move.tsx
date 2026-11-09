@@ -67,6 +67,7 @@ type MoveVars = Omit<LeadMoveRequest, "lostReason" | "documentDeadline" | "closi
   lostReason?: string;
   documentDeadline?: string;
   closingAmount?: number;
+  purchaseNotes?: string;
 };
 
 type Pending =
@@ -114,6 +115,7 @@ export function useLeadMove({
         lostReason: vars.lostReason,
         documentDeadline: vars.documentDeadline,
         closingAmount: vars.closingAmount,
+        purchaseNotes: vars.purchaseNotes,
       }),
     onMutate: (vars) => ({ rollback: onOptimistic?.(vars) ?? undefined }),
     onSuccess: (result, vars) => {
@@ -219,8 +221,9 @@ export function useLeadMove({
         initialAmount={pending?.kind === "won" ? pending.req.closingAmount : undefined}
         loading={mutation.isPending}
         onCancel={() => setPending(null)}
-        onConfirm={(documentDeadline, closingAmount) =>
-          pending?.kind === "won" && mutation.mutate({ ...pending.req, documentDeadline, closingAmount })
+        onConfirm={(documentDeadline, closingAmount, purchaseNotes) =>
+          pending?.kind === "won" &&
+          mutation.mutate({ ...pending.req, documentDeadline, closingAmount, purchaseNotes })
         }
       />
       <ReopenModal
@@ -290,30 +293,35 @@ function WonDeadlineDialog({
   initialAmount?: number;
   loading: boolean;
   onCancel: () => void;
-  onConfirm: (documentDeadline: string, closingAmount: number) => void;
+  onConfirm: (documentDeadline: string, closingAmount: number, purchaseNotes: string) => void;
 }) {
   const [deadline, setDeadline] = React.useState("");
   const [amount, setAmount] = React.useState("");
+  const [description, setDescription] = React.useState("");
   const [wasOpen, setWasOpen] = React.useState(open);
   if (open !== wasOpen) {
     setWasOpen(open);
     if (open) {
       setDeadline("");
       setAmount(initialAmount != null ? String(initialAmount) : "");
+      setDescription("");
     }
   }
   const today = React.useMemo(() => new Date().toISOString().slice(0, 10), []);
   const parsed = amount.trim() === "" ? null : Number(amount.trim());
   const amountOk = parsed != null && Number.isInteger(parsed) && parsed >= 0;
+  const name = leadName.trim() || "this lead";
   return (
     <Modal open={open} onOpenChange={(o) => !o && onCancel()}>
       <ModalContent>
         <ModalHeader>
-          <ModalTitle>Mark {leadName || "this lead"} as purchased</ModalTitle>
+          <ModalTitle>
+            Mark <span className="text-brand">{name}</span> as purchased
+          </ModalTitle>
           <ModalDescription>
             Confirm the final sale amount
-            {initialAmount != null ? ` (estimate was ${initialAmount.toLocaleString("en-AU")})` : ""}, then pick when
-            documents must be sent. We&apos;ll move the lead into Nurturing after this.
+            {initialAmount != null ? ` (estimate was ${initialAmount.toLocaleString("en-AU")})` : ""}, add any sale
+            notes, then pick when documents must be sent. We&apos;ll move the lead into Nurturing after this.
           </ModalDescription>
         </ModalHeader>
         <div className="space-y-3">
@@ -332,6 +340,19 @@ function WonDeadlineDialog({
             <p className="text-meta text-ink-muted">What the customer actually paid or committed to.</p>
           </div>
           <div className="space-y-1.5">
+            <Label htmlFor="purchase-description">Description</Label>
+            <Textarea
+              id="purchase-description"
+              rows={3}
+              maxLength={2000}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="e.g. Full package paid via bank transfer; welcome pack to follow"
+              className="min-h-[4.5rem] resize-none text-sm"
+            />
+            <p className="text-meta text-ink-muted">Saved on the lead for the nurturing team.</p>
+          </div>
+          <div className="space-y-1.5">
             <Label required>Send documents by</Label>
             <DatePicker value={deadline} onChange={setDeadline} min={today} placeholder="Pick a send-by date" />
             <p className="text-meta text-ink-muted">Shown on the Nurturing board so the team can chase on time.</p>
@@ -344,7 +365,7 @@ function WonDeadlineDialog({
           <Button
             loading={loading}
             disabled={!deadline || !amountOk}
-            onClick={() => amountOk && onConfirm(deadline, parsed)}
+            onClick={() => amountOk && onConfirm(deadline, parsed, description.trim())}
           >
             Confirm purchased
           </Button>

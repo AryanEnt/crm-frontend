@@ -302,6 +302,8 @@ export type LeadMoveInput = {
   documentDeadline?: string;
   /** Whole amount stored as the lead value when marking Sales Won. */
   closingAmount?: number;
+  /** Optional sale description saved onto the lead when marking Purchased. */
+  purchaseNotes?: string;
   nextActivity?: { title?: string; dueAt: string; typeCode?: string };
 };
 

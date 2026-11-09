@@ -92,7 +92,7 @@ export function joinTemplateBody(bodyHtml: string, signatureHtml?: string | null
 }
 
 const signatureEditorClass = cn(
-  "min-h-[72px] text-[13px] leading-[1.45] text-[#374151] outline-none",
+  "min-h-[56px] max-h-28 overflow-y-auto text-[13px] leading-[1.45] text-[#374151] outline-none",
   "font-[Arial,Helvetica,sans-serif]",
   "[&_div]:min-h-[1.45em]",
   "[&_img]:mt-2.5 [&_img]:block [&_img]:max-h-16 [&_img]:max-w-40 [&_img]:object-contain",
@@ -231,13 +231,14 @@ export function TemplateMessageEditor({
         </button>
       </div>
 
+      {/* One scroll area so the signature never overlays the message on short screens. */}
       <div
         className={cn(
           "min-h-0 flex-1 overflow-y-auto overscroll-contain",
-          mode === "write" ? "flex flex-col" : "hidden",
+          mode === "write" ? "block" : "hidden",
         )}
       >
-        <div className="flex min-h-0 flex-1 flex-col px-5 pt-4">
+        <div className="px-4 pb-2 pt-3 sm:px-5 sm:pt-4">
           <div
             ref={editorRef}
             role="textbox"
@@ -245,7 +246,7 @@ export function TemplateMessageEditor({
             contentEditable
             data-placeholder="Write the email your team will send…"
             className={cn(
-              "min-h-[160px] flex-1 text-sm leading-7 text-foreground outline-none",
+              "min-h-[120px] text-sm leading-7 text-foreground outline-none sm:min-h-[160px]",
               "[&:empty]:before:pointer-events-none [&:empty]:before:text-foreground-subtle [&:empty]:before:content-[attr(data-placeholder)]",
             )}
             onFocus={() => setFocusTarget("body")}
@@ -253,9 +254,8 @@ export function TemplateMessageEditor({
           />
         </div>
 
-        {/* Signature sits under the body like a real email sign-off */}
-        <div className="mt-2 border-t border-[#e5e7eb] bg-[#fafafa] px-5 pb-4 pt-3">
-          <div className="mb-2 flex items-center justify-between gap-3">
+        <div className="border-t border-[#e5e7eb] bg-[#fafafa] px-4 py-3 sm:px-5">
+          <div className="mb-1.5 flex items-center justify-between gap-2">
             <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-[#9ca3af]">
               Signature
             </p>
@@ -294,7 +294,13 @@ export function TemplateMessageEditor({
             contentEditable
             data-placeholder="Best regards, {{lead_owner}}"
             className={signatureEditorClass}
-            onFocus={() => setFocusTarget("signature")}
+            onFocus={() => {
+              setFocusTarget("signature");
+              // Keep the signature visible above the keyboard / modal footer on small screens.
+              requestAnimationFrame(() => {
+                signatureRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+              });
+            }}
             onInput={syncSignature}
             onPaste={(e) => {
               const file = [...(e.clipboardData?.items ?? [])]

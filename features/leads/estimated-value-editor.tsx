@@ -21,6 +21,7 @@ export function EstimatedValueEditor({
   onSaved,
   compact,
   quiet,
+  prominent,
   className,
 }: {
   leadId: string;
@@ -32,6 +33,8 @@ export function EstimatedValueEditor({
   compact?: boolean;
   /** Hide the “click to edit” hint under the value. */
   quiet?: boolean;
+  /** Large, easy-to-spot value block for the lead drawer header. */
+  prominent?: boolean;
   className?: string;
 }) {
   const [editing, setEditing] = React.useState(false);
@@ -91,16 +94,23 @@ export function EstimatedValueEditor({
   if (editing) {
     return (
       <div
-        className={cn(compact ? "inline-flex items-center gap-1" : "min-w-0", className)}
+        className={cn(compact ? "inline-flex items-center gap-1" : "min-w-0 w-full", className)}
         onClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
       >
-        {!compact ? <p className="text-label">Estimated value</p> : null}
-        <div className={cn("flex items-center gap-1", !compact && "mt-0.5")}>
+        {prominent ? (
+          <p className="text-caption font-medium text-ink-muted">Estimated value</p>
+        ) : !compact ? (
+          <p className="text-label">Estimated value</p>
+        ) : null}
+        <div className={cn("flex items-center gap-1.5", (prominent || !compact) && "mt-1")}>
           <div className="relative min-w-0 flex-1">
             <span
               aria-hidden
-              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-caption font-medium text-ink-muted"
+              className={cn(
+                "pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-medium text-ink-muted",
+                prominent ? "text-body" : "text-caption",
+              )}
             >
               {symbol}
             </span>
@@ -125,7 +135,12 @@ export function EstimatedValueEditor({
                   cancel();
                 }
               }}
-              className="h-8 w-full min-w-[7.5rem] rounded-md border border-brand/35 bg-surface pl-7 pr-2 text-body tabular-nums text-ink outline-none ring-2 ring-brand/15 focus-visible:border-brand"
+              className={cn(
+                "w-full border border-brand/35 bg-surface tabular-nums text-ink outline-none ring-2 ring-brand/15 focus-visible:border-brand",
+                prominent
+                  ? "h-11 rounded-lg pl-8 pr-3 text-lg font-semibold"
+                  : "h-8 min-w-[7.5rem] rounded-md pl-7 pr-2 text-body",
+              )}
             />
           </div>
           <button
@@ -133,20 +148,26 @@ export function EstimatedValueEditor({
             disabled={saving}
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => void save()}
-            className="inline-flex size-7 items-center justify-center rounded-md bg-success-soft text-success hover:bg-success/15 disabled:opacity-50"
+            className={cn(
+              "inline-flex items-center justify-center rounded-md bg-success-soft text-success hover:bg-success/15 disabled:opacity-50",
+              prominent ? "size-11" : "size-7",
+            )}
             aria-label="Save estimate"
           >
-            <Check className="size-3.5" aria-hidden />
+            <Check className={prominent ? "size-4" : "size-3.5"} aria-hidden />
           </button>
           <button
             type="button"
             disabled={saving}
             onMouseDown={(e) => e.preventDefault()}
             onClick={cancel}
-            className="inline-flex size-7 items-center justify-center rounded-md text-ink-muted hover:bg-surface-muted disabled:opacity-50"
+            className={cn(
+              "inline-flex items-center justify-center rounded-md text-ink-muted hover:bg-surface-muted disabled:opacity-50",
+              prominent ? "size-11" : "size-7",
+            )}
             aria-label="Cancel"
           >
-            <X className="size-3.5" aria-hidden />
+            <X className={prominent ? "size-4" : "size-3.5"} aria-hidden />
           </button>
         </div>
       </div>
@@ -157,6 +178,16 @@ export function EstimatedValueEditor({
   const empty = localValue == null;
 
   if (!canEdit) {
+    if (prominent) {
+      return (
+        <div className={cn("min-w-0", className)}>
+          <p className="text-caption font-medium text-ink-muted">Estimated value</p>
+          <p className={cn("mt-0.5 text-lg font-semibold tabular-nums tracking-tight", empty ? "text-ink-muted" : "text-ink")}>
+            {empty ? "—" : display}
+          </p>
+        </div>
+      );
+    }
     return compact ? (
       <span className={cn("text-body font-semibold tabular-nums", empty ? "text-ink-muted" : "text-ink", className)}>
         {empty ? "—" : display}
@@ -168,6 +199,41 @@ export function EstimatedValueEditor({
           {empty ? "—" : display}
         </p>
       </div>
+    );
+  }
+
+  if (prominent) {
+    return (
+      <button
+        type="button"
+        onClick={startEdit}
+        onPointerDown={(e) => e.stopPropagation()}
+        title="Update estimated value"
+        aria-label={`Estimated value ${display}. Click to edit`}
+        className={cn(
+          "group flex w-full items-end justify-between gap-3 text-left",
+          "rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          className,
+        )}
+      >
+        <span className="min-w-0">
+          <span className="block text-caption font-medium text-ink-muted">Estimated value</span>
+          <span
+            className={cn(
+              "mt-0.5 block text-lg font-semibold tabular-nums tracking-tight",
+              empty ? "text-ink-muted" : "text-ink",
+            )}
+          >
+            {display}
+          </span>
+          <span className="mt-1 block text-[11px] text-ink-muted group-hover:text-ink-secondary">
+            Click to edit
+          </span>
+        </span>
+        <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-line bg-surface text-ink-muted transition-colors group-hover:border-brand/40 group-hover:bg-brand-soft group-hover:text-brand">
+          <Pencil className="size-3.5" aria-hidden />
+        </span>
+      </button>
     );
   }
 
@@ -196,9 +262,7 @@ export function EstimatedValueEditor({
           compact && (empty ? "text-ink-muted" : "text-ink"),
         )}
       >
-        <span className={cn("truncate tabular-nums", compact ? "text-body font-semibold" : "text-body font-semibold")}>
-          {display}
-        </span>
+        <span className="truncate text-body font-semibold tabular-nums">{display}</span>
         <Pencil
           className={cn(
             "shrink-0 text-ink-muted transition-colors group-hover:text-brand",

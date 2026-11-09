@@ -327,26 +327,9 @@ function PanelBody({
         <div className="flex items-start gap-3">
           <Avatar name={lead.fullName} size="lg" />
           <div className="min-w-0 flex-1">
-            <div className="flex items-start justify-between gap-3">
-              <DrawerTitle className="min-w-0 truncate text-[1.125rem] font-semibold tracking-tight text-ink">
-                {lead.fullName}
-              </DrawerTitle>
-              {lead.status === "won" && lead.potentialValue != null ? (
-                <p className="shrink-0 text-body font-semibold tabular-nums text-ink">
-                  {formatLeadMoney(lead.potentialValue, lead.currency)}
-                </p>
-              ) : (
-                <EstimatedValueEditor
-                  leadId={lead.id}
-                  value={lead.potentialValue}
-                  currency={lead.currency}
-                  canEdit={canEdit && !closed}
-                  onSaved={refresh}
-                  compact
-                  className="shrink-0"
-                />
-              )}
-            </div>
+            <DrawerTitle className="truncate text-[1.125rem] font-semibold tracking-tight text-ink">
+              {lead.fullName}
+            </DrawerTitle>
             <DrawerDescription className="mt-0.5 truncate text-caption text-ink-muted">
               {[lead.employer, lead.jobTitle].filter(Boolean).join(" · ") || "Lead"}
             </DrawerDescription>
@@ -361,12 +344,32 @@ function PanelBody({
                 {lead.ownerName ? <Avatar name={lead.ownerName} size="sm" className="size-4 text-[0.5rem]" /> : null}
                 {lead.ownerName ?? "Unassigned"}
               </span>
-              <PhoneValidationBadge lead={lead} />
+              <PhoneValidationBadge lead={lead} compact />
             </div>
           </div>
         </div>
 
-        <div className="mt-3.5 flex flex-wrap items-center gap-1.5">
+        <div className="mt-3.5 rounded-xl border border-line/80 bg-surface-muted/40 px-3.5 py-3">
+          {lead.status === "won" && lead.potentialValue != null ? (
+            <div>
+              <p className="text-caption font-medium text-ink-muted">Closed at</p>
+              <p className="mt-0.5 text-lg font-semibold tabular-nums tracking-tight text-ink">
+                {formatLeadMoney(lead.potentialValue, lead.currency)}
+              </p>
+            </div>
+          ) : (
+            <EstimatedValueEditor
+              leadId={lead.id}
+              value={lead.potentialValue}
+              currency={lead.currency}
+              canEdit={canEdit && !closed}
+              onSaved={refresh}
+              prominent
+            />
+          )}
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
           {canEdit ? (
             <Button size="sm" variant="outline" onClick={() => onEditOpenChange(true)}>
               <Pencil className="size-3.5" />
@@ -498,20 +501,6 @@ function PanelBody({
 
         <section aria-label="Lead details" className="rounded-xl border border-line/80 bg-surface-muted/25 p-4">
           <dl className="grid grid-cols-2 gap-x-6 gap-y-3.5">
-            <div className="min-w-0">
-              {lead.status === "won" && lead.potentialValue != null ? (
-                <Fact label="Closed at" value={formatLeadMoney(lead.potentialValue, lead.currency)} />
-              ) : (
-                <EstimatedValueEditor
-                  leadId={lead.id}
-                  value={lead.potentialValue}
-                  currency={lead.currency}
-                  canEdit={canEdit && !closed}
-                  onSaved={refresh}
-                  quiet
-                />
-              )}
-            </div>
             <Fact label="Probability" value={lead.probability != null ? `${lead.probability}%` : "—"} />
             <Fact label="Expected close" value={formatDate(lead.expectedCloseAt)} />
             <Fact label="Source" value={lead.source || "—"} />
@@ -1050,11 +1039,11 @@ function ContactSection({ lead, onEditPhone }: { lead: Lead; onEditPhone?: () =>
           label="Phone"
           value={
             lead.phone ? (
-              <span className="flex flex-col gap-1">
-                <a className="hover:text-brand" href={`tel:${lead.phone}`}>
+              <span className="flex min-w-0 flex-wrap items-center gap-2">
+                <a className="truncate hover:text-brand" href={`tel:${lead.phone}`}>
                   {lead.phone}
                 </a>
-                <PhoneValidationBadge lead={lead} showWhenValid />
+                <PhoneValidationBadge lead={lead} showWhenValid compact />
               </span>
             ) : (
               "—"
@@ -1063,7 +1052,15 @@ function ContactSection({ lead, onEditPhone }: { lead: Lead; onEditPhone?: () =>
         />
         <Fact
           label="Email"
-          value={lead.email ? <a className="hover:text-brand" href={`mailto:${lead.email}`}>{lead.email}</a> : "—"}
+          value={
+            lead.email ? (
+              <a className="truncate hover:text-brand" href={`mailto:${lead.email}`}>
+                {lead.email}
+              </a>
+            ) : (
+              "—"
+            )
+          }
         />
       </dl>
       <PhoneValidationDetail lead={lead} onEditPhone={onEditPhone} />
