@@ -52,15 +52,8 @@ export const crmNav: NavSection[] = [
     title: "Sales",
     items: [
       { label: "Leads", href: "/leads", icon: UserPlus },
-      {
-        label: "Pipeline",
-        href: "/pipeline",
-        icon: Columns3,
-        children: [
-          { label: "Lead Pipeline", href: LEAD_PIPELINE_HREF, icon: Columns3 },
-          { label: "Nurturing Pipeline", href: NURTURING_PIPELINE_HREF, icon: Columns3 },
-        ],
-      },
+      { label: "Lead Pipeline", href: LEAD_PIPELINE_HREF, icon: Columns3 },
+      { label: "Nurturing Pipeline", href: NURTURING_PIPELINE_HREF, icon: Columns3 },
     ],
   },
   {

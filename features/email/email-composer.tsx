@@ -22,7 +22,14 @@ import {
   type EmailMessage,
   type EmailTemplate,
 } from "@/lib/api/email";
-import { joinTemplateBody } from "@/features/email/template-message-editor";
+import {
+  applyTemplateVars,
+  extractTemplateVars,
+  highlightTemplateVars,
+  joinTemplateBody,
+  labelForTemplateVar,
+} from "@/features/email/template-message-editor";
+import { useAuth } from "@/features/auth/auth-provider";
 import { ApiError } from "@/types/api";
 import { cn } from "@/lib/utils";
 
@@ -95,6 +102,10 @@ export function EmailComposer({
   onSent?: (msg: EmailMessage) => void;
 }) {
   const qc = useQueryClient();
+  const { can, user } = useAuth();
+  /** TLs / admins may rewrite template copy; SEs may only fill {{variables}}. */
+  const canEditTemplateCopy =
+    can("email:manage") || user?.roleCode === "sales_manager" || user?.roleCode === "super_admin";
   const editorRef = React.useRef<HTMLDivElement>(null);
   const attachInputRef = React.useRef<HTMLInputElement>(null);
   const [to, setTo] = React.useState((context.to ?? []).join(", "));
@@ -108,13 +119,28 @@ export function EmailComposer({
   const [showPreview, setShowPreview] = React.useState(false);
   const [attachments, setAttachments] = React.useState<PendingAttachment[]>([]);
   const [templateId, setTemplateId] = React.useState("");
+  const [lockedSubject, setLockedSubject] = React.useState<string | null>(null);
+  const [lockedBodyHtml, setLockedBodyHtml] = React.useState<string | null>(null);
+  const [varValues, setVarValues] = React.useState<Record<string, string>>({});
   const saveTimer = React.useRef<number | null>(null);
+
+  const templateLocked = lockedBodyHtml !== null && !canEditTemplateCopy;
+  const lockedVarKeys = React.useMemo(
+    () => (templateLocked ? extractTemplateVars(lockedSubject, lockedBodyHtml) : []),
+    [templateLocked, lockedSubject, lockedBodyHtml],
+  );
 
   const templatesQuery = useQuery({
     queryKey: ["email-templates"],
     queryFn: () => emailApi.listTemplates(),
     enabled: open,
   });
+
+  const clearLockedTemplate = React.useCallback(() => {
+    setLockedSubject(null);
+    setLockedBodyHtml(null);
+    setVarValues({});
+  }, []);
 
   React.useEffect(() => {
     if (!open) return;
@@ -125,6 +151,7 @@ export function EmailComposer({
     setShowPreview(false);
     setAttachments([]);
     setTemplateId("");
+    clearLockedTemplate();
     window.setTimeout(() => {
       if (editorRef.current) {
         editorRef.current.innerHTML = context.quoteHtml
@@ -132,7 +159,7 @@ export function EmailComposer({
           : "";
       }
     }, 0);
-  }, [open, context.to, context.subject, context.threadId, context.inReplyTo, context.quoteHtml]);
+  }, [open, context.to, context.subject, context.threadId, context.inReplyTo, context.quoteHtml, clearLockedTemplate]);
 
   const addFiles = (list: FileList | File[] | null) => {
     if (!list || list.length === 0) return;
@@ -151,11 +178,18 @@ export function EmailComposer({
     setAttachments(next);
   };
 
-  const html = () => editorRef.current?.innerHTML ?? "";
+  const composedSubject = () =>
+    templateLocked && lockedSubject !== null ? applyTemplateVars(lockedSubject, varValues) : subject;
+
+  const composedBodyHtml = () =>
+    templateLocked && lockedBodyHtml !== null
+      ? applyTemplateVars(lockedBodyHtml, varValues)
+      : (editorRef.current?.innerHTML ?? "");
 
   const persistDraft = React.useCallback(async () => {
-    const bodyHtml = html();
-    if (!to && !subject && !bodyHtml.replace(/<[^>]+>/g, "").trim()) return;
+    const bodyHtml = composedBodyHtml();
+    const nextSubject = composedSubject();
+    if (!to && !nextSubject && !bodyHtml.replace(/<[^>]+>/g, "").trim()) return;
     setSaveState("saving");
     try {
       if (!draftId) {
@@ -164,7 +198,7 @@ export function EmailComposer({
           to: splitAddrs(to),
           cc: splitAddrs(cc),
           bcc: splitAddrs(bcc),
-          subject,
+          subject: nextSubject,
           bodyHtml,
           leadId: context.leadId,
           customerId: context.customerId,
@@ -179,7 +213,7 @@ export function EmailComposer({
           to: splitAddrs(to),
           cc: splitAddrs(cc),
           bcc: splitAddrs(bcc),
-          subject,
+          subject: nextSubject,
           bodyHtml,
         });
       }
@@ -187,7 +221,7 @@ export function EmailComposer({
     } catch {
       setSaveState("idle");
     }
-  }, [account?.id, bcc, cc, context, draftId, subject, to]);
+  }, [account?.id, bcc, cc, context, draftId, lockedBodyHtml, lockedSubject, subject, templateLocked, to, varValues]);
 
   const scheduleSave = () => {
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
@@ -198,9 +232,10 @@ export function EmailComposer({
 
   const sendMut = useMutation({
     mutationFn: async () => {
-      const bodyHtml = html();
+      const bodyHtml = composedBodyHtml();
+      const nextSubject = composedSubject();
       const prev = await emailApi.preview({
-        subject,
+        subject: nextSubject,
         bodyHtml,
         leadId: context.leadId,
         customerId: context.customerId,
@@ -264,17 +299,36 @@ export function EmailComposer({
   });
 
   const insertTemplate = (t: EmailTemplate) => {
+    const body = joinTemplateBody(t.bodyHtml ?? "", t.signatureHtml ?? "");
     setSubject(t.subject);
-    if (editorRef.current) {
-      editorRef.current.innerHTML = joinTemplateBody(t.bodyHtml ?? "", t.signatureHtml ?? "");
+    if (canEditTemplateCopy) {
+      clearLockedTemplate();
+      if (editorRef.current) editorRef.current.innerHTML = body;
+    } else {
+      setLockedSubject(t.subject);
+      setLockedBodyHtml(body);
+      setVarValues({});
+      if (editorRef.current) editorRef.current.innerHTML = "";
     }
+    scheduleSave();
+  };
+
+  const clearTemplateSelection = () => {
+    setTemplateId("");
+    clearLockedTemplate();
+    if (editorRef.current && !context.quoteHtml) editorRef.current.innerHTML = "";
+    scheduleSave();
+  };
+
+  const setVarValue = (key: string, value: string) => {
+    setVarValues((prev) => ({ ...prev, [key]: value }));
     scheduleSave();
   };
 
   const runPreview = async () => {
     const prev = await emailApi.preview({
-      subject,
-      bodyHtml: html(),
+      subject: composedSubject(),
+      bodyHtml: composedBodyHtml(),
       leadId: context.leadId,
       customerId: context.customerId,
     });
@@ -284,6 +338,13 @@ export function EmailComposer({
       toast.message(`Unresolved: ${(prev.unresolved ?? []).join(", ")}`);
     }
   };
+
+  const lockedSubjectDisplay =
+    templateLocked && lockedSubject !== null ? applyTemplateVars(lockedSubject, varValues) : subject;
+  const lockedBodyDisplay =
+    templateLocked && lockedBodyHtml !== null
+      ? highlightTemplateVars(applyTemplateVars(lockedBodyHtml, varValues))
+      : "";
 
   const fromLabel = account
     ? `${account.displayName || "Me"} <${account.emailAddress}>`
@@ -370,49 +431,98 @@ export function EmailComposer({
             ) : null}
             <div className="grid gap-1.5">
               <Label htmlFor="email-subject">Subject</Label>
-              <Input
-                id="email-subject"
-                value={subject}
-                onChange={(e) => {
-                  setSubject(e.target.value);
-                  scheduleSave();
-                }}
-              />
+              {templateLocked ? (
+                <p
+                  id="email-subject"
+                  className="rounded-md border border-border bg-surface-muted/40 px-2.5 py-2 text-sm"
+                >
+                  {lockedSubjectDisplay || (
+                    <span className="text-foreground-subtle">No subject</span>
+                  )}
+                </p>
+              ) : (
+                <Input
+                  id="email-subject"
+                  value={subject}
+                  onChange={(e) => {
+                    setSubject(e.target.value);
+                    scheduleSave();
+                  }}
+                />
+              )}
             </div>
+
+            {templateLocked && lockedVarKeys.length > 0 ? (
+              <div className="rounded-md border border-border bg-surface-muted/20 p-3">
+                <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-foreground-subtle">
+                  Fill template fields
+                </p>
+                <p className="mb-3 text-xs text-foreground-muted">
+                  Template wording is locked. Change only the fields below — empty ones still fill
+                  from the lead when available.
+                </p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {lockedVarKeys.map((key) => (
+                    <div key={key} className="grid gap-1">
+                      <Label htmlFor={`tpl-var-${key}`} className="text-xs">
+                        {labelForTemplateVar(key)}
+                      </Label>
+                      <Input
+                        id={`tpl-var-${key}`}
+                        value={varValues[key] ?? ""}
+                        placeholder={`{{${key}}}`}
+                        onChange={(e) => setVarValue(key, e.target.value)}
+                        autoComplete="off"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             <div className="rounded-md border border-border">
               <div className="sticky top-0 z-[1] flex flex-wrap items-center gap-0.5 border-b border-border bg-surface-muted/95 px-1 py-1 backdrop-blur-sm">
-                <ToolbarBtn label="Bold" onClick={() => exec("bold")}>
-                  <Bold className="size-3.5" />
-                </ToolbarBtn>
-                <ToolbarBtn label="Italic" onClick={() => exec("italic")}>
-                  <Italic className="size-3.5" />
-                </ToolbarBtn>
-                <ToolbarBtn label="List" onClick={() => exec("insertUnorderedList")}>
-                  <List className="size-3.5" />
-                </ToolbarBtn>
-                <ToolbarBtn
-                  label="Link"
-                  onClick={() => {
-                    const href = window.prompt("Link URL");
-                    if (href) exec("createLink", href);
-                  }}
-                >
-                  <Link2 className="size-3.5" />
-                </ToolbarBtn>
-                <span className="mx-1 h-4 w-px bg-border" />
+                {!templateLocked ? (
+                  <>
+                    <ToolbarBtn label="Bold" onClick={() => exec("bold")}>
+                      <Bold className="size-3.5" />
+                    </ToolbarBtn>
+                    <ToolbarBtn label="Italic" onClick={() => exec("italic")}>
+                      <Italic className="size-3.5" />
+                    </ToolbarBtn>
+                    <ToolbarBtn label="List" onClick={() => exec("insertUnorderedList")}>
+                      <List className="size-3.5" />
+                    </ToolbarBtn>
+                    <ToolbarBtn
+                      label="Link"
+                      onClick={() => {
+                        const href = window.prompt("Link URL");
+                        if (href) exec("createLink", href);
+                      }}
+                    >
+                      <Link2 className="size-3.5" />
+                    </ToolbarBtn>
+                    <span className="mx-1 h-4 w-px bg-border" />
+                  </>
+                ) : (
+                  <span className="px-1.5 text-[11px] text-foreground-subtle">Template locked</span>
+                )}
                 <select
                   aria-label="Email template"
                   className="h-7 max-w-[180px] rounded-md border-0 bg-transparent text-xs"
                   value={templateId}
                   onChange={(e) => {
                     const id = e.target.value;
+                    if (!id) {
+                      clearTemplateSelection();
+                      return;
+                    }
                     setTemplateId(id);
                     const t = templatesQuery.data?.find((x) => x.id === id);
                     if (t) insertTemplate(t);
                   }}
                 >
-                  <option value="">Select template</option>
+                  <option value="">{templateLocked ? "Clear template" : "Select template"}</option>
                   {(templatesQuery.data ?? []).map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.name}
@@ -431,19 +541,30 @@ export function EmailComposer({
                       : null}
                 </span>
               </div>
+              {templateLocked ? (
+                <div
+                  aria-label="Message (template locked)"
+                  className="min-h-[240px] px-3 py-2 text-sm leading-relaxed text-foreground"
+                  dangerouslySetInnerHTML={{ __html: lockedBodyDisplay }}
+                />
+              ) : null}
               <div
                 ref={editorRef}
                 role="textbox"
                 aria-multiline="true"
                 aria-label="Message"
-                contentEditable
+                aria-hidden={templateLocked}
+                contentEditable={!templateLocked}
+                suppressContentEditableWarning
                 data-placeholder="Write your email…"
                 className={cn(
                   "min-h-[240px] px-3 py-2 text-sm leading-relaxed outline-none",
                   "[&:empty]:before:pointer-events-none [&:empty]:before:text-foreground-subtle [&:empty]:before:content-[attr(data-placeholder)]",
+                  templateLocked && "hidden",
                 )}
                 onInput={scheduleSave}
                 onKeyDown={(e) => {
+                  if (templateLocked) return;
                   if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
                     e.preventDefault();
                     sendMut.mutate();
@@ -485,7 +606,9 @@ export function EmailComposer({
               </div>
             ) : (
               <p className="text-[11px] text-foreground-subtle">
-                Variables like {"{{first_name}}"} resolve from the Lead or Customer before send.
+                {templateLocked
+                  ? "Yellow highlights are fields you can fill above. Remaining {{variables}} still resolve from the Lead or Customer on send."
+                  : `Variables like {{first_name}} resolve from the Lead or Customer before send.`}
               </p>
             )}
           </div>

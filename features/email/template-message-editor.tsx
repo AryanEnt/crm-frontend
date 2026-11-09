@@ -28,8 +28,51 @@ const PREVIEW_VARS: Record<string, string> = Object.fromEntries(
 
 export const TEMPLATE_VAR_KEYS = LEAD_FIELDS.map((f) => f.token.replace(/[{}]/g, ""));
 
+/** Matches `{{ first_name }}` style tokens (same rules as the backend). */
+export const TEMPLATE_VAR_PATTERN = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g;
+
 export function fillLeadVars(s: string) {
-  return s.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (match, key: string) => PREVIEW_VARS[key] || match);
+  return s.replace(TEMPLATE_VAR_PATTERN, (match, key: string) => PREVIEW_VARS[key] || match);
+}
+
+/** Unique variable names in first-seen order. */
+export function extractTemplateVars(...parts: Array<string | null | undefined>): string[] {
+  const out: string[] = [];
+  for (const part of parts) {
+    if (!part) continue;
+    for (const m of part.matchAll(TEMPLATE_VAR_PATTERN)) {
+      const key = m[1]!;
+      if (!out.includes(key)) out.push(key);
+    }
+  }
+  return out;
+}
+
+export function labelForTemplateVar(key: string): string {
+  const known = LEAD_FIELDS.find((f) => f.token.replace(/[{}]/g, "") === key);
+  if (known) return known.label;
+  return key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/**
+ * Replace `{{key}}` with values. Empty/missing values leave the token in place
+ * so the server can still fill from the lead. HTML-escapes substituted values.
+ */
+export function applyTemplateVars(text: string, values: Record<string, string>): string {
+  return text.replace(TEMPLATE_VAR_PATTERN, (match, key: string) => {
+    const v = values[key];
+    if (v === undefined || v.trim() === "") return match;
+    return escapeHtml(v.trim());
+  });
+}
+
+/** Highlight unresolved tokens for locked-template preview. */
+export function highlightTemplateVars(html: string): string {
+  return html.replace(
+    TEMPLATE_VAR_PATTERN,
+    (_m, key: string) =>
+      `<mark style="background:#fef3c7;color:#92400e;padding:0 3px;border-radius:3px;font-weight:600;">{{${key}}}</mark>`,
+  );
 }
 
 export function textToHtml(text: string) {
@@ -55,7 +98,7 @@ export function htmlToPlain(html: string) {
     .trim();
 }
 
-function escapeHtml(s: string) {
+export function escapeHtml(s: string) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
