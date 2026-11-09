@@ -11,6 +11,7 @@ import {
   Plus,
   SearchX,
   ShieldCheck,
+  Trash2,
   UserCheck,
   UserPlus,
   UserX,
@@ -101,6 +102,8 @@ function UsersConsole() {
   const canCreate = can("users:create") || can("users:manage");
   const canEdit = can("users:edit") || can("users:manage");
   const canChangeStatus = can("users:delete") || can("users:manage");
+  /** Permanent delete is Super Admin (org) only — Team Leads keep deactivate. */
+  const canHardDelete = canChangeStatus && !teamScoped;
   const canManage = (user: AdminUser) =>
     !teamScoped || (user.roleCode === "sales_executive" && user.id !== me?.id);
   const columns = teamScoped ? COLUMNS.filter((c) => c.id !== "team") : COLUMNS;
@@ -126,6 +129,7 @@ function UsersConsole() {
   const [confirm, setConfirm] = React.useState<{ ids: string[]; active: boolean; name?: string } | null>(null);
   const [confirmView, setConfirmView] = React.useState(confirm);
   if (confirm && confirm !== confirmView) setConfirmView(confirm);
+  const [deleteTarget, setDeleteTarget] = React.useState<{ id: string; name: string } | null>(null);
 
   const rolesQuery = useQuery({ queryKey: ["roles"], queryFn: adminApi.listRoles });
   const teamsQuery = useQuery({
@@ -236,6 +240,18 @@ function UsersConsole() {
       });
     },
     onError: (err: Error) => toast.error(err.message || "Couldn't update users. Try again."),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => adminApi.deleteUser(id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["users"] });
+      void qc.invalidateQueries({ queryKey: ["teams"] });
+      setDeleteTarget(null);
+      selection.clear();
+      toast.success("User deleted");
+    },
+    onError: (err: Error) => toast.error(err.message || "Couldn't delete that user. Try again."),
   });
 
   const filtersActive = roleId !== null || status !== null || teamId !== null;
@@ -429,8 +445,10 @@ function UsersConsole() {
                     canEdit={canEdit && manageable}
                     canReassign={!teamScoped}
                     canChangeStatus={canChangeStatus && manageable}
+                    canHardDelete={canHardDelete && manageable && user.id !== me?.id}
                     onEdit={(focus) => openDrawer(user, focus)}
                     onSetActive={(active) => setConfirm({ ids: [user.id], active, name })}
+                    onDelete={() => setDeleteTarget({ id: user.id, name })}
                   />
                 </TableCell>
               </TableRow>
@@ -664,6 +682,20 @@ function UsersConsole() {
           statusMutation.mutate({ ids: confirm.ids, active: confirm.active });
         }}
       />
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && !deleteMutation.isPending && setDeleteTarget(null)}
+        tone="danger"
+        icon={Trash2}
+        title={`Delete ${deleteTarget?.name ?? "user"} permanently?`}
+        description="This cannot be undone. Their login is removed. Leads and history stay in the CRM with the owner cleared. Prefer deactivate if you might need them again."
+        confirmLabel="Delete permanently"
+        loading={deleteMutation.isPending}
+        onConfirm={() => {
+          if (deleteTarget) deleteMutation.mutate(deleteTarget.id);
+        }}
+      />
     </div>
   );
 }
@@ -674,8 +706,10 @@ function RowActions({
   canEdit,
   canReassign,
   canChangeStatus,
+  canHardDelete,
   onEdit,
   onSetActive,
+  onDelete,
 }: {
   user: AdminUser;
   name: string;
@@ -683,10 +717,12 @@ function RowActions({
   /** Role and team changes are Super Admin only; the server rejects them for everyone else. */
   canReassign: boolean;
   canChangeStatus: boolean;
+  canHardDelete: boolean;
   onEdit: (focus?: UserFormFocus) => void;
   onSetActive: (active: boolean) => void;
+  onDelete: () => void;
 }) {
-  if (!canEdit && !canChangeStatus) return null;
+  if (!canEdit && !canChangeStatus && !canHardDelete) return null;
   return (
     <DropdownMenu>
       <DropdownMenuTrigger>
@@ -732,6 +768,14 @@ function RowActions({
                 Activate
               </DropdownMenuItem>
             )}
+          </>
+        ) : null}
+        {canHardDelete ? (
+          <>
+            {canEdit || canChangeStatus ? <DropdownMenuSeparator /> : null}
+            <DropdownMenuItem icon={Trash2} tone="danger" onSelect={onDelete}>
+              Delete permanently
+            </DropdownMenuItem>
           </>
         ) : null}
       </DropdownMenuContent>

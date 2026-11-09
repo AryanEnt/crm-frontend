@@ -75,8 +75,9 @@ export function useLeadFilterState() {
     };
   }, [scope.params, search, stageId, priority, source, activity, tag, country, createdFrom, createdTo]);
 
-  const moreCount = [stageId, priority, source, tag, createdFrom, createdTo].filter(Boolean).length;
-  const anyFilter = !!searchInput || scope.active || !!activity || !!country || moreCount > 0;
+  const moreCount = [priority, source, tag, createdFrom, createdTo].filter(Boolean).length;
+  const anyFilter =
+    !!searchInput || scope.active || !!activity || !!country || !!stageId || moreCount > 0;
 
   const clear = () => {
     setSearchInput("");
@@ -175,7 +176,7 @@ function CountryFilterSelect({
   );
 }
 
-/** Search, owner scope, next-action and country up front; stage/priority/source/tag under "More". */
+/** Search, owner scope, stage, next-action and country up front; priority/source/tag under "More". */
 export function LeadFilterBar({ state, stageOptions }: { state: LeadFilterState; stageOptions?: StageOption[] }) {
   const sourcesQuery = useQuery({
     queryKey: ["lead-sources", "filter"],
@@ -192,21 +193,6 @@ export function LeadFilterBar({ state, stageOptions }: { state: LeadFilterState;
       onClear={state.anyFilter ? state.clear : undefined}
       more={
         <>
-          {stageOptions ? (
-            <Select value={state.stageId || "all"} onValueChange={(v) => state.setStageId(v === "all" ? "" : v)}>
-              <SelectTrigger className="h-8 w-[170px] text-xs" aria-label="Stage">
-                <SelectValue placeholder="Stage" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All stages</SelectItem>
-                {stageOptions.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : null}
           <Select value={state.priority || "all"} onValueChange={(v) => state.setPriority(v === "all" ? "" : v)}>
             <SelectTrigger className="h-8 w-[140px] text-xs" aria-label="Priority">
               <SelectValue placeholder="Priority" />
@@ -244,6 +230,24 @@ export function LeadFilterBar({ state, stageOptions }: { state: LeadFilterState;
       }
     >
       <ScopeFilterControls filters={state.scope} />
+      {stageOptions ? (
+        <Select value={state.stageId || "all"} onValueChange={(v) => state.setStageId(v === "all" ? "" : v)}>
+          <SelectTrigger
+            className={cn("h-8 w-[170px] text-xs", state.stageId && "border-brand-border bg-brand-soft text-brand")}
+            aria-label="Stage"
+          >
+            <SelectValue placeholder="Stage" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All stages</SelectItem>
+            {stageOptions.map((s) => (
+              <SelectItem key={s.id} value={s.id}>
+                {s.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ) : null}
       <Select value={state.activity || "all"} onValueChange={(v) => state.setActivity(v === "all" ? "" : v)}>
         <SelectTrigger className="h-8 w-[160px] text-xs" aria-label="Next action">
           <SelectValue placeholder="Next action" />

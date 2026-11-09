@@ -6,6 +6,7 @@ import type { StageSlot } from "@/components/ui/stage-rail";
 import { formatLeadMoney, formatLeadMoneyCompact } from "@/features/leads/lead-format";
 import type { LeadBoardCard, LeadBoardStage } from "@/lib/api/crm";
 import { cn } from "@/lib/utils";
+import { BoardSortSelect } from "./board-sort-select";
 import { LeadCard } from "./lead-card";
 import type { BoardSortKey, SortOrder } from "./pipeline-filters";
 import { StageDot, stageVars } from "./pipeline-ui";
@@ -26,7 +27,11 @@ export function PipelineColumn({
   className,
   subtitle,
   emptyText,
+  boardSort = "time",
+  boardOrder = "asc",
+  sortOverridden = false,
   sorting,
+  onBoardSortChange,
 }: {
   stage: LeadBoardStage;
   stages: LeadBoardStage[];
@@ -52,6 +57,7 @@ export function PipelineColumn({
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: stageDropId(stage.id), disabled: !dndEnabled });
   const remaining = Math.max(0, stage.count - stage.leads.length);
+  const valueLine = subtitle ?? (stage.totalValue > 0 ? formatLeadMoneyCompact(stage.totalValue, currency) : null);
 
   return (
     <section
@@ -74,12 +80,22 @@ export function PipelineColumn({
             {stage.count}
           </span>
         </div>
-        {subtitle || stage.totalValue > 0 ? (
-          <p className="mt-1 truncate text-caption tabular-nums text-ink-muted">
-            {subtitle ?? formatLeadMoneyCompact(stage.totalValue, currency)}
+        <div className="mt-1.5 flex min-h-7 items-center justify-between gap-2">
+          <p className="min-w-0 truncate text-caption tabular-nums text-ink-muted">
+            {valueLine ?? (stage.count === 0 ? "No leads" : "\u00a0")}
             {sorting ? <span> · sorting…</span> : null}
           </p>
-        ) : null}
+          {onBoardSortChange ? (
+            <BoardSortSelect
+              compact
+              sort={boardSort}
+              order={boardOrder}
+              overridden={sortOverridden}
+              onChange={onBoardSortChange}
+              className="shrink-0"
+            />
+          ) : null}
+        </div>
       </header>
 
       <div

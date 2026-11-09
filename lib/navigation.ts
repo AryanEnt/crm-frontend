@@ -54,7 +54,7 @@ export const crmNav: NavSection[] = [
       { label: "Leads", href: "/leads", icon: UserPlus },
       {
         label: "Pipeline",
-        href: "/pipeline",
+        href: LEAD_PIPELINE_HREF,
         icon: Columns3,
         children: [
           { label: "Lead Pipeline", href: LEAD_PIPELINE_HREF, icon: Columns3 },
@@ -116,6 +116,15 @@ export const controlCenterNav: NavSection[] = [
     items: [
       { label: "Overview", href: "/dashboard", icon: LayoutDashboard },
       { label: "Find records", href: "/admin/lookup", icon: Search },
+      {
+        label: "Pipeline",
+        href: LEAD_PIPELINE_HREF,
+        icon: Columns3,
+        children: [
+          { label: "Lead Pipeline", href: LEAD_PIPELINE_HREF, icon: Columns3 },
+          { label: "Nurturing Pipeline", href: NURTURING_PIPELINE_HREF, icon: Columns3 },
+        ],
+      },
     ],
   },
   {
@@ -123,6 +132,7 @@ export const controlCenterNav: NavSection[] = [
     items: [
       { label: "Users", href: "/admin/users", icon: UserCog },
       { label: "Teams", href: "/admin/teams", icon: UsersRound },
+      { label: "Email templates", href: "/settings/email/templates", icon: FileText },
     ],
   },
   {
@@ -187,9 +197,20 @@ export function getNavForRole(roleCode: string | undefined): NavSection[] {
   return crmNav
     .map((section) => ({
       ...section,
-      items: section.items.filter((item) => !hide.has(item.href.split("?")[0] ?? item.href)),
+      items: filterHiddenNavItems(section.items, hide),
     }))
     .filter((section) => section.items.length > 0);
+}
+
+function filterHiddenNavItems(items: NavItem[], hide: Set<string>): NavItem[] {
+  return items.flatMap((item) => {
+    const path = item.href.split("?")[0] ?? item.href;
+    if (hide.has(path)) return [];
+    if (!item.children?.length) return [item];
+    const children = filterHiddenNavItems(item.children, hide);
+    if (children.length === 0) return [];
+    return [{ ...item, children }];
+  });
 }
 
 /** Pathname (+ optional search) match for a nav href. Pipeline children key off `?pipeline=`. */

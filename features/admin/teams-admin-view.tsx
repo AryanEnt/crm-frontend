@@ -33,6 +33,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { DissolveTeamDialog, type DissolveTeamPayload } from "@/features/admin/dissolve-team-dialog";
 import { useAuth } from "@/features/auth/auth-provider";
 import { dataScopeFor } from "@/features/auth/list-scope";
 import { adminApi, type AdminTeam, type AdminTeamMember, type AdminUser } from "@/lib/api/admin";
@@ -56,6 +57,9 @@ export function TeamsAdminView() {
   const [confirm, setConfirm] = React.useState<{ id: string; active: boolean } | null>(
     null,
   );
+  const [deleteTarget, setDeleteTarget] = React.useState<AdminTeam | null>(null);
+  const canChangeStatus = can("teams:delete") || can("teams:manage");
+  const canHardDelete = canChangeStatus && scope === "organization";
 
   const params = React.useMemo(() => {
     const p = new URLSearchParams({ limit: "50", offset: "0" });
@@ -95,6 +99,29 @@ export function TeamsAdminView() {
       toast.success(vars.active ? "Team activated" : "Team deactivated");
     },
     onError: (err: Error) => toast.error(err.message || "Couldn't update the team. Try again."),
+  });
+
+  const dissolveMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: DissolveTeamPayload }) =>
+      adminApi.dissolveTeam(id, payload),
+    onSuccess: (result) => {
+      void qc.invalidateQueries({ queryKey: ["teams"] });
+      void qc.invalidateQueries({ queryKey: ["users"] });
+      setDeleteTarget(null);
+      const bits: string[] = [];
+      if (result.movedMembers > 0) {
+        bits.push(
+          `${result.movedMembers} member${result.movedMembers === 1 ? "" : "s"} moved`,
+        );
+      }
+      if (result.movedLeads > 0) {
+        bits.push(`${result.movedLeads} lead${result.movedLeads === 1 ? "" : "s"} moved`);
+      }
+      toast.success("Team deleted", {
+        description: bits.length > 0 ? bits.join(" · ") : undefined,
+      });
+    },
+    onError: (err: Error) => toast.error(err.message || "Couldn't delete that team. Try again."),
   });
 
   const columns = React.useMemo<ColumnDef<AdminTeam>[]>(
@@ -165,7 +192,7 @@ export function TeamsAdminView() {
                 Edit
               </Button>
             )}
-            {(can("teams:delete") || can("teams:manage")) && (
+            {canChangeStatus && (
               <Button
                 size="sm"
                 variant="ghost"
@@ -177,11 +204,21 @@ export function TeamsAdminView() {
                 {row.original.isActive ? "Deactivate" : "Activate"}
               </Button>
             )}
+            {canHardDelete && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-destructive"
+                onClick={() => setDeleteTarget(row.original)}
+              >
+                Delete
+              </Button>
+            )}
           </div>
         ),
       },
     ],
-    [can, canViewMembers],
+    [can, canChangeStatus, canHardDelete, canViewMembers],
   );
 
   if (teamsQuery.isError) {
@@ -287,6 +324,18 @@ export function TeamsAdminView() {
         loading={statusMutation.isPending}
         onConfirm={() => {
           if (confirm) statusMutation.mutate(confirm);
+        }}
+      />
+
+      <DissolveTeamDialog
+        team={deleteTarget}
+        teams={rosterQuery.data?.data ?? teamsQuery.data?.data ?? []}
+        open={!!deleteTarget}
+        loading={dissolveMutation.isPending}
+        onOpenChange={(open) => !open && !dissolveMutation.isPending && setDeleteTarget(null)}
+        onConfirm={(payload) => {
+          if (!deleteTarget) return;
+          dissolveMutation.mutate({ id: deleteTarget.id, payload });
         }}
       />
     </div>
