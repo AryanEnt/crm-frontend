@@ -32,6 +32,7 @@ import { OutcomeLetterControl } from "./outcome-letter-control";
 import { PipelineLeadDocumentsControl } from "./pipeline-lead-documents-control";
 import { showsAddDocumentSection } from "./pipeline-lead-documents";
 import { formatDate } from "./pipeline-format";
+import { OwnerAvatar } from "./pipeline-ui";
 import { formatStageAgeLabel, stageAge, type StageAgeTone } from "./stage-age";
 import { useHourlyNow } from "./use-hourly-now";
 
@@ -97,6 +98,8 @@ export function LeadCard({
   const stage = stages?.find((s) => s.id === lead.stageId);
   const age = stageAge(lead.stageEnteredAt, stage?.slaHours, { closed, now });
   const showMenu = !overlay && canEdit && !!stages?.length;
+  // Team Leads / admins see whose book the lead sits in; SEs already know their own cards.
+  const showOwner = user?.roleCode !== "sales_executive";
 
   const urgency = closed
     ? "ok"
@@ -222,32 +225,45 @@ export function LeadCard({
       </div>
 
       {!closed ? (
-        <div className="mt-2 flex items-center gap-2">
-          <span
-            className={cn(
-              "text-caption tabular-nums text-ink-secondary",
-              lead.potentialValue == null && "text-ink-muted",
-            )}
-          >
-            {lead.potentialValue != null ? formatLeadMoney(lead.potentialValue, lead.currency) : "No value yet"}
-          </span>
-          <span className="ml-auto flex min-w-0 items-center gap-1.5">
-            {urgency === "stuck" ? (
-              <span className="inline-flex shrink-0 items-center rounded-full bg-danger-soft px-1.5 py-px text-[0.6875rem] font-medium text-danger">
-                Stuck
-              </span>
-            ) : urgency === "soon" ? (
-              <span className="inline-flex shrink-0 items-center rounded-full bg-warning-soft px-1.5 py-px text-[0.6875rem] font-medium text-warning">
-                Follow up
-              </span>
-            ) : null}
+        <div className="mt-2 space-y-1.5">
+          <div className="flex items-center gap-2">
             <span
-              className={cn("max-w-[9.5rem] truncate text-caption tabular-nums", AGE_DAYS[age.tone])}
-              title={`${AGE_TITLE[age.tone]} · ${formatStageAgeLabel(age)}`}
+              className={cn(
+                "text-caption tabular-nums text-ink-secondary",
+                lead.potentialValue == null && "text-ink-muted",
+              )}
             >
-              {formatStageAgeLabel(age)}
+              {lead.potentialValue != null ? formatLeadMoney(lead.potentialValue, lead.currency) : "No value yet"}
             </span>
-          </span>
+            <span className="ml-auto flex min-w-0 items-center gap-1.5">
+              {urgency === "stuck" ? (
+                <span className="inline-flex shrink-0 items-center rounded-full bg-danger-soft px-1.5 py-px text-[0.6875rem] font-medium text-danger">
+                  Stuck
+                </span>
+              ) : urgency === "soon" ? (
+                <span className="inline-flex shrink-0 items-center rounded-full bg-warning-soft px-1.5 py-px text-[0.6875rem] font-medium text-warning">
+                  Follow up
+                </span>
+              ) : null}
+              <span
+                className={cn("max-w-[9.5rem] truncate text-caption tabular-nums", AGE_DAYS[age.tone])}
+                title={`${AGE_TITLE[age.tone]} · ${formatStageAgeLabel(age)}`}
+              >
+                {formatStageAgeLabel(age)}
+              </span>
+            </span>
+          </div>
+          {showOwner ? (
+            <div className="flex min-w-0 items-center gap-1.5" title={lead.ownerName ?? "Unassigned"}>
+              <OwnerAvatar id={lead.ownerUserId} name={lead.ownerName} size="sm" className="size-5 text-[0.5625rem]" />
+              <span className="truncate text-caption text-ink-muted">{lead.ownerName?.trim() || "Unassigned"}</span>
+            </div>
+          ) : null}
+        </div>
+      ) : showOwner ? (
+        <div className="mt-2 flex min-w-0 items-center gap-1.5" title={lead.ownerName ?? "Unassigned"}>
+          <OwnerAvatar id={lead.ownerUserId} name={lead.ownerName} size="sm" className="size-5 text-[0.5625rem]" />
+          <span className="truncate text-caption text-ink-muted">{lead.ownerName?.trim() || "Unassigned"}</span>
         </div>
       ) : null}
 
