@@ -85,12 +85,31 @@ export const adminApi = {
     api.post<AdminUser>(`/users/${id}/status`, { isActive }),
   bulkUserStatus: (ids: string[], isActive: boolean) =>
     api.post<{ updated: number }>("/users/bulk-status", { ids, isActive }),
+  deleteUser: (id: string) => api.delete<{ deleted: boolean }>(`/users/${id}`),
   listRoles: () => api.get<AdminRole[]>("/roles"),
   listTeams: (params: URLSearchParams) => listWithMeta<AdminTeam>(`/teams?${params}`),
   createTeam: (body: unknown) => api.post<AdminTeam>("/teams", body),
   updateTeam: (id: string, body: unknown) => api.patch<AdminTeam>(`/teams/${id}`, body),
   setTeamStatus: (id: string, isActive: boolean) =>
     api.post<AdminTeam>(`/teams/${id}/status`, { isActive }),
+  deleteTeam: (id: string) => api.delete<{ deleted: boolean }>(`/teams/${id}`),
+  dissolveTeam: (
+    id: string,
+    body: {
+      destinationTeamId?: string;
+      newTeamName?: string;
+      newTeamDescription?: string;
+      moveLeads?: boolean;
+      formerLeadAction?: "unassign" | "deactivate";
+    },
+  ) =>
+    api.post<{
+      deleted: boolean;
+      destinationTeamId: string | null;
+      movedMembers: number;
+      movedLeads: number;
+      formerLeadDeactivated: boolean;
+    }>(`/teams/${id}/dissolve`, body),
   listAuditLogs: (params: URLSearchParams) => listWithMeta<AuditLog>(`/audit-logs?${params}`),
 
   automationsCatalog: () => api.get<AutomationCatalog>("/automations/catalog"),

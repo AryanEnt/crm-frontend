@@ -116,6 +116,15 @@ export const controlCenterNav: NavSection[] = [
     items: [
       { label: "Overview", href: "/dashboard", icon: LayoutDashboard },
       { label: "Find records", href: "/admin/lookup", icon: Search },
+      {
+        label: "Pipeline",
+        href: LEAD_PIPELINE_HREF,
+        icon: Columns3,
+        children: [
+          { label: "Lead Pipeline", href: LEAD_PIPELINE_HREF, icon: Columns3 },
+          { label: "Nurturing Pipeline", href: NURTURING_PIPELINE_HREF, icon: Columns3 },
+        ],
+      },
     ],
   },
   {
