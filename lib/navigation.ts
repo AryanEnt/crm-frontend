@@ -25,17 +25,22 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { RoleCode } from "@/features/auth/types";
+import { LEAD_PIPELINE_ID, NURTURING_PIPELINE_ID } from "@/features/leads/lead-board-state";
 
 export type NavItem = {
   label: string;
   href: string;
   icon: LucideIcon;
+  children?: NavItem[];
 };
 
 export type NavSection = {
   title?: string;
   items: NavItem[];
 };
+
+export const LEAD_PIPELINE_HREF = `/pipeline?pipeline=${LEAD_PIPELINE_ID}`;
+export const NURTURING_PIPELINE_HREF = `/pipeline?pipeline=${NURTURING_PIPELINE_ID}`;
 
 /** CRM operations navigation — Manager / SE / Support. */
 export const crmNav: NavSection[] = [
@@ -47,7 +52,15 @@ export const crmNav: NavSection[] = [
     title: "Sales",
     items: [
       { label: "Leads", href: "/leads", icon: UserPlus },
-      { label: "Pipeline", href: "/pipeline", icon: Columns3 },
+      {
+        label: "Pipeline",
+        href: "/pipeline",
+        icon: Columns3,
+        children: [
+          { label: "Lead Pipeline", href: LEAD_PIPELINE_HREF, icon: Columns3 },
+          { label: "Nurturing Pipeline", href: NURTURING_PIPELINE_HREF, icon: Columns3 },
+        ],
+      },
     ],
   },
   {
@@ -83,6 +96,7 @@ export const crmNav: NavSection[] = [
       // Team Leads only see their own team, so there is no cross-team Teams page here.
       { label: "My team", href: "/admin/users", icon: UsersRound },
       { label: "Team Email", href: "/email/team", icon: Mail },
+      { label: "Email templates", href: "/settings/email/templates", icon: FileText },
       { label: "Referrals", href: "/admin/referrals", icon: Building2 },
     ],
   },
@@ -91,7 +105,6 @@ export const crmNav: NavSection[] = [
     items: [
       // { label: "WhatsApp accounts", href: "/settings/whatsapp", icon: MessageCircle },
       { label: "Email accounts", href: "/settings/email", icon: Mail },
-      // { label: "Email templates", href: "/settings/email/templates", icon: FileText },
     ],
   },
 ];
@@ -149,10 +162,18 @@ export function isSuperAdminRole(roleCode: string | undefined): boolean {
   return roleCode === ("super_admin" satisfies RoleCode);
 }
 
-const HIDDEN_FROM_SE = new Set(["/lead-population", "/email/team", "/settings/email"]);
+const HIDDEN_FROM_SE = new Set([
+  "/lead-population",
+  "/email/team",
+  "/settings/email",
+  "/sales-funnel",
+  "/targets",
+  "/admin/users",
+  "/admin/referrals",
+]);
 /** Team Email replaces per-user Email accounts for TL; no Gmail self-connect. */
 const HIDDEN_FROM_TL = new Set(["/settings/email"]);
-const TL_ONLY = new Set(["/email/team"]);
+const TL_ONLY = new Set(["/email/team", "/settings/email/templates"]);
 
 export function getNavForRole(roleCode: string | undefined): NavSection[] {
   if (isSuperAdminRole(roleCode)) return controlCenterNav;
@@ -171,8 +192,18 @@ export function getNavForRole(roleCode: string | undefined): NavSection[] {
     .filter((section) => section.items.length > 0);
 }
 
-export function isNavActive(pathname: string, href: string): boolean {
-  const path = href.split("?")[0];
+/** Pathname (+ optional search) match for a nav href. Pipeline children key off `?pipeline=`. */
+export function isNavActive(pathname: string, href: string, search = ""): boolean {
+  const url = new URL(href, "http://local");
+  const path = url.pathname;
   if (path === "/dashboard") return pathname === path;
-  return pathname === path || pathname.startsWith(`${path}/`);
+  if (!(pathname === path || pathname.startsWith(`${path}/`))) return false;
+
+  const wantPipeline = url.searchParams.get("pipeline");
+  if (wantPipeline == null) return true;
+
+  const have = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search).get("pipeline") ?? "";
+  // Lead Pipeline is the default when the URL omits `pipeline`.
+  if (wantPipeline === LEAD_PIPELINE_ID) return have === "" || have === LEAD_PIPELINE_ID;
+  return have === wantPipeline;
 }

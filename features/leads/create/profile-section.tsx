@@ -95,7 +95,7 @@ function CountryField({ required }: { required?: boolean }) {
   const error = formState.errors.country?.message;
 
   return (
-    <LeadField label="Country" required={required} group error={error}>
+    <LeadField label="Country of Residency" required={required} group error={error}>
       {(_a11y, labelId) => (
         <div
           role="group"
@@ -155,7 +155,7 @@ function OccupationField({ initialLabel }: { initialLabel: string | null }) {
   );
 }
 
-/** About Them accordion body — required profile + optional ANZSCO occupation. */
+/** About block — required profile + optional ANZSCO occupation. */
 export function AboutSection({ anzscoLabel = null }: { anzscoLabel?: string | null }) {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

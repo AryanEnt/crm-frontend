@@ -145,9 +145,9 @@ export function UnifiedTimeline({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex items-center justify-between gap-2">
         <Select value={typeFilter} onValueChange={setTypeFilter}>
-          <SelectTrigger className="h-9 w-[12.5rem] shrink-0" aria-label="Filter timeline by event type">
+          <SelectTrigger className="h-8 w-[10.5rem] shrink-0 text-xs" aria-label="Filter timeline by event type">
             <SelectValue placeholder="Event type" />
           </SelectTrigger>
           <SelectContent>
@@ -159,8 +159,8 @@ export function UnifiedTimeline({
             ))}
           </SelectContent>
         </Select>
-        <span className="text-meta">
-          <span className="text-data">{query.data?.total ?? 0}</span> events
+        <span className="text-caption text-ink-muted">
+          {query.data?.total ?? 0} {(query.data?.total ?? 0) === 1 ? "event" : "events"}
         </span>
       </div>
 

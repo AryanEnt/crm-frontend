@@ -17,21 +17,21 @@ import { ClosedLeadsTable } from "./closed-leads-table";
 import { OpenLeadsTable } from "./open-leads-table";
 import { PipelineBoard } from "./pipeline-board";
 import { PipelineEmpty } from "./pipeline-empty";
+import { readPipelineDefaultFilters, writePipelineDefaultFilters } from "./pipeline-default-filters";
 import {
   clearAllFilters,
   closedStatusLabel,
   hasNarrowingFilters,
   isClosedStatus,
   parsePipelineFilters,
+  urlHasPipelineFilterParams,
   writePipelineFilters,
   type ClosedOutcome,
   type PipelineFilters,
 } from "./pipeline-filters";
 import { PipelineHeader } from "./pipeline-header";
 import { PipelineBoardSkeleton } from "./pipeline-skeleton";
-import { PipelineStats, PipelineStatsSkeleton } from "./pipeline-stats";
 import { PipelineToolbar } from "./pipeline-toolbar";
-import { SlaAgeLegend } from "./sla-age-legend";
 import { CLOSED_PAGE_SIZE, usePipelineLeads } from "./use-pipeline-leads";
 
 /**
@@ -41,19 +41,39 @@ import { CLOSED_PAGE_SIZE, usePipelineLeads } from "./use-pipeline-leads";
 export function PipelinePage() {
   const router = useRouter();
   const pathname = usePathname();
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const { searchParams, leadId, openLead, closeLead } = useLeadUrl();
   const [createOpen, setCreateOpen] = React.useState(false);
   const [pageSize, setPageSize] = React.useState(CLOSED_PAGE_SIZE);
 
   const filters = React.useMemo(() => parsePipelineFilters(new URLSearchParams(searchParams.toString())), [searchParams]);
+  const persistDefaults = React.useRef(false);
   const setFilters = React.useCallback(
-    (next: PipelineFilters) => {
+    (next: PipelineFilters, opts?: { persist?: boolean }) => {
       const qs = writePipelineFilters(next, new URLSearchParams(searchParams.toString())).toString();
       router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+      if (opts?.persist !== false && persistDefaults.current && user?.id) {
+        writePipelineDefaultFilters(user.id, next);
+      }
     },
-    [pathname, router, searchParams],
+    [pathname, router, searchParams, user?.id],
   );
+
+  const appliedDefault = React.useRef(false);
+  React.useEffect(() => {
+    if (appliedDefault.current) return;
+    const sp = new URLSearchParams(searchParams.toString());
+    if (urlHasPipelineFilterParams(sp)) {
+      appliedDefault.current = true;
+      persistDefaults.current = true;
+      return;
+    }
+    if (!user?.id) return;
+    appliedDefault.current = true;
+    const saved = readPipelineDefaultFilters(user.id);
+    if (saved) setFilters(saved, { persist: false });
+    persistDefaults.current = true;
+  }, [searchParams, setFilters, user?.id]);
 
   const data = usePipelineLeads(filters, pageSize);
   const canEdit = can("leads:edit");
@@ -178,7 +198,7 @@ export function PipelinePage() {
   );
 
   return (
-    <div className="space-y-6 pb-10 text-ink">
+    <div className="space-y-4 pb-10 text-ink">
       <PipelineHeader
         pipelines={data.pipelines}
         pipelineId={data.pipelineId}
@@ -199,18 +219,6 @@ export function PipelinePage() {
         />
       ) : (
         <>
-          {data.isLoading ? (
-            <PipelineStatsSkeleton />
-          ) : (
-            <PipelineStats
-              totals={data.totals}
-              currency={data.currency}
-              status={filters.status}
-              nurturing={nurturing}
-              onStatus={setStatus}
-            />
-          )}
-
           <PipelineToolbar
             filters={filters}
             counts={data.isLoading ? null : data.counts}
@@ -219,13 +227,6 @@ export function PipelinePage() {
             nurturing={nurturing}
             onChange={setFilters}
           />
-
-          {!data.isLoading &&
-          !isClosedStatus(filters.status) &&
-          filters.view === "board" &&
-          data.openStages.some((s) => (s.slaHours ?? 0) > 0) ? (
-            <SlaAgeLegend />
-          ) : null}
 
           <div aria-busy={data.isFetching || undefined}>
             {data.isLoading ? (

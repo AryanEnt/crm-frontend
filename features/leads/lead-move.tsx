@@ -30,6 +30,11 @@ import {
 } from "@/features/leads/lost-reason-dialog";
 import { isContactRatingBlocker } from "@/features/pipeline/contact-rating";
 import { ContactRatingFields, contactRatingReady } from "@/features/pipeline/contact-rating-fields";
+import {
+  isNextFollowUpRemarksBlocker,
+  nextFollowUpRemarksProblem,
+} from "@/features/pipeline/next-follow-up-remarks";
+import { Textarea } from "@/components/ui/console/textarea";
 
 export { LEAD_LOST_REASONS } from "@/features/leads/lost-reason-dialog";
 
@@ -147,7 +152,9 @@ export function useLeadMove({
         setAnnounce(
           isContactRatingBlocker(err.details)
             ? "Add a contact rating and remarks before leaving Contacted."
-            : "Stage move blocked. Review the requirements.",
+            : isNextFollowUpRemarksBlocker(err.details)
+              ? "Add next follow-up remarks before moving this lead."
+              : "Stage move blocked. Review the requirements.",
         );
         return;
       }
@@ -239,8 +246,25 @@ export function useLeadMove({
         onForce={() => pending?.kind === "blocked" && mutation.mutate({ ...pending.vars, force: true })}
         onSavedAndMove={() => pending?.kind === "blocked" && mutation.mutate(pending.vars)}
       />
+      <NextFollowUpMoveModal
+        open={
+          pending?.kind === "blocked" &&
+          !isContactRatingBlocker(pending.details) &&
+          isNextFollowUpRemarksBlocker(pending.details)
+        }
+        leadName={pending?.kind === "blocked" ? pending.vars.leadName : ""}
+        destinationName={pending?.kind === "blocked" ? pending.vars.to.name : ""}
+        leadId={pending?.kind === "blocked" ? pending.vars.leadId : ""}
+        movePending={mutation.isPending}
+        onCancel={() => setPending(null)}
+        onSavedAndMove={() => pending?.kind === "blocked" && mutation.mutate(pending.vars)}
+      />
       <RequirementsModal
-        open={pending?.kind === "blocked" && !isContactRatingBlocker(pending.details)}
+        open={
+          pending?.kind === "blocked" &&
+          !isContactRatingBlocker(pending.details) &&
+          !isNextFollowUpRemarksBlocker(pending.details)
+        }
         details={pending?.kind === "blocked" ? pending.details : null}
         destinationName={pending?.kind === "blocked" ? pending.vars.to.name : ""}
         loading={mutation.isPending}
@@ -384,6 +408,7 @@ function friendlyRequirementLabel(raw: string): string {
   const known: Record<string, string> = {
     contact_rating: "Contact rating",
     contact_remarks: "Contact remarks",
+    next_follow_up_remarks: "Next follow-up remarks",
     email: "Email",
     phone: "Phone",
     source: "Source",
@@ -396,6 +421,103 @@ function friendlyRequirementLabel(raw: string): string {
     .replace(/[_-]+/g, " ")
     .trim()
     .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function NextFollowUpMoveModal({
+  open,
+  leadName,
+  destinationName,
+  leadId,
+  movePending,
+  onCancel,
+  onSavedAndMove,
+}: {
+  open: boolean;
+  leadName: string;
+  destinationName: string;
+  leadId: string;
+  movePending: boolean;
+  onCancel: () => void;
+  onSavedAndMove: () => void;
+}) {
+  const [remarks, setRemarks] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
+  const [wasOpen, setWasOpen] = React.useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) {
+      setRemarks("");
+      setSaving(false);
+    }
+  }
+
+  const problem = nextFollowUpRemarksProblem(remarks);
+  const canSave = !problem;
+  const busy = saving || movePending;
+
+  const [wasMovePending, setWasMovePending] = React.useState(movePending);
+  if (movePending !== wasMovePending) {
+    setWasMovePending(movePending);
+    if (!movePending) setSaving(false);
+  }
+
+  const saveAndMove = async () => {
+    if (!canSave || !leadId || busy) return;
+    setSaving(true);
+    try {
+      await crmApi.updateLead(leadId, {
+        nextFollowUpRemarks: remarks.trim(),
+        forceUpdate: true,
+      });
+      onSavedAndMove();
+    } catch (err) {
+      toast.error("Couldn't save follow-up remarks", {
+        description: err instanceof Error && err.message ? err.message : undefined,
+      });
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal open={open} onOpenChange={(o) => !o && !busy && onCancel()}>
+      <ModalContent className="max-w-md">
+        <ModalHeader>
+          <ModalTitle>What&apos;s the next follow-up?</ModalTitle>
+          <ModalDescription>
+            Every lead on Contacted through Lost needs a documented next action before moving
+            {destinationName ? ` to ${destinationName}` : ""}
+            {leadName ? `. Working on ${leadName}.` : "."}
+          </ModalDescription>
+        </ModalHeader>
+        <div className="space-y-1.5">
+          <Label htmlFor="next-follow-up-move-remarks" required>
+            Next follow-up remarks
+          </Label>
+          <Textarea
+            id="next-follow-up-move-remarks"
+            value={remarks}
+            onChange={(e) => setRemarks(e.target.value)}
+            disabled={busy}
+            rows={4}
+            autoFocus
+            placeholder="e.g. Call Thursday to review fee options and send brochure"
+            className="min-h-[5.5rem] resize-none"
+          />
+          <p className="text-caption text-ink-muted">
+            Team leads use this to monitor follow-up plans across the pipeline.
+          </p>
+        </div>
+        <ModalFooter>
+          <Button variant="outline" onClick={onCancel} disabled={busy}>
+            Cancel
+          </Button>
+          <Button loading={busy} disabled={!canSave} onClick={() => void saveAndMove()}>
+            Save and move
+          </Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
+  );
 }
 
 function ContactRatingMoveModal({

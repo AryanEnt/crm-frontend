@@ -658,7 +658,7 @@ function PipelineStageField({ control, pipelines }: { control: LeadControl; pipe
 function CountryField({ control }: { control: LeadControl }) {
   const { field } = useController({ control, name: "country" });
   return (
-    <FormFieldSlot label="Country">
+    <FormFieldSlot label="Country of Residency">
       <CountryPicker value={field.value} onChange={field.onChange} />
     </FormFieldSlot>
   );

@@ -23,7 +23,7 @@ export function SlaAgeLegend({ className }: { className?: string }) {
       {ITEMS.map((item) => (
         <span key={item.tone} className="inline-flex items-center gap-1.5 text-ink-muted" title={item.hint}>
           <span aria-hidden className={cn("size-2.5 shrink-0 rounded-full ring-2", item.swatch, item.ring)} />
-          <span className="text-ink-secondary">{item.label}</span>
+          <span className="text-ink-secondary">{item.tone === "over" ? "Stuck" : item.tone === "warn" ? "Follow up" : "On time"}</span>
         </span>
       ))}
       <span className="text-ink-muted">Leads 1d · Contacted 2d · Negotiation 5d</span>

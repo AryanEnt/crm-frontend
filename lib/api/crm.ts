@@ -185,6 +185,7 @@ export type Lead = {
   contactRatedAt?: string | null;
   contactRatedBy?: string | null;
   contactRatedByName?: string | null;
+  nextFollowUpRemarks?: string;
   documentDelayRemarks?: string;
   documentDelayRemarksAt?: string | null;
   documentDelayRemarksBy?: string | null;
@@ -250,6 +251,7 @@ export type LeadBoardCard = {
   negotiationRemarks?: string;
   contactRating?: number | null;
   contactRemarks?: string;
+  nextFollowUpRemarks?: string;
   /** Earliest open document send-by date (set when marking Won). */
   documentDeadlineAt?: string | null;
   /** Latest overdue document-delay remark. */

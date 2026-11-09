@@ -106,6 +106,7 @@ export function EmailComposer({
   const [preview, setPreview] = React.useState<string | null>(null);
   const [showPreview, setShowPreview] = React.useState(false);
   const [attachments, setAttachments] = React.useState<PendingAttachment[]>([]);
+  const [templateId, setTemplateId] = React.useState("");
   const saveTimer = React.useRef<number | null>(null);
 
   const templatesQuery = useQuery({
@@ -122,6 +123,7 @@ export function EmailComposer({
     setSaveState("idle");
     setShowPreview(false);
     setAttachments([]);
+    setTemplateId("");
     window.setTimeout(() => {
       if (editorRef.current) {
         editorRef.current.innerHTML = context.quoteHtml
@@ -261,7 +263,7 @@ export function EmailComposer({
   });
 
   const insertTemplate = (t: EmailTemplate) => {
-    setSubject((s) => s || t.subject);
+    setSubject(t.subject);
     if (editorRef.current) {
       editorRef.current.innerHTML = t.bodyHtml;
     }
@@ -397,16 +399,17 @@ export function EmailComposer({
               </ToolbarBtn>
               <span className="mx-1 h-4 w-px bg-border" />
               <select
-                aria-label="Insert template"
+                aria-label="Email template"
                 className="h-7 max-w-[180px] rounded-md border-0 bg-transparent text-xs"
-                defaultValue=""
+                value={templateId}
                 onChange={(e) => {
-                  const t = templatesQuery.data?.find((x) => x.id === e.target.value);
+                  const id = e.target.value;
+                  setTemplateId(id);
+                  const t = templatesQuery.data?.find((x) => x.id === id);
                   if (t) insertTemplate(t);
-                  e.currentTarget.value = "";
                 }}
               >
-                <option value="">Insert template</option>
+                <option value="">Select template</option>
                 {(templatesQuery.data ?? []).map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.name}

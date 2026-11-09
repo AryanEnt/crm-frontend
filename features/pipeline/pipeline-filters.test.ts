@@ -3,14 +3,20 @@ import assert from "node:assert/strict";
 import {
   DEFAULT_PIPELINE_FILTERS,
   activeFilterChips,
+  applyPipelineWork,
   boardParams,
   clearAllFilters,
   clearFilter,
   closedLeadsParams,
   closedListParams,
   hasNarrowingFilters,
+  isWorkChipActive,
   openListParams,
   parsePipelineFilters,
+  pipelineFiltersEqual,
+  pipelineWorkHref,
+  snapshotForDefault,
+  urlHasPipelineFilterParams,
   writePipelineFilters,
 } from "./pipeline-filters.ts";
 
@@ -21,6 +27,29 @@ describe("pipeline filters in the URL", () => {
     assert.equal(DEFAULT_PIPELINE_FILTERS.status, "all");
     assert.deepEqual(parse(""), DEFAULT_PIPELINE_FILTERS);
     assert.equal(writePipelineFilters(DEFAULT_PIPELINE_FILTERS).toString(), "");
+  });
+
+  it("treats only filter keys as an explicit URL (leadId is not a filter)", () => {
+    assert.equal(urlHasPipelineFilterParams(new URLSearchParams("")), false);
+    assert.equal(urlHasPipelineFilterParams(new URLSearchParams("leadId=abc")), false);
+    assert.equal(urlHasPipelineFilterParams(new URLSearchParams("view=table")), true);
+    assert.equal(urlHasPipelineFilterParams(new URLSearchParams("owner=u1&leadId=abc")), true);
+  });
+
+  it("omits search and paging from a saved default snapshot", () => {
+    const f = parse("q=acme&page=4&view=table&owner=u1");
+    const snap = snapshotForDefault(f);
+    assert.equal(snap.q, "");
+    assert.equal(snap.page, 1);
+    assert.equal(snap.view, "table");
+    assert.equal(snap.owner, "u1");
+    assert.equal(
+      pipelineFiltersEqual(
+        { ...DEFAULT_PIPELINE_FILTERS, view: "table", q: "one", page: 2 },
+        { ...DEFAULT_PIPELINE_FILTERS, view: "table", q: "two", page: 9 },
+      ),
+      true,
+    );
   });
 
   it("round-trips every filter and keeps unrelated params such as leadId", () => {
@@ -39,7 +68,7 @@ describe("pipeline filters in the URL", () => {
     assert.equal(f.max, "");
     assert.equal(f.page, 1);
     assert.equal(f.sort, "closed");
-    assert.equal(f.boardSort, "days");
+    assert.equal(f.boardSort, "time");
   });
 
   it("round-trips the global board sort", () => {
@@ -75,7 +104,7 @@ describe("API params", () => {
     const board = boardParams("p1", f);
     assert.equal(
       board.toString(),
-      "pipelineId=p1&q=jo&ownerUserId=u1&teamId=t1&source=Referral&activity=overdue&minValue=100&sort=days&order=desc",
+      "pipelineId=p1&q=jo&ownerUserId=u1&teamId=t1&source=Referral&activity=overdue&minValue=100&sort=time&order=asc",
     );
     const closed = closedListParams("p1", "lost-stage", f, 25);
     // Board sort (days/time/…) is unrelated to closed-table sort (name/value/closed).
@@ -112,6 +141,7 @@ describe("API params", () => {
     assert.equal(openListParams("p1", f, 25).get("stageId"), "s1");
     assert.equal(boardParams("p1", f).has("stageId"), false);
     assert.equal(writePipelineFilters(f).get("stage"), "s1");
+    assert.equal(snapshotForDefault({ ...f, view: "board" }).stage, "s1");
     assert.deepEqual(
       activeFilterChips(f, { stage: "Qualified" }).map((c) => c.label),
       ["“jo”", "Stage: Qualified"],
@@ -205,5 +235,19 @@ describe("filter chips", () => {
     const custom = parse("status=lost&closed=custom&closedFrom=2026-09-01&closedTo=2026-09-30");
     assert.deepEqual(activeFilterChips(custom).map((c) => c.label), ["Lost 1 Sept 2026 – 30 Sept 2026"]);
     assert.equal(clearFilter(custom, "closed").closedFrom, "");
+  });
+
+  it("toggles Work chips and writes attention for stuck leads", () => {
+    const overdue = applyPipelineWork(DEFAULT_PIPELINE_FILTERS, "overdue");
+    assert.equal(overdue.next, "overdue");
+    assert.equal(isWorkChipActive(overdue, "overdue"), true);
+    assert.equal(applyPipelineWork(overdue, "overdue").next, "");
+    const stuck = applyPipelineWork(DEFAULT_PIPELINE_FILTERS, "stuck");
+    assert.equal(stuck.attention, "over_sla");
+    assert.equal(stuck.next, "");
+    assert.equal(boardParams("p1", stuck).get("attention"), "over_sla");
+    assert.equal(hasNarrowingFilters(stuck), true);
+    assert.match(pipelineWorkHref("today", "p1"), /next=today/);
+    assert.match(pipelineWorkHref("stuck", "p1"), /attention=over_sla/);
   });
 });

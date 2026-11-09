@@ -114,9 +114,9 @@ describe("create lead schema", () => {
     assert.equal(sectionForField("employer"), "work");
     assert.equal(sectionForField("notes"), "notes");
     assert.equal(sectionForField("fullName"), null);
-    assert.equal(sectionForField("country"), "about");
+    assert.equal(sectionForField("country"), null);
     assert.equal(sectionForField("priority"), null);
-    assert.equal(sectionForField("anzscoId"), "about");
+    assert.equal(sectionForField("anzscoId"), null);
   });
 });
 

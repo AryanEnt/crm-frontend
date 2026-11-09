@@ -9,7 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { crmApi, type LeadBoard, type LeadBoardCard } from "@/lib/api/crm";
 import { cn } from "@/lib/utils";
 import { contactRatingLabel, isContactedStage } from "./contact-rating";
-import { ContactRatingFields, contactRatingReady } from "./contact-rating-fields";
+import { ContactRatingFields, StarRow, contactRatingReady } from "./contact-rating-fields";
 
 function patchBoardCard(
   board: LeadBoard | undefined,
@@ -31,10 +31,12 @@ export function ContactRatingControl({
   lead,
   stageName,
   canEdit,
+  layout = "chip",
 }: {
   lead: LeadBoardCard;
   stageName?: string | null;
   canEdit: boolean;
+  layout?: "chip" | "panel";
 }) {
   const contacted = isContactedStage(stageName);
   const savedRating = lead.contactRating ?? 0;
@@ -89,6 +91,41 @@ export function ContactRatingControl({
 
   const label = contactRatingLabel(savedRating || null, savedRemarks);
   const canSave = contactRatingReady(rating, remarks);
+
+  if (layout === "panel") {
+    if (!editable) {
+      return (
+        <div className="mt-2 space-y-1.5">
+          <StarRow value={savedRating} size="md" />
+          <p className="whitespace-pre-wrap text-body text-ink">{savedRemarks || "—"}</p>
+        </div>
+      );
+    }
+    return (
+      <div className="mt-2 space-y-3">
+        <ContactRatingFields
+          rating={rating}
+          remarks={remarks}
+          onRatingChange={setRating}
+          onRemarksChange={setRemarks}
+          disabled={mutation.isPending}
+          remarksId={`contact-remarks-panel-${lead.id}`}
+          starSize="md"
+        />
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            size="sm"
+            loading={mutation.isPending}
+            disabled={!canSave || (rating === savedRating && remarks.trim() === savedRemarks)}
+            onClick={() => mutation.mutate({ contactRating: rating, contactRemarks: remarks.trim() })}
+          >
+            Save rating
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   if (!editable) {
     return (

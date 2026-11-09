@@ -21,6 +21,7 @@ import { FormSection } from "./form-section";
 import { detectDialCountry, formatPhone, phoneCountry } from "./phone";
 import { PhoneCountryPicker } from "./phone-country-picker";
 import { PriorityPicker } from "./priority-picker";
+import { AboutSection } from "./profile-section";
 import { ScreenshotField } from "./screenshot-field";
 import { SourcePicker } from "./source-picker";
 
@@ -39,6 +40,7 @@ export function QuickAddFields({
   extractEnabled,
   onApplyExtract,
   showScreenshot = true,
+  anzscoLabel = null,
 }: {
   nameRef: React.RefObject<HTMLInputElement | null>;
   sources: readonly string[];
@@ -52,6 +54,7 @@ export function QuickAddFields({
   extractEnabled: boolean;
   onApplyExtract: (found: { fullName?: string; phone?: string; email?: string }) => void;
   showScreenshot?: boolean;
+  anzscoLabel?: string | null;
 }) {
   const { control, register, formState } = useLeadForm();
   const source = useWatch({ control, name: "source" });
@@ -102,6 +105,7 @@ export function QuickAddFields({
               matches={duplicates}
               onCreateAnyway={onCreateAnyway}
               busy={duplicateBusy}
+              editing={editing}
               actionLabel={editing ? "Save anyway" : "Create anyway"}
             />
           ) : null}
@@ -116,6 +120,10 @@ export function QuickAddFields({
             onApplyExtract={onApplyExtract}
           />
         ) : null}
+      </FormSection>
+
+      <FormSection title="About" description="Where they are and what they do.">
+        <AboutSection anzscoLabel={anzscoLabel} />
       </FormSection>
 
       <FormSection title="Lead source" description="Where this opportunity came from.">

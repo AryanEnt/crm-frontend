@@ -6,9 +6,7 @@ import type { StageSlot } from "@/components/ui/stage-rail";
 import { formatLeadMoney, formatLeadMoneyCompact } from "@/features/leads/lead-format";
 import type { LeadBoardCard, LeadBoardStage } from "@/lib/api/crm";
 import { cn } from "@/lib/utils";
-import { BoardSortSelect } from "./board-sort-select";
 import { LeadCard } from "./lead-card";
-import { isNegotiationStage } from "./negotiation-tag";
 import type { BoardSortKey, SortOrder } from "./pipeline-filters";
 import { StageDot, stageVars } from "./pipeline-ui";
 
@@ -28,11 +26,7 @@ export function PipelineColumn({
   className,
   subtitle,
   emptyText,
-  boardSort,
-  boardOrder,
-  sortOverridden,
   sorting,
-  onBoardSortChange,
 }: {
   stage: LeadBoardStage;
   stages: LeadBoardStage[];
@@ -57,9 +51,7 @@ export function PipelineColumn({
   onBoardSortChange?: (sort: BoardSortKey, order: SortOrder) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: stageDropId(stage.id), disabled: !dndEnabled });
-  const closed = stage.isWon || stage.isLost;
   const remaining = Math.max(0, stage.count - stage.leads.length);
-  const probability = Number(stage.probability);
 
   return (
     <section
@@ -73,7 +65,7 @@ export function PipelineColumn({
         className,
       )}
     >
-      <header className="sticky top-0 z-[1] overflow-hidden rounded-t-column bg-inherit px-3.5 pb-2.5 pt-4">
+      <header className="sticky top-0 z-[1] overflow-hidden rounded-t-column bg-inherit px-3.5 pb-2.5 pt-3.5">
         <span aria-hidden className="absolute inset-x-0 top-0 h-[3px] bg-(--col-stage)" />
         <div className="flex items-center gap-2">
           <StageDot slot={slot} />
@@ -81,37 +73,17 @@ export function PipelineColumn({
           <span className="rounded-full bg-surface px-2 py-px text-caption font-medium tabular-nums text-ink-secondary">
             {stage.count}
           </span>
-          {!closed && probability > 0 ? (
-            <span
-              className="rounded-full border border-[color-mix(in_srgb,var(--col-stage)_35%,transparent)] bg-surface px-1.5 py-px text-[0.6875rem] font-semibold tabular-nums text-(--col-stage-ink)"
-              title="Stage win probability"
-            >
-              {probability}%
-            </span>
-          ) : null}
         </div>
-        <div className="mt-1 flex items-center gap-1">
-          <p className="min-w-0 flex-1 truncate text-[0.8125rem] tabular-nums text-ink-secondary">
-            {subtitle ?? (stage.totalValue > 0 ? formatLeadMoneyCompact(stage.totalValue, currency) : "No estimates yet")}
-            {sorting ? <span className="ml-1 text-ink-muted">· sorting…</span> : null}
+        {subtitle || stage.totalValue > 0 ? (
+          <p className="mt-1 truncate text-caption tabular-nums text-ink-muted">
+            {subtitle ?? formatLeadMoneyCompact(stage.totalValue, currency)}
+            {sorting ? <span> · sorting…</span> : null}
           </p>
-          {boardSort && boardOrder && onBoardSortChange ? (
-            <BoardSortSelect
-              compact
-              sort={boardSort}
-              order={boardOrder}
-              overridden={sortOverridden}
-              onChange={onBoardSortChange}
-            />
-          ) : null}
-        </div>
-        {isNegotiationStage(stage.name) ? (
-          <p className="mt-1 text-[0.6875rem] text-ink-muted">Set a status on each card</p>
         ) : null}
       </header>
 
       <div
-        className="flex min-h-40 flex-1 flex-col gap-2 overflow-y-auto px-2.5 pb-2.5 crm-scroll md:max-h-[calc(100dvh-24rem)]"
+        className="flex min-h-40 flex-1 flex-col gap-2.5 overflow-y-auto px-2.5 pb-2.5 crm-scroll md:max-h-[calc(100dvh-20rem)]"
       >
         {stage.leads.length === 0 ? (
           <div
@@ -127,7 +99,7 @@ export function PipelineColumn({
                   : "Won leads land here"
                 : stage.isLost
                   ? "Lost leads land here"
-                  : "Drag a lead here")}
+                  : "Nothing here — drag a lead in")}
           </div>
         ) : (
           stage.leads.map((lead) =>

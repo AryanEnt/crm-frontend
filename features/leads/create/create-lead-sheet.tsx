@@ -6,7 +6,6 @@ import {
   BriefcaseBusiness,
   CalendarDays,
   NotebookPen,
-  UserRound,
   UserRoundPlus,
   X,
 } from "lucide-react";
@@ -50,7 +49,7 @@ import { FIELD_CONTROL } from "./field-ui";
 import { formatFollowUp, fromLocalInput } from "./follow-up";
 import { MoreDetailsAccordion } from "./more-details-accordion";
 import { DEFAULT_PHONE_COUNTRY, detectDialCountry, formatPhone } from "./phone";
-import { AboutSection, WorkSection } from "./profile-section";
+import { WorkSection } from "./profile-section";
 import { QuickAddFields } from "./quick-add-fields";
 import { SalesSection, useOwnerChoices } from "./sales-section";
 import { loadSourceUsage, pickDefaultSource, rankSources } from "./source-usage";
@@ -403,7 +402,7 @@ function CreateLeadForm({
   });
 
   const phoneChanged = !editing || values.phone !== editing.initial.phone || values.phoneCountry !== editing.initial.phoneCountry;
-  const emailChanged = !editing || values.email.trim() !== editing.initial.email.trim();
+  const emailChanged = !editing || values.email.trim().toLowerCase() !== editing.initial.email.trim().toLowerCase();
   const lookedUp = useDuplicateCheck({
     phone: phoneChanged ? values.phone : "",
     phoneCountry: values.phoneCountry,
@@ -415,14 +414,20 @@ function CreateLeadForm({
   const matches: DuplicateMatch[] = (serverMatches.length ? serverMatches : lookedUp).filter(
     (m) => !acknowledged.has(duplicateKey(m)),
   );
-  const force = lookedUp.length > 0 && lookedUp.every((m) => acknowledged.has(duplicateKey(m)));
+  // After the SE confirms possible matches, every subsequent save skips the soft block.
+  const force =
+    acknowledged.size > 0 ||
+    (lookedUp.length > 0 && lookedUp.every((m) => acknowledged.has(duplicateKey(m))));
 
   const onCreateAnyway = () => {
+    const keys = (serverMatches.length ? serverMatches : lookedUp).map(duplicateKey);
+    setAcknowledged((prev) => new Set([...prev, ...keys]));
+    // One click: confirm and finish create/save with the duplicate check skipped.
     if (serverMatches.length) {
       void createLead.confirmDuplicates();
       return;
     }
-    setAcknowledged((prev) => new Set([...prev, ...lookedUp.map(duplicateKey)]));
+    void createLead.submit({ force: true });
   };
 
   const submit = (andAnother = false) => void createLead.submit({ andAnother, force });
@@ -456,10 +461,6 @@ function CreateLeadForm({
   const pipeline = pipelines.find((p) => p.id === values.pipelineId);
   const stageName = pipeline?.stages.find((s) => s.id === values.stageId)?.name;
   const followUp = fromLocalInput(values.nextActivityAt);
-  const aboutSummary = [values.country, values.nationality, values.location, values.occupation]
-    .map((v) => v.trim())
-    .filter(Boolean)
-    .join(" · ");
   const salesSummary = [
     canAssignOwner && values.ownerUserId && values.ownerUserId !== user.id
       ? `Owner ${ownerName(values.ownerUserId) ?? ""}`.trim()
@@ -521,21 +522,13 @@ function CreateLeadForm({
               extractEnabled={!editing && env.features.leadScreenshotExtract}
               onApplyExtract={applyExtract}
               showScreenshot={canAttachScreenshot}
+              anzscoLabel={anzscoLabel}
             />
 
             <MoreDetailsAccordion<DetailSection>
               open={openSections}
               onToggle={toggleSection}
               sections={[
-                {
-                  id: "about",
-                  title: "About Them",
-                  icon: UserRound,
-                  summary: aboutSummary || undefined,
-                  placeholder: "Country, nationality, location and occupation",
-                  invalid: sectionInvalid("about"),
-                  content: <AboutSection anzscoLabel={anzscoLabel} />,
-                },
                 {
                   id: "sales",
                   title: "Follow-up and Ownership",

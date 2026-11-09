@@ -348,7 +348,10 @@ export const emailApi = {
       unresolved: string[];
       canSend: boolean;
     }>("/email/preview", body),
-  listTemplates: () => api.get<EmailTemplate[]>("/email/templates"),
+  listTemplates: (opts?: { includeInactive?: boolean }) => {
+    const q = opts?.includeInactive ? "?includeInactive=true" : "";
+    return api.get<EmailTemplate[]>(`/email/templates${q}`);
+  },
   createTemplate: (body: unknown) => api.post<EmailTemplate>("/email/templates", body),
   updateTemplate: (id: string, body: unknown) =>
     api.patch<EmailTemplate>(`/email/templates/${id}`, body),

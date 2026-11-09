@@ -11,6 +11,7 @@ import { DocumentViewer } from "@/features/documents/document-viewer";
 import { canAttachLeadScreenshot } from "@/features/leads/can-attach-screenshot";
 import { isFileReceivedDoc } from "@/features/pipeline/file-received";
 import { isOutcomeLetterDoc } from "@/features/pipeline/outcome-letter";
+import { isPipelineLeadDoc } from "@/features/pipeline/pipeline-lead-documents";
 import { crmApi, type CrmDocument } from "@/lib/api/crm";
 import { formatRelative } from "@/lib/relative-time";
 import { MAX_SCREENSHOT_BYTES, formatSize, namedImage } from "./lead-screenshot-field";
@@ -19,7 +20,7 @@ const hasFile = (d: CrmDocument) => Boolean(d.fileKey);
 const isScreenshot = (d: CrmDocument) =>
   d.type.toLowerCase() === "screenshot" || d.category.toLowerCase() === "screenshot";
 const isSeCardDoc = (d: CrmDocument) =>
-  isScreenshot(d) || isFileReceivedDoc(d) || isOutcomeLetterDoc(d);
+  isScreenshot(d) || isFileReceivedDoc(d) || isOutcomeLetterDoc(d) || isPipelineLeadDoc(d);
 
 export const leadDocumentsKey = (leadId: string) => ["documents", "lead", leadId];
 
@@ -45,8 +46,10 @@ export function LeadAttachments({ leadId }: { leadId: string }) {
   const screenshots = docs.filter(isScreenshot);
   const filesReceived = docs.filter(isFileReceivedDoc);
   const outcomeLetters = docs.filter(isOutcomeLetterDoc);
+  const pipelineDocs = docs.filter(isPipelineLeadDoc);
   const files = docs.filter(
-    (d) => !isScreenshot(d) && !isFileReceivedDoc(d) && !isOutcomeLetterDoc(d),
+    (d) =>
+      !isScreenshot(d) && !isFileReceivedDoc(d) && !isOutcomeLetterDoc(d) && !isPipelineLeadDoc(d),
   );
 
   const refresh = async () => {
@@ -234,6 +237,53 @@ export function LeadAttachments({ leadId }: { leadId: string }) {
               <p className="text-[12px] font-medium text-foreground-subtle">Outcome letter</p>
               <ul className="divide-y divide-border rounded-md border border-border">
                 {outcomeLetters.map((d) => (
+                  <li key={d.id} className="flex items-center gap-1 px-1.5 py-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setViewing(d)}
+                      className="flex min-w-0 flex-1 items-center gap-2.5 rounded-md px-1 py-0.5 text-left hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <FileText className="size-4 shrink-0 text-foreground-muted" aria-hidden />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[13px] font-medium text-foreground">{d.name}</span>
+                        <span className="block text-[12px] text-foreground-subtle">
+                          {[d.sizeBytes ? formatSize(d.sizeBytes) : null, d.uploadedByName].filter(Boolean).join(" · ")}
+                        </span>
+                      </span>
+                    </button>
+                    <a
+                      href={crmApi.downloadDocumentUrl(d.id)}
+                      download={d.name}
+                      aria-label={`Download ${d.name}`}
+                      className="inline-flex size-8 items-center justify-center rounded-md text-foreground-muted hover:bg-surface-muted hover:text-foreground"
+                    >
+                      <Download className="size-4" aria-hidden />
+                    </a>
+                    {canDeleteDoc(d) ? (
+                      <button
+                        type="button"
+                        aria-label={`Delete ${d.name}`}
+                        disabled={deletingId === d.id}
+                        onClick={() => void remove(d)}
+                        className="inline-flex size-8 items-center justify-center rounded-md text-foreground-muted hover:bg-danger/10 hover:text-danger"
+                      >
+                        {deletingId === d.id ? (
+                          <Loader2 className="size-4 animate-spin" aria-hidden />
+                        ) : (
+                          <X className="size-4" aria-hidden />
+                        )}
+                      </button>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {pipelineDocs.length > 0 ? (
+            <div className="space-y-1.5">
+              <p className="text-[12px] font-medium text-foreground-subtle">Documents</p>
+              <ul className="divide-y divide-border rounded-md border border-border">
+                {pipelineDocs.map((d) => (
                   <li key={d.id} className="flex items-center gap-1 px-1.5 py-1.5">
                     <button
                       type="button"

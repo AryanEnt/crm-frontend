@@ -20,26 +20,23 @@ import type { LeadBoardCard, LeadBoardStage } from "@/lib/api/crm";
 import { cn } from "@/lib/utils";
 import { ClientsEmailControl } from "./clients-email-control";
 import { ContactRatingControl } from "./contact-rating-control";
+import { isContactedStage } from "./contact-rating";
 import { DocumentDelayRemarksControl } from "./document-delay-remarks-control";
 import { NegotiationTagControl } from "./negotiation-tag-control";
 import { isNegotiationStage } from "./negotiation-tag";
+import { NextFollowUpRemarksControl } from "./next-follow-up-remarks-control";
+import { requiresNextFollowUpRemarks } from "./next-follow-up-remarks";
 import { FileReceivedControl } from "./file-received-control";
 import { isClientsStage, isFileDeliveredStage, isOutcomeStage } from "./nurturing-stages";
 import { OutcomeLetterControl } from "./outcome-letter-control";
+import { PipelineLeadDocumentsControl } from "./pipeline-lead-documents-control";
+import { showsAddDocumentSection } from "./pipeline-lead-documents";
 import { formatDate } from "./pipeline-format";
-import { OwnerAvatar } from "./pipeline-ui";
 import { formatStageAgeLabel, stageAge, type StageAgeTone } from "./stage-age";
 import { useHourlyNow } from "./use-hourly-now";
 
-const TONE_CLASS = {
-  overdue: "text-danger",
-  today: "text-warning",
-  upcoming: "text-ink-secondary",
-  none: "text-ink-muted",
-} as const;
-
 const AGE_BORDER: Record<StageAgeTone, string> = {
-  none: "border-line/70",
+  none: "border-line/80",
   ok: "border-success/55",
   warn: "border-warning/70",
   over: "border-danger/80",
@@ -68,9 +65,9 @@ const AGE_BAR: Record<StageAgeTone, string> = {
 
 const AGE_TITLE: Record<StageAgeTone, string> = {
   none: "Time in this stage",
-  ok: "On track — within stage time limit",
-  warn: "Near limit — follow up soon",
-  over: "Rotten — past stage time limit",
+  ok: "On time — within the stage limit",
+  warn: "Follow up — almost at the stage limit",
+  over: "Stuck — past the stage time limit",
 };
 
 export function LeadCard({
@@ -83,11 +80,8 @@ export function LeadCard({
   onMove,
 }: {
   lead: LeadBoardCard;
-  /** Stages offered in the "Move to" menu, which is the non-drag way to move a lead. */
   stages?: LeadBoardStage[];
-  /** The floating copy that follows the pointer while dragging. */
   overlay?: boolean;
-  /** The placeholder left in the column while its copy is being dragged. */
   dragging?: boolean;
   canEdit?: boolean;
   onOpen?: () => void;
@@ -96,7 +90,6 @@ export function LeadCard({
   const { user } = useAuth();
   const timezone = user?.timezone || undefined;
   const now = useHourlyNow();
-  // Sales Won keeps wonAt after handoff to Nurturing (status becomes open again).
   const won = lead.status === "won" || Boolean(lead.wonAt);
   const lost = lead.status === "lost";
   const closed = won || lost;
@@ -104,7 +97,28 @@ export function LeadCard({
   const stage = stages?.find((s) => s.id === lead.stageId);
   const age = stageAge(lead.stageEnteredAt, stage?.slaHours, { closed, now });
   const showMenu = !overlay && canEdit && !!stages?.length;
-  const showNegotiationTag = !overlay && isNegotiationStage(stage?.name);
+
+  const urgency = closed
+    ? "ok"
+    : tone === "overdue"
+      ? "overdue"
+      : age.tone === "over"
+        ? "stuck"
+        : tone === "today"
+          ? "today"
+          : tone === "none"
+            ? "none"
+            : age.tone === "warn"
+              ? "soon"
+              : "ok";
+
+  const needFollowUp =
+    !overlay && !closed && requiresNextFollowUpRemarks(stage?.name) && !(lead.nextFollowUpRemarks ?? "").trim();
+  const needRating = !overlay && !closed && isContactedStage(stage?.name) && !(lead.contactRating ?? 0);
+  const needNegotiation =
+    !overlay && !closed && isNegotiationStage(stage?.name) && !(lead.negotiationTag ?? "").trim();
+  const showAddDocument =
+    !overlay && showsAddDocumentSection(stage?.name ?? (lost ? "Lost" : won ? "Purchased" : null), lead.status);
   const showClientsEmail = !overlay && isClientsStage(stage?.name) && !!stages?.length;
   const showFileReceived = !overlay && isFileDeliveredStage(stage?.name);
   const showOutcomeLetter = !overlay && isOutcomeStage(stage?.name);
@@ -113,31 +127,51 @@ export function LeadCard({
     <article
       onClick={overlay ? undefined : onOpen}
       className={cn(
-        "relative overflow-hidden rounded-card border bg-surface p-3 shadow-card",
+        "relative overflow-hidden rounded-xl border bg-surface p-3.5 shadow-xs",
         "transition-[box-shadow,border-color,background-color,opacity] duration-150 motion-reduce:transition-none",
-        "group-hover/card:border-line-strong group-hover/card:shadow-lift",
-        AGE_BORDER[age.tone],
-        AGE_SURFACE[age.tone],
-        overlay && "cursor-grabbing border-line-strong shadow-lift",
+        "group-hover/card:border-line-strong group-hover/card:shadow-card",
+        urgency === "overdue" || urgency === "stuck"
+          ? "border-danger/70 bg-danger-soft/40"
+          : urgency === "today"
+            ? "border-warning/60 bg-warning-soft/40"
+            : AGE_BORDER[age.tone],
+        urgency === "overdue" || urgency === "stuck" || urgency === "today" ? "" : AGE_SURFACE[age.tone],
+        overlay && "cursor-grabbing border-line-strong shadow-card",
         dragging && "opacity-40",
       )}
     >
-      {age.tone !== "none" ? (
+      {age.tone !== "none" && urgency !== "overdue" ? (
         <span aria-hidden className="absolute inset-x-0 top-0 h-1 bg-surface-muted/80">
           <span
-            className={cn("block h-full transition-[width] duration-300 motion-reduce:transition-none", AGE_BAR[age.tone])}
+            className={cn(
+              "block h-full transition-[width] duration-300 motion-reduce:transition-none",
+              AGE_BAR[age.tone],
+            )}
             style={{ width: `${Math.max(12, age.fillPercent)}%` }}
           />
         </span>
-      ) : null}
+      ) : (
+        <span
+          aria-hidden
+          className={cn(
+            "absolute inset-y-0 left-0 w-1",
+            urgency === "overdue" || urgency === "stuck"
+              ? "bg-danger"
+              : urgency === "today"
+                ? "bg-warning"
+                : "bg-transparent",
+          )}
+        />
+      )}
+
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[0.875rem] font-semibold leading-5 text-ink">{lead.fullName}</p>
+          <p className="truncate text-[0.9375rem] font-semibold leading-5 text-ink">{lead.fullName}</p>
           {lead.employer ? <p className="truncate text-caption text-ink-muted">{lead.employer}</p> : null}
         </div>
         {showMenu ? (
           <div
-            className="-mr-1 -mt-1 opacity-0 transition-opacity duration-150 group-hover/card:opacity-100 group-focus-within/card:opacity-100 motion-reduce:transition-none pointer-coarse:opacity-100"
+            className="-mr-1 -mt-1"
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => e.stopPropagation()}
@@ -147,68 +181,87 @@ export function LeadCard({
         ) : null}
       </div>
 
-      <div className="mt-2.5 flex items-center gap-2">
-        <span
-          className={cn("text-[0.875rem] font-semibold tabular-nums", lead.potentialValue == null && "font-normal text-ink-muted")}
-          title={lead.potentialValue != null ? "Estimated value" : "No estimate yet"}
-        >
-          {lead.potentialValue != null ? formatLeadMoney(lead.potentialValue, lead.currency) : "No estimate"}
-        </span>
-        <span className="ml-auto flex min-w-0 items-center gap-1.5">
-          {age.tone === "over" ? (
-            <span className="inline-flex shrink-0 items-center rounded-full bg-danger-soft px-1.5 py-px text-[0.625rem] font-semibold uppercase tracking-wide text-danger">
-              Rotten
-            </span>
-          ) : age.tone === "warn" ? (
-            <span className="inline-flex shrink-0 items-center rounded-full bg-warning-soft px-1.5 py-px text-[0.625rem] font-semibold uppercase tracking-wide text-warning">
-              Soon
-            </span>
-          ) : null}
-          <span
-            className={cn("max-w-[9.5rem] truncate text-caption tabular-nums", AGE_DAYS[age.tone])}
-            title={`${AGE_TITLE[age.tone]} · ${formatStageAgeLabel(age)}`}
+      <div className="mt-2.5">
+        {lost ? (
+          <p className="truncate text-caption text-ink-muted">
+            Lost{lead.lostReason ? ` · ${lead.lostReason}` : ""}
+          </p>
+        ) : won ? (
+          <p className="truncate text-caption text-ink-muted">{`Purchased ${formatDate(lead.wonAt)}`}</p>
+        ) : lead.documentDeadlineAt ? (
+          <p
+            className={cn(
+              "flex items-center gap-1.5 text-[0.8125rem] font-medium",
+              nextActionTone(lead.documentDeadlineAt, timezone) === "overdue"
+                ? "text-danger"
+                : nextActionTone(lead.documentDeadlineAt, timezone) === "today"
+                  ? "text-warning"
+                  : "text-ink-secondary",
+            )}
           >
-            {formatStageAgeLabel(age)}
-          </span>
-        </span>
-        <OwnerAvatar id={lead.ownerUserId} name={lead.ownerName} />
+            <CalendarClock className="size-3.5 shrink-0" aria-hidden />
+            <span className="truncate">{formatDocumentDeadline(lead.documentDeadlineAt, timezone)}</span>
+          </p>
+        ) : (
+          <p
+            className={cn(
+              "flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[0.8125rem]",
+              urgency === "overdue" && "bg-danger-soft font-medium text-danger",
+              urgency === "today" && "bg-warning-soft font-medium text-warning",
+              urgency === "none" && "border border-dashed border-warning/50 bg-warning-soft/40 font-medium text-warning",
+              (urgency === "ok" || urgency === "soon" || urgency === "stuck") && "bg-surface-muted/60 text-ink-secondary",
+            )}
+          >
+            <CalendarClock className="size-3.5 shrink-0" aria-hidden />
+            <span className="truncate">
+              {formatNextAction(lead.nextActivityAt, timezone)}
+              {tone !== "none" && lead.nextActivityTitle ? ` · ${lead.nextActivityTitle}` : ""}
+            </span>
+          </p>
+        )}
       </div>
 
-      {lost ? (
-        <p className="mt-2 truncate text-caption text-stage-lost-ink">
-          {`Lost${lead.lostReason ? ` · ${lead.lostReason}` : ` ${formatDate(lead.lostAt)}`}`}
-        </p>
-      ) : won ? (
-        <p className="mt-2 truncate text-caption text-stage-won-ink">{`Purchased ${formatDate(lead.wonAt)}`}</p>
-      ) : null}
-      {!lost && lead.documentDeadlineAt ? (
-        <p
-          className={cn(
-            "mt-2 flex min-w-0 items-center gap-1.5 text-caption",
-            TONE_CLASS[nextActionTone(lead.documentDeadlineAt, timezone)],
-          )}
-        >
-          <CalendarClock className="size-3.5 shrink-0" aria-hidden />
-          <span className="truncate font-medium">{formatDocumentDeadline(lead.documentDeadlineAt, timezone)}</span>
-        </p>
-      ) : !closed ? (
-        <p className={cn("mt-2 flex min-w-0 items-center gap-1.5 text-caption", TONE_CLASS[tone])}>
-          <CalendarClock className="size-3.5 shrink-0" aria-hidden />
-          <span className="truncate">
-            <span className={cn(tone !== "none" && "font-medium")}>{formatNextAction(lead.nextActivityAt, timezone)}</span>
-            {tone !== "none" && lead.nextActivityTitle ? (
-              <span className="text-ink-muted"> · {lead.nextActivityTitle}</span>
-            ) : null}
+      {!closed ? (
+        <div className="mt-2 flex items-center gap-2">
+          <span
+            className={cn(
+              "text-caption tabular-nums text-ink-secondary",
+              lead.potentialValue == null && "text-ink-muted",
+            )}
+          >
+            {lead.potentialValue != null ? formatLeadMoney(lead.potentialValue, lead.currency) : "No value yet"}
           </span>
-        </p>
+          <span className="ml-auto flex min-w-0 items-center gap-1.5">
+            {urgency === "stuck" ? (
+              <span className="inline-flex shrink-0 items-center rounded-full bg-danger-soft px-1.5 py-px text-[0.6875rem] font-medium text-danger">
+                Stuck
+              </span>
+            ) : urgency === "soon" ? (
+              <span className="inline-flex shrink-0 items-center rounded-full bg-warning-soft px-1.5 py-px text-[0.6875rem] font-medium text-warning">
+                Follow up
+              </span>
+            ) : null}
+            <span
+              className={cn("max-w-[9.5rem] truncate text-caption tabular-nums", AGE_DAYS[age.tone])}
+              title={`${AGE_TITLE[age.tone]} · ${formatStageAgeLabel(age)}`}
+            >
+              {formatStageAgeLabel(age)}
+            </span>
+          </span>
+        </div>
       ) : null}
-      {showNegotiationTag ? <NegotiationTagControl lead={lead} canEdit={!!canEdit} /> : null}
-      {!overlay ? (
-        <ContactRatingControl lead={lead} stageName={stage?.name} canEdit={!!canEdit} />
+
+      {needFollowUp ? <NextFollowUpRemarksControl lead={lead} stageName={stage?.name} canEdit={!!canEdit} /> : null}
+      {needRating ? <ContactRatingControl lead={lead} stageName={stage?.name} canEdit={!!canEdit} /> : null}
+      {needNegotiation ? <NegotiationTagControl lead={lead} canEdit={!!canEdit} /> : null}
+      {showAddDocument ? (
+        <PipelineLeadDocumentsControl
+          lead={lead}
+          stageName={stage?.name ?? (lost ? "Lost" : won ? "Purchased" : null)}
+          canEdit={!!canEdit}
+        />
       ) : null}
-      {showClientsEmail ? (
-        <ClientsEmailControl lead={lead} stages={stages!} canEdit={!!canEdit} />
-      ) : null}
+      {showClientsEmail ? <ClientsEmailControl lead={lead} stages={stages!} canEdit={!!canEdit} /> : null}
       {showFileReceived ? <FileReceivedControl lead={lead} canEdit={!!canEdit} /> : null}
       {showOutcomeLetter ? <OutcomeLetterControl lead={lead} canEdit={!!canEdit} /> : null}
       {!overlay ? <DocumentDelayRemarksControl lead={lead} canEdit={!!canEdit} /> : null}
@@ -227,7 +280,6 @@ function MoveMenu({
 }) {
   const open = stages.filter((s) => !s.isWon && !s.isLost);
   const outcomes = stages.filter((s) => s.isWon || s.isLost);
-  // Nurturing has an Outcome stage and no Lost; sales has Purchased + Lost.
   const completeOnly = outcomes.some((s) => s.isWon) && !outcomes.some((s) => s.isLost);
   return (
     <DropdownMenu>
@@ -235,7 +287,7 @@ function MoveMenu({
         <button
           type="button"
           className="inline-flex size-7 items-center justify-center rounded-full text-ink-muted hover:bg-surface-muted hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          aria-label={`Move ${lead.fullName} to another stage`}
+          aria-label={`Move ${lead.fullName}`}
         >
           <MoreHorizontal className="size-4" aria-hidden />
         </button>

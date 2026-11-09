@@ -48,6 +48,8 @@ import { ActivityQuickCreateDialog } from "@/features/activities/activity-quick-
 import { leadMovedMessage } from "@/features/activities/lead-moved";
 import { contactRatingLabel, isContactedStage } from "@/features/pipeline/contact-rating";
 import { ContactRatingControl } from "@/features/pipeline/contact-rating-control";
+import { requiresNextFollowUpRemarks } from "@/features/pipeline/next-follow-up-remarks";
+import { NextFollowUpRemarksControl } from "@/features/pipeline/next-follow-up-remarks-control";
 import { useAuth } from "@/features/auth/auth-provider";
 import { CommunicationActions } from "@/features/communications/communication-actions";
 import { EmailComposer } from "@/features/email/email-composer";
@@ -68,7 +70,7 @@ import { LeadHistory } from "@/features/leads/lead-history";
 import { useLeadMove } from "@/features/leads/lead-move";
 import { UnifiedTimeline } from "@/features/timeline/unified-timeline";
 import { Textarea } from "@/components/ui/console/textarea";
-import { crmApi, type Activity, type CrmDocument, type Lead, type PipelineStage } from "@/lib/api/crm";
+import { crmApi, type Activity, type CrmDocument, type Lead, type LeadBoardCard, type PipelineStage } from "@/lib/api/crm";
 import { emailApi } from "@/lib/api/email";
 import { stageBadgeClass } from "@/lib/design-tokens";
 import { cn } from "@/lib/utils";
@@ -76,6 +78,36 @@ import { cn } from "@/lib/utils";
 function formatDate(iso?: string | null) {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+}
+
+function toBoardCard(lead: Lead): LeadBoardCard {
+  return {
+    id: lead.id,
+    fullName: lead.fullName,
+    employer: lead.employer ?? "",
+    phone: lead.phone ?? null,
+    email: lead.email ?? null,
+    potentialValue: lead.potentialValue ?? null,
+    currency: lead.currency ?? "AUD",
+    stageId: lead.stageId ?? null,
+    status: lead.status,
+    ownerUserId: lead.ownerUserId ?? null,
+    ownerName: lead.ownerName ?? null,
+    priority: lead.priority,
+    tags: lead.tags ?? [],
+    lastActivityAt: lead.lastActivityAt ?? null,
+    nextActivityAt: lead.nextActivityAt ?? null,
+    nextActivityTitle: null,
+    nextActivityType: null,
+    expectedCloseAt: lead.expectedCloseAt ?? null,
+    stageEnteredAt: lead.stageEnteredAt ?? lead.createdAt,
+    wonAt: lead.wonAt ?? null,
+    lostAt: lead.lostAt ?? null,
+    lostReason: lead.lostReason ?? "",
+    contactRating: lead.contactRating ?? null,
+    contactRemarks: lead.contactRemarks ?? "",
+    nextFollowUpRemarks: lead.nextFollowUpRemarks ?? "",
+  };
 }
 
 const OPEN_ACTIVITY = new Set(["upcoming", "due", "overdue"]);
@@ -138,7 +170,7 @@ export function LeadDetailPanel({
       }}
     >
       <DrawerContent
-        className="max-w-full bg-surface shadow-[-12px_0_32px_rgba(42,40,56,0.08)] sm:max-w-[600px]"
+        className="max-w-full bg-surface shadow-[-12px_0_32px_rgba(42,40,56,0.08)] sm:max-w-[560px]"
         aria-describedby={undefined}
         onInteractOutside={(e) => {
           if (editOpen) e.preventDefault();
@@ -287,71 +319,60 @@ function PanelBody({
     requestStage(wonStage, !nurturing && estimateAmount != null ? { closingAmount: estimateAmount } : undefined);
   };
 
+  const phoneHref = lead.phone ? `tel:${lead.phone.replace(/[^\d+]/g, "")}` : undefined;
+
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="shrink-0 border-b border-line px-5 pb-4 pt-5 pr-12">
+      <header className="shrink-0 border-b border-line/80 px-5 pb-4 pt-5 pr-12">
         <div className="flex items-start gap-3">
           <Avatar name={lead.fullName} size="lg" />
           <div className="min-w-0 flex-1">
-            <DrawerTitle className="truncate text-lg">{lead.fullName}</DrawerTitle>
-            <DrawerDescription className="truncate">
-              {[lead.employer, lead.jobTitle].filter(Boolean).join(" · ") || lead.source || "Lead"}
+            <div className="flex items-start justify-between gap-3">
+              <DrawerTitle className="min-w-0 truncate text-[1.125rem] font-semibold tracking-tight text-ink">
+                {lead.fullName}
+              </DrawerTitle>
+              {lead.status === "won" && lead.potentialValue != null ? (
+                <p className="shrink-0 text-body font-semibold tabular-nums text-ink">
+                  {formatLeadMoney(lead.potentialValue, lead.currency)}
+                </p>
+              ) : (
+                <EstimatedValueEditor
+                  leadId={lead.id}
+                  value={lead.potentialValue}
+                  currency={lead.currency}
+                  canEdit={canEdit && !closed}
+                  onSaved={refresh}
+                  compact
+                  className="shrink-0"
+                />
+              )}
+            </div>
+            <DrawerDescription className="mt-0.5 truncate text-caption text-ink-muted">
+              {[lead.employer, lead.jobTitle].filter(Boolean).join(" · ") || "Lead"}
             </DrawerDescription>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {stage ? <StagePill stage={stage} stages={stages} /> : lead.stageName ? <span className="text-caption text-ink-secondary">{lead.stageName}</span> : null}
+              {lead.wonAt && lead.status !== "lost" ? (
+                <span className="rounded-full bg-stage-won-soft px-2 py-0.5 text-caption font-medium text-stage-won-ink">
+                  Purchased {formatDate(lead.wonAt)}
+                </span>
+              ) : null}
+              <span className="inline-flex items-center gap-1.5 text-caption text-ink-muted">
+                {lead.ownerName ? <Avatar name={lead.ownerName} size="sm" className="size-4 text-[0.5rem]" /> : null}
+                {lead.ownerName ?? "Unassigned"}
+              </span>
+              <PhoneValidationBadge lead={lead} />
+            </div>
           </div>
         </div>
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-meta">
-          {stage ? <StagePill stage={stage} stages={stages} /> : lead.stageName ? <span>{lead.stageName}</span> : null}
-          {lead.wonAt && lead.status !== "lost" ? (
-            <span className="rounded-md bg-stage-won-soft px-1.5 py-0.5 text-caption font-medium text-stage-won-ink">
-              Purchased {formatDate(lead.wonAt)}
-            </span>
-          ) : null}
-          {lead.status === "won" && lead.potentialValue != null ? (
-            <span className="tabular-nums text-ink">
-              Closed at {formatLeadMoney(lead.potentialValue, lead.currency)}
-            </span>
-          ) : (
-            <EstimatedValueEditor
-              leadId={lead.id}
-              value={lead.potentialValue}
-              currency={lead.currency}
-              canEdit={canEdit && !closed}
-              onSaved={refresh}
-              compact
-            />
-          )}
-          <span aria-hidden className="text-ink-subtle">
-            ·
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            {lead.ownerName ? <Avatar name={lead.ownerName} size="sm" className="size-5 text-[0.55rem]" /> : null}
-            {lead.ownerName ?? "Unassigned"}
-          </span>
-          <PhoneValidationBadge lead={lead} />
-        </div>
 
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button size="sm" variant="outline" disabled={!lead.phone && !can("activities:create")}>
-                <Phone className="size-3.5" />
-                Call
-                <ChevronDown className="size-3 opacity-60" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-52">
-              {lead.phone ? (
-                <DropdownMenuItem asChild>
-                  <a href={`tel:${lead.phone.replace(/[^\d+]/g, "")}`}>Dial {lead.phone}</a>
-                </DropdownMenuItem>
-              ) : (
-                <DropdownMenuItem disabled>No phone number</DropdownMenuItem>
-              )}
-              {can("activities:create") ? (
-                <DropdownMenuItem onSelect={() => setActivityOpen({ type: "call" })}>Log a call</DropdownMenuItem>
-              ) : null}
-            </DropdownMenuContent>
-          </DropdownMenu>
+        <div className="mt-3.5 flex flex-wrap items-center gap-1.5">
+          {canEdit ? (
+            <Button size="sm" variant="outline" onClick={() => onEditOpenChange(true)}>
+              <Pencil className="size-3.5" />
+              Edit details
+            </Button>
+          ) : null}
           {emailAccount && can("email:send") ? (
             <Button size="sm" variant="outline" onClick={() => setEmailOpen(true)}>
               <Mail className="size-3.5" />
@@ -365,7 +386,7 @@ function PanelBody({
               </a>
             </Button>
           ) : (
-            <Button size="sm" variant="outline" disabled title="No email address">
+            <Button size="sm" variant="outline" disabled>
               <Mail className="size-3.5" />
               Email
             </Button>
@@ -373,33 +394,34 @@ function PanelBody({
           {can("activities:create") ? (
             <Button size="sm" variant="outline" onClick={() => setActivityOpen({})}>
               <CalendarPlus className="size-3.5" />
-              Add activity
-            </Button>
-          ) : null}
-          {canEdit ? (
-            <Button size="sm" variant="outline" onClick={() => onEditOpenChange(true)}>
-              <Pencil className="size-3.5" />
-              Edit details
+              Activity
             </Button>
           ) : null}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button size="sm" variant="ghost" aria-label="More actions">
                 <MoreHorizontal className="size-4" />
-                More
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
-              {canEdit ? (
-                <DropdownMenuItem onSelect={() => onEditOpenChange(true)}>
-                  <Pencil className="size-3.5" />
-                  Edit details
+              {phoneHref ? (
+                <DropdownMenuItem asChild>
+                  <a href={phoneHref}>
+                    <Phone className="size-3.5" />
+                    Call
+                  </a>
+                </DropdownMenuItem>
+              ) : null}
+              {can("activities:create") && lead.phone ? (
+                <DropdownMenuItem onSelect={() => setActivityOpen({ type: "call" })}>
+                  <Phone className="size-3.5" />
+                  Log a call
                 </DropdownMenuItem>
               ) : null}
               {can("communications:send") ? (
                 <DropdownMenuItem onSelect={() => setMessagingOpen(true)}>
                   <MessageCircle className="size-3.5" />
-                  WhatsApp &amp; phone calls
+                  WhatsApp &amp; phone
                 </DropdownMenuItem>
               ) : null}
               {can("leads:delete") ? (
@@ -421,24 +443,12 @@ function PanelBody({
       </header>
 
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4 crm-scroll">
-        {stages.length > 0 ? (
-          <StageStepper
-            stages={stages}
-            currentId={lead.stageId ?? null}
-            lead={lead}
-            canEdit={canEdit}
-            busy={move.isPending}
-            showCloseActions={false}
-            onSelect={requestStage}
-          />
-        ) : null}
-
-        {!closed && deadlineQuery.data?.expiryDate ? (
+        {nurturing && !closed && deadlineQuery.data?.expiryDate ? (
           <DocumentDeadlineCard
             lead={lead}
             doc={deadlineQuery.data}
             timezone={user?.timezone || undefined}
-            nurturing={isNurturingPipeline(lead.pipelineId)}
+            nurturing
             canEdit={canEdit}
             canViewFiles={can("documents:view")}
             onOpenFiles={() => setDetailTab("files")}
@@ -461,74 +471,90 @@ function PanelBody({
           />
         ) : null}
 
-        <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3">
-          <div className="min-w-0 sm:col-span-1">
-            {lead.status === "won" && lead.potentialValue != null ? (
-              <Fact label="Closed at" value={formatLeadMoney(lead.potentialValue, lead.currency)} />
-            ) : (
-              <EstimatedValueEditor
-                leadId={lead.id}
-                value={lead.potentialValue}
-                currency={lead.currency}
-                canEdit={canEdit && !closed}
-                onSaved={refresh}
-              />
-            )}
-          </div>
-          <Fact label="Probability" value={lead.probability != null ? `${lead.probability}%` : "—"} />
-          <Fact label="Expected close" value={formatDate(lead.expectedCloseAt)} />
-          <Fact label="Source" value={lead.source || "—"} />
-          <Fact label="In stage" value={`${lead.daysInStage ?? daysSince(lead.stageEnteredAt)}d`} />
-          <Fact label="Created" value={formatDate(lead.createdAt)} />
-        </dl>
-
-        {isContactedStage(lead.stageName) || (lead.contactRating != null && lead.contactRating >= 1) ? (
-          <section aria-label="Contact rating" className="space-y-1.5">
-            <p className="text-label">Contact rating</p>
-            {isContactedStage(lead.stageName) ? (
-              <ContactRatingControl
-                lead={{
-                  id: lead.id,
-                  fullName: lead.fullName,
-                  employer: lead.employer ?? "",
-                  phone: lead.phone ?? null,
-                  email: lead.email ?? null,
-                  potentialValue: lead.potentialValue ?? null,
-                  currency: lead.currency ?? "AUD",
-                  stageId: lead.stageId ?? null,
-                  status: lead.status,
-                  ownerUserId: lead.ownerUserId ?? null,
-                  ownerName: lead.ownerName ?? null,
-                  priority: lead.priority,
-                  tags: lead.tags ?? [],
-                  lastActivityAt: lead.lastActivityAt ?? null,
-                  nextActivityAt: lead.nextActivityAt ?? null,
-                  nextActivityTitle: null,
-                  nextActivityType: null,
-                  expectedCloseAt: lead.expectedCloseAt ?? null,
-                  stageEnteredAt: lead.stageEnteredAt ?? lead.createdAt,
-                  wonAt: lead.wonAt ?? null,
-                  lostAt: lead.lostAt ?? null,
-                  lostReason: lead.lostReason ?? "",
-                  contactRating: lead.contactRating ?? null,
-                  contactRemarks: lead.contactRemarks ?? "",
-                }}
-                stageName={lead.stageName}
-                canEdit={canEdit}
-              />
-            ) : (
-              <p className="text-body text-ink">
-                {contactRatingLabel(lead.contactRating, lead.contactRemarks ?? "") || "—"}
-                {lead.contactRatedByName ? (
-                  <span className="text-meta text-ink-muted"> · {lead.contactRatedByName}</span>
-                ) : null}
-              </p>
-            )}
-          </section>
+        {!nurturing && !closed && deadlineQuery.data?.expiryDate ? (
+          <DocumentDeadlineCard
+            lead={lead}
+            doc={deadlineQuery.data}
+            timezone={user?.timezone || undefined}
+            nurturing={false}
+            canEdit={canEdit}
+            canViewFiles={can("documents:view")}
+            onOpenFiles={() => setDetailTab("files")}
+            onRemarksSaved={() => refresh()}
+          />
         ) : null}
 
+        {stages.length > 0 ? (
+          <StageStepper
+            stages={stages}
+            currentId={lead.stageId ?? null}
+            lead={lead}
+            canEdit={canEdit}
+            busy={move.isPending}
+            showCloseActions={false}
+            onSelect={requestStage}
+          />
+        ) : null}
+
+        <section aria-label="Lead details" className="rounded-xl border border-line/80 bg-surface-muted/25 p-4">
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-3.5">
+            <div className="min-w-0">
+              {lead.status === "won" && lead.potentialValue != null ? (
+                <Fact label="Closed at" value={formatLeadMoney(lead.potentialValue, lead.currency)} />
+              ) : (
+                <EstimatedValueEditor
+                  leadId={lead.id}
+                  value={lead.potentialValue}
+                  currency={lead.currency}
+                  canEdit={canEdit && !closed}
+                  onSaved={refresh}
+                  quiet
+                />
+              )}
+            </div>
+            <Fact label="Probability" value={lead.probability != null ? `${lead.probability}%` : "—"} />
+            <Fact label="Expected close" value={formatDate(lead.expectedCloseAt)} />
+            <Fact label="Source" value={lead.source || "—"} />
+            <Fact label="Time in stage" value={`${lead.daysInStage ?? daysSince(lead.stageEnteredAt)}d`} />
+            <Fact label="Created" value={formatDate(lead.createdAt)} />
+          </dl>
+
+          {isContactedStage(lead.stageName) || (lead.contactRating != null && lead.contactRating >= 1) ? (
+            <div className="mt-4 border-t border-line/70 pt-3.5">
+              <p className="text-caption font-medium text-ink-muted">Contact rating</p>
+              {isContactedStage(lead.stageName) ? (
+                <ContactRatingControl
+                  lead={toBoardCard(lead)}
+                  stageName={lead.stageName}
+                  canEdit={canEdit}
+                  layout="panel"
+                />
+              ) : (
+                <p className="mt-1 text-body text-ink">
+                  {contactRatingLabel(lead.contactRating, lead.contactRemarks ?? "") || "—"}
+                  {lead.contactRatedByName ? (
+                    <span className="text-caption text-ink-muted"> · {lead.contactRatedByName}</span>
+                  ) : null}
+                </p>
+              )}
+            </div>
+          ) : null}
+
+          {requiresNextFollowUpRemarks(lead.stageName) || (lead.nextFollowUpRemarks ?? "").trim() ? (
+            <div className="mt-4 border-t border-line/70 pt-3.5">
+              <p className="text-caption font-medium text-ink-muted">Follow-up plan</p>
+              <NextFollowUpRemarksControl
+                lead={toBoardCard(lead)}
+                stageName={lead.stageName}
+                canEdit={canEdit}
+                layout="panel"
+              />
+            </div>
+          ) : null}
+        </section>
+
         <Tabs value={detailTab} onValueChange={setDetailTab}>
-          <TabsList>
+          <TabsList className="h-9 w-full justify-start overflow-x-auto">
             <TabsTrigger value="timeline">Timeline</TabsTrigger>
             {(can("email:view") || can("email:send")) ? <TabsTrigger value="emails">Emails</TabsTrigger> : null}
             <TabsTrigger value="history">Stage history</TabsTrigger>
@@ -661,7 +687,8 @@ function StageStepper({
   const completeLabel = won?.name?.trim() || "Outcome";
 
   return (
-    <section aria-label="Stage" className="space-y-2.5">
+    <section aria-label="Stage" className="space-y-2">
+      <p className="text-caption font-medium uppercase tracking-wide text-ink-muted">Pipeline</p>
       <ol className="flex gap-1">
         {open.map((s, i) => {
           const reached = !closed && currentIdx >= 0 && i <= currentIdx;
@@ -808,15 +835,17 @@ function DocumentDeadlineCard({
     <section
       aria-label="Document deadline"
       className={cn(
-        "rounded-card border p-4",
+        "rounded-xl border px-4 py-3.5",
         copy.tone === "overdue"
-          ? "border-danger/30 bg-danger-soft/40"
+          ? "border-danger/30 bg-danger-soft/35"
           : copy.tone === "today"
-            ? "border-warning/30 bg-warning-soft/50"
-            : "border-brand/25 bg-brand-soft/40",
+            ? "border-warning/30 bg-warning-soft/40"
+            : "border-brand/25 bg-brand-soft/35",
       )}
     >
-      <p className="text-label">{nurturing ? "Send documents by" : "Document send-by date"}</p>
+      <p className="text-caption font-medium uppercase tracking-wide text-ink-muted">
+        {nurturing ? "Send documents by" : "Document send-by"}
+      </p>
       <div className="mt-1.5 flex flex-wrap items-center gap-3">
         <FileText
           className={cn(
@@ -920,33 +949,38 @@ function NextActionCard({
     <section
       aria-label="Next action"
       className={cn(
-        "rounded-card border p-4",
+        "rounded-xl border px-4 py-3.5",
         !scheduled && !loading
-          ? "border-warning/30 bg-warning-soft/50"
+          ? "border-warning/35 bg-warning-soft/40"
           : tone === "overdue"
-            ? "border-danger/30 bg-danger-soft/40"
-            : "border-line bg-surface-muted/40",
+            ? "border-danger/30 bg-danger-soft/35"
+            : "border-line/80 bg-surface",
       )}
     >
-      <p className="text-label">Next action</p>
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-caption font-medium uppercase tracking-wide text-ink-muted">Next action</p>
+        {scheduled && tone === "overdue" ? (
+          <span className="rounded-full bg-danger-soft px-2 py-0.5 text-caption font-medium text-danger">Overdue</span>
+        ) : null}
+      </div>
       {loading ? (
-        <p className="mt-1.5 text-meta">Loading…</p>
+        <p className="mt-2 text-caption text-ink-muted">Loading…</p>
       ) : scheduled ? (
-        <div className="mt-1.5 flex flex-wrap items-center gap-3">
+        <div className="mt-2 flex flex-wrap items-center gap-3">
           <CalendarClock
-            className={cn("size-5 shrink-0", tone === "overdue" ? "text-danger" : "text-brand")}
+            className={cn("size-4 shrink-0", tone === "overdue" ? "text-danger" : "text-brand")}
             aria-hidden
           />
           <div className="min-w-0 flex-1">
             <p className="truncate text-body font-medium text-ink">
               {activity?.title || activity?.typeName || "Follow up"}
             </p>
-            <p className={cn("text-meta", tone === "overdue" && "text-danger")}>
+            <p className={cn("text-caption", tone === "overdue" ? "text-danger" : "text-ink-muted")}>
               {formatNextAction(at, timezone)}
               {activity?.typeName && activity.title ? ` · ${activity.typeName}` : ""}
             </p>
           </div>
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <div className="flex shrink-0 items-center gap-1.5">
             {canComplete ? (
               <Button
                 size="sm"
@@ -959,20 +993,19 @@ function NextActionCard({
               </Button>
             ) : null}
             {canCreate ? (
-              <Button size="sm" variant="outline" onClick={onReset}>
+              <Button size="sm" variant="ghost" onClick={onReset} aria-label="Reschedule">
                 <RotateCcw className="size-3.5" />
-                Reset
               </Button>
             ) : null}
           </div>
         </div>
       ) : (
-        <div className="mt-1.5 flex flex-wrap items-center gap-3">
-          <p className="flex-1 text-body text-ink">No next action scheduled</p>
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <p className="flex-1 text-body text-ink-secondary">Nothing booked — set a follow-up so this lead stays moving.</p>
           {canCreate ? (
             <Button size="sm" onClick={onSchedule}>
               <CalendarPlus className="size-3.5" />
-              Schedule next
+              Schedule
             </Button>
           ) : null}
         </div>
@@ -984,7 +1017,7 @@ function NextActionCard({
 function Fact({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="min-w-0">
-      <dt className="text-label">{label}</dt>
+      <dt className="text-caption font-medium text-ink-muted">{label}</dt>
       <dd className="mt-0.5 truncate text-body text-ink">{value}</dd>
     </div>
   );

@@ -31,8 +31,6 @@ export function PipelineViewToggle({
               onChange({
                 ...filters,
                 view: value,
-                // Stage filter is table-only; drop it when returning to the board.
-                stage: value === "board" ? "" : filters.stage,
                 page: 1,
               })
             }

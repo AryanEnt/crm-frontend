@@ -13,6 +13,7 @@ import {
 import { useAuth } from "@/features/auth/auth-provider";
 import { crmApi, type LeadBoard, type LeadBoardStage } from "@/lib/api/crm";
 import { closedInterval } from "./closed-range";
+import { readPipelineStageSorts, writePipelineStageSorts } from "./pipeline-default-filters";
 import {
   boardParams,
   closedListParams,
@@ -21,10 +22,11 @@ import {
   type BoardSortKey,
   type PipelineFilters,
   type SortOrder,
+  type StageBoardSort,
 } from "./pipeline-filters";
 import { derivePipelineTotals, statusCounts } from "./pipeline-totals";
 
-export type StageBoardSort = { sort: BoardSortKey; order: SortOrder };
+export type { StageBoardSort };
 
 export const CLOSED_PAGE_SIZE = 25;
 
@@ -127,7 +129,8 @@ export function usePipelineLeads(filters: PipelineFilters, closedPageSize = CLOS
     queryKey: ["leads", "pipeline-open", openQs],
     queryFn: () => crmApi.listLeads(new URLSearchParams(openQs)),
     enabled: openQs !== "",
-    placeholderData: (prev) => prev,
+    // Keep prior rows when paging; do not reuse an unfiltered list once a stage is selected.
+    placeholderData: filters.stage ? undefined : (prev) => prev,
   });
 
   const clearPending = React.useCallback(
@@ -180,11 +183,32 @@ export function usePipelineLeads(filters: PipelineFilters, closedPageSize = CLOS
   /** Per-stage sort overrides; when absent, the column uses the global board sort. */
   const [stageSorts, setStageSorts] = React.useState<Record<string, StageBoardSort>>({});
   const [sortingStage, setSortingStage] = React.useState<string | null>(null);
+  const stageSortUserId = user?.id ?? "";
+  const skipPersistStageSorts = React.useRef(true);
+  const boardSortKey = `${filters.boardSort}:${filters.boardOrder}`;
+  const prevBoardSortKey = React.useRef(boardSortKey);
+
+  React.useEffect(() => {
+    skipPersistStageSorts.current = true;
+    setStageSorts(readPipelineStageSorts(stageSortUserId, pipelineId));
+  }, [pipelineId, stageSortUserId]);
 
   // Global sort changes clear funnel-wise overrides so columns stay in sync.
   React.useEffect(() => {
+    if (prevBoardSortKey.current === boardSortKey) return;
+    prevBoardSortKey.current = boardSortKey;
+    skipPersistStageSorts.current = false;
     setStageSorts({});
-  }, [filters.boardSort, filters.boardOrder, pipelineId]);
+  }, [boardSortKey]);
+
+  React.useEffect(() => {
+    if (skipPersistStageSorts.current) {
+      skipPersistStageSorts.current = false;
+      return;
+    }
+    if (!stageSortUserId || !pipelineId) return;
+    writePipelineStageSorts(stageSortUserId, pipelineId, stageSorts);
+  }, [pipelineId, stageSortUserId, stageSorts]);
 
   const stageSortParams = React.useCallback(
     (stageId: string) => {
@@ -218,6 +242,44 @@ export function usePipelineLeads(filters: PipelineFilters, closedPageSize = CLOS
     },
     [boardKey, qc, stageSortParams],
   );
+
+  const appliedStageSorts = React.useRef("");
+  React.useEffect(() => {
+    const stamp = `${boardKey.join("|")}:${JSON.stringify(stageSorts)}`;
+    if (appliedStageSorts.current === stamp) return;
+    if (!boardQuery.isSuccess || !boardQuery.data) return;
+    const ids = Object.keys(stageSorts);
+    if (ids.length === 0) {
+      appliedStageSorts.current = stamp;
+      return;
+    }
+    appliedStageSorts.current = stamp;
+    let cancelled = false;
+    void (async () => {
+      for (const stageId of ids) {
+        const next = stageSorts[stageId];
+        if (!next) continue;
+        try {
+          const p = new URLSearchParams(boardQs);
+          p.set("stageId", stageId);
+          p.set("offset", "0");
+          p.set("sort", next.sort);
+          p.set("order", next.order);
+          const page = await crmApi.getLeadBoardStage(p);
+          if (cancelled) return;
+          qc.setQueryData<LeadBoard>(boardKey, (prev) => (prev ? replaceStagePage(prev, stageId, page) : prev));
+        } catch (err) {
+          if (cancelled) return;
+          toast.error("Couldn't restore this stage's sort", {
+            description: err instanceof Error && err.message ? err.message : undefined,
+          });
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [boardKey, boardQs, boardQuery.data, boardQuery.isSuccess, qc, stageSorts]);
 
   const setStageSort = React.useCallback(
     async (stageId: string, next: StageBoardSort | null) => {

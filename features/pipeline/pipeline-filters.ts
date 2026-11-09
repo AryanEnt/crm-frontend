@@ -6,6 +6,7 @@ export type ClosedSortKey = "name" | "value" | "closed" | "next";
 export type SortOrder = "asc" | "desc";
 /** Board column card order (display only). */
 export type BoardSortKey = "value" | "days" | "time" | "priority";
+export type StageBoardSort = { sort: BoardSortKey; order: SortOrder };
 /** Board (kanban) is the default; table is the list layout. */
 export type PipelineView = "board" | "table";
 /** @deprecated Prefer PipelineView — kept for closed-filter call sites. */
@@ -28,6 +29,8 @@ export type PipelineFilters = {
   min: string;
   max: string;
   pipeline: string;
+  /** Board/list attention code, e.g. over_sla for stuck-in-stage. */
+  attention: string;
   /** Won / Lost only: when the lead closed. Custom dates are YYYY-MM-DD, both inclusive. */
   closed: ClosedRange;
   closedFrom: string;
@@ -55,14 +58,15 @@ export const DEFAULT_PIPELINE_FILTERS: PipelineFilters = {
   min: "",
   max: "",
   pipeline: "",
+  attention: "",
   closed: "",
   closedFrom: "",
   closedTo: "",
   view: "board",
   sort: "closed",
   order: "desc",
-  boardSort: "days",
-  boardOrder: "desc",
+  boardSort: "time",
+  boardOrder: "asc",
   page: 1,
 };
 
@@ -153,6 +157,7 @@ const FILTER_KEYS = [
   "min",
   "max",
   "pipeline",
+  "attention",
   "closed",
   "closedFrom",
   "closedTo",
@@ -163,6 +168,20 @@ const FILTER_KEYS = [
   "boardOrder",
   "page",
 ] as const;
+
+/** True when the URL carries any pipeline filter (shared links win over a saved default). */
+export function urlHasPipelineFilterParams(sp: URLSearchParams): boolean {
+  return FILTER_KEYS.some((k) => sp.has(k));
+}
+
+/** Search and paging are session-only; they are never part of a saved default. */
+export function snapshotForDefault(f: PipelineFilters): PipelineFilters {
+  return { ...f, q: "", page: 1 };
+}
+
+export function pipelineFiltersEqual(a: PipelineFilters, b: PipelineFilters): boolean {
+  return writePipelineFilters(snapshotForDefault(a)).toString() === writePipelineFilters(snapshotForDefault(b)).toString();
+}
 
 const oneOf = <T extends string>(value: string | null, allowed: readonly T[], fallback: T): T =>
   allowed.includes(value as T) ? (value as T) : fallback;
@@ -197,14 +216,15 @@ export function parsePipelineFilters(sp: URLSearchParams): PipelineFilters {
     min,
     max,
     pipeline: sp.get("pipeline") ?? "",
+    attention: oneOf(sp.get("attention"), ["", "over_sla", "overdue_next", "no_next_activity", "attention_needed", "no_recent_activity"] as const, ""),
     closed,
     closedFrom,
     closedTo,
     view: oneOf(sp.get("view"), ["board", "table"] as const, "board"),
     sort: oneOf(sp.get("sort"), ["name", "value", "closed", "next"] as const, "closed"),
     order: oneOf(sp.get("order"), ["asc", "desc"] as const, "desc"),
-    boardSort: oneOf(sp.get("boardSort"), ["value", "days", "time", "priority"] as const, "days"),
-    boardOrder: oneOf(sp.get("boardOrder"), ["asc", "desc"] as const, "desc"),
+    boardSort: oneOf(sp.get("boardSort"), ["value", "days", "time", "priority"] as const, "time"),
+    boardOrder: oneOf(sp.get("boardOrder"), ["asc", "desc"] as const, "asc"),
     page: Number.isInteger(page) && page > 1 ? page : 1,
   };
 }
@@ -225,6 +245,7 @@ export function writePipelineFilters(f: PipelineFilters, base: URLSearchParams =
   if (f.min) out.set("min", f.min);
   if (f.max) out.set("max", f.max);
   if (f.pipeline) out.set("pipeline", f.pipeline);
+  if (f.attention) out.set("attention", f.attention);
   if (f.closed) out.set("closed", f.closed);
   if (f.closed === "custom" && f.closedFrom) out.set("closedFrom", f.closedFrom);
   if (f.closed === "custom" && f.closedTo) out.set("closedTo", f.closedTo);
@@ -247,6 +268,7 @@ function sharedParams(pipelineId: string, f: PipelineFilters): URLSearchParams {
   if (f.source) p.set("source", f.source);
   if (f.country.trim()) p.set("country", f.country.trim());
   if (f.next) p.set("activity", f.next);
+  if (f.attention) p.set("attention", f.attention);
   if (f.min) p.set("minValue", f.min);
   if (f.max) p.set("maxValue", f.max);
   return p;
@@ -328,7 +350,7 @@ export function closedListParams(
   return closedLeadsParams(pipelineId, stageId, f, interval, pageSize, (f.page - 1) * pageSize, outcome);
 }
 
-export type FilterChipKey = "q" | "next" | "owner" | "team" | "source" | "country" | "stage" | "value" | "closed";
+export type FilterChipKey = "q" | "next" | "attention" | "owner" | "team" | "source" | "country" | "stage" | "value" | "closed";
 export type FilterChip = { key: FilterChipKey; label: string };
 
 const formatAmount = (v: string) => Number(v).toLocaleString("en-AU");
@@ -360,6 +382,12 @@ export function activeFilterChips(
   if (f.next && !closedView) {
     const label = NEXT_ACTION_OPTIONS.find((o) => o.value === f.next)?.label ?? f.next;
     chips.push({ key: "next", label: `Next action: ${label.toLowerCase()}` });
+  }
+  if (f.attention && !closedView) {
+    chips.push({
+      key: "attention",
+      label: f.attention === "over_sla" ? "Stuck in stage" : `Attention: ${f.attention.replaceAll("_", " ")}`,
+    });
   }
   if (f.stage && f.view === "table" && !closedView) {
     chips.push({ key: "stage", label: `Stage: ${names.stage ?? "selected"}` });
@@ -393,6 +421,7 @@ export function clearAllFilters(f: PipelineFilters): PipelineFilters {
     ...f,
     q: "",
     next: "",
+    attention: "",
     owner: "",
     team: "",
     source: "",
@@ -412,5 +441,47 @@ export function hasNarrowingFilters(f: PipelineFilters): boolean {
   if (isClosedStatus(f.status)) {
     return Boolean(f.q || f.owner || f.team || f.source || f.country || f.min || f.max || f.closed);
   }
-  return Boolean(f.q || f.next || f.owner || f.team || f.source || f.country || f.stage || f.min || f.max);
+  return Boolean(
+    f.q ||
+      f.next ||
+      f.attention ||
+      f.owner ||
+      f.team ||
+      f.source ||
+      f.country ||
+      (f.view === "table" && f.stage) ||
+      f.min ||
+      f.max,
+  );
+}
+
+export const PIPELINE_WORK_CHIPS = [
+  { id: "overdue", label: "Overdue", next: "overdue" as const, attention: "" },
+  { id: "today", label: "Today", next: "today" as const, attention: "" },
+  { id: "none", label: "No next step", next: "none" as const, attention: "" },
+  { id: "stuck", label: "Stuck", next: "" as const, attention: "over_sla" },
+] as const;
+
+export type PipelineWorkId = (typeof PIPELINE_WORK_CHIPS)[number]["id"];
+
+export function isWorkChipActive(f: PipelineFilters, id: PipelineWorkId): boolean {
+  const chip = PIPELINE_WORK_CHIPS.find((c) => c.id === id);
+  if (!chip) return false;
+  return f.next === chip.next && f.attention === chip.attention;
+}
+
+/** Toggle a Work chip: overdue / today / no next step / stuck in stage. */
+export function applyPipelineWork(f: PipelineFilters, id: PipelineWorkId): PipelineFilters {
+  const chip = PIPELINE_WORK_CHIPS.find((c) => c.id === id);
+  if (!chip) return f;
+  if (isWorkChipActive(f, id)) return { ...f, next: "", attention: "", page: 1 };
+  return { ...f, next: chip.next, attention: chip.attention, page: 1 };
+}
+
+export function pipelineWorkHref(id: PipelineWorkId, pipelineId: string): string {
+  const chip = PIPELINE_WORK_CHIPS.find((c) => c.id === id);
+  const p = new URLSearchParams({ pipeline: pipelineId });
+  if (chip?.next) p.set("next", chip.next);
+  if (chip?.attention) p.set("attention", chip.attention);
+  return `/pipeline?${p}`;
 }

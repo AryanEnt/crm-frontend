@@ -23,16 +23,18 @@ import { OrgScopeSelects, useOwnerOptions, useTeamOptions } from "@/features/tea
 import { TeamMemberFilterChip } from "@/features/teams/team-member-filter";
 import { crmApi, type PipelineStage } from "@/lib/api/crm";
 import { cn } from "@/lib/utils";
-import { BoardSortSelect } from "./board-sort-select";
 import { ClosedSortSelect } from "./closed-filters";
 import { CLOSED_RANGE_OPTIONS, type ClosedRange } from "./closed-range";
 import {
   NEXT_ACTION_OPTIONS,
+  PIPELINE_WORK_CHIPS,
   activeFilterChips,
+  applyPipelineWork,
   clearAllFilters,
   clearFilter,
   cleanAmount,
   isClosedStatus,
+  isWorkChipActive,
   statusOptions,
   type NextActionFilter,
   type PipelineFilters,
@@ -71,8 +73,9 @@ function secondaryFilterCount(filters: PipelineFilters, closedView: boolean, sho
   if (showStage && filters.stage) n += 1;
   if (closedView) {
     if (filters.closed) n += 1;
-  } else if (filters.next) {
-    n += 1;
+  } else {
+    if (filters.next) n += 1;
+    if (filters.attention) n += 1;
   }
   return n;
 }
@@ -100,7 +103,7 @@ export function PipelineToolbar({
     stage: stageName,
     currencySymbol: currencySymbol(currency),
     nurturing,
-  });
+  }).filter((chip) => chip.key !== "next" && chip.key !== "attention");
   const closedView = isClosedStatus(filters.status);
   const showStageFilter = filters.view === "table" && !closedView;
   const filterCount = secondaryFilterCount(filters, closedView, showStageFilter);
@@ -109,6 +112,34 @@ export function PipelineToolbar({
     <div className="space-y-2.5">
       <div className="flex flex-wrap items-center gap-2">
         <SearchField filters={filters} onChange={onChange} />
+        {!closedView ? (
+          <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Work on">
+            {PIPELINE_WORK_CHIPS.map((chip) => {
+              const on = isWorkChipActive(filters, chip.id);
+              return (
+                <button
+                  key={chip.id}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => onChange(applyPipelineWork(filters, chip.id))}
+                  className={cn(
+                    "h-8 rounded-full px-3 text-caption font-medium transition-colors duration-150",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    on
+                      ? chip.id === "overdue" || chip.id === "stuck"
+                        ? "bg-danger-soft text-danger"
+                        : chip.id === "today"
+                          ? "bg-warning-soft text-warning"
+                          : "bg-brand-soft text-brand-ink"
+                      : "bg-surface-muted text-ink-secondary hover:bg-surface-muted/80 hover:text-ink",
+                  )}
+                >
+                  {chip.label}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
         <SegmentedControl
           ariaLabel="Lead status"
           value={filters.status}
@@ -139,15 +170,7 @@ export function PipelineToolbar({
             scope={names.scope}
             onChange={onChange}
           />
-          {closedView ? (
-            <ClosedSortSelect filters={filters} onChange={onChange} />
-          ) : filters.view === "board" ? (
-            <BoardSortSelect
-              sort={filters.boardSort}
-              order={filters.boardOrder}
-              onChange={(boardSort, boardOrder) => onChange({ ...filters, boardSort, boardOrder, page: 1 })}
-            />
-          ) : null}
+          {closedView ? <ClosedSortSelect filters={filters} onChange={onChange} /> : null}
           <PipelineViewToggle filters={filters} onChange={onChange} />
         </div>
       </div>
@@ -345,7 +368,7 @@ function FiltersPanel({
       max,
       next: closedView ? "" : draft.next,
       country: draft.country,
-      stage: showStageFilter ? draft.stage : "",
+      stage: showStageFilter ? draft.stage : filters.stage,
       team: draft.team,
       owner: draft.owner,
       closed: closedView ? draft.closed : "",

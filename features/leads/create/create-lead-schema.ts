@@ -218,10 +218,9 @@ export function valuesForNextLead(prev: CreateLeadInput, d: CreateLeadDefaults):
 
 /**
  * Fields that live in collapsed accordion sections.
- * Basic info, source, and qualification stay above the fold.
+ * Basic info, about, source, and qualification stay above the fold.
  */
 export const DETAIL_SECTION_FIELDS = {
-  about: ["country", "nationality", "location", "occupation", "anzscoId"],
   sales: ["ownerUserId", "pipelineId", "stageId", "nextActivityAt"],
   work: ["jobTitle", "employer"],
   notes: ["notes", "tags"],

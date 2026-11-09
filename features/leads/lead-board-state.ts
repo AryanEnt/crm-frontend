@@ -1,5 +1,8 @@
 import type { LeadBoard, LeadBoardCard, LeadBoardStage } from "@/lib/api/crm";
 
+/** Fixed id of the default sales Lead Pipeline (migration 000034). */
+export const LEAD_PIPELINE_ID = "55555555-5555-5555-5555-555555555504";
+
 /** Fixed id of the post-win Nurturing pipeline (migration 000038). */
 export const NURTURING_PIPELINE_ID = "55555555-5555-5555-5555-555555555505";
 
