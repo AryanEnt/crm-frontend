@@ -55,25 +55,35 @@ const about = {
 } as const;
 
 describe("create lead schema", () => {
-  it("needs a name plus country, nationality and location", () => {
+  it("needs a name plus country", () => {
     assert.deepEqual(errorsOf(form({ fullName: "Priya Sharma", ...about })), {});
+    assert.deepEqual(
+      errorsOf(form({ fullName: "Priya Sharma", country: "Australia", nationality: "", location: "" })),
+      {},
+    );
   });
 
   it("asks for a name in plain words", () => {
     assert.deepEqual(errorsOf(form({ fullName: "   ", ...about })), { fullName: MESSAGES.name });
   });
 
-  it("asks for country, nationality and location", () => {
+  it("asks for country but leaves nationality and location optional", () => {
     const missing = errorsOf(form({ fullName: "Priya Sharma" }));
     assert.equal(missing.country, MESSAGES.country);
-    assert.equal(missing.nationality, MESSAGES.nationality);
-    assert.equal(missing.location, MESSAGES.location);
+    assert.equal(missing.nationality, undefined);
+    assert.equal(missing.location, undefined);
   });
 
-  it("requires country, nationality and location on create and edit", () => {
-    const blank = { fullName: "Priya Sharma", country: "", nationality: "", location: "" };
-    assert.equal(editLeadSchema.safeParse(form(blank)).success, false);
-    assert.equal(createLeadSchema.safeParse(form(blank)).success, false);
+  it("requires country on create and edit; nationality and location stay optional", () => {
+    const blankCountry = { fullName: "Priya Sharma", country: "", nationality: "", location: "" };
+    assert.equal(editLeadSchema.safeParse(form(blankCountry)).success, false);
+    assert.equal(createLeadSchema.safeParse(form(blankCountry)).success, false);
+    assert.equal(
+      createLeadSchema.safeParse(
+        form({ fullName: "Priya Sharma", country: "Australia", nationality: "", location: "" }),
+      ).success,
+      true,
+    );
     assert.equal(editLeadSchema.safeParse(form({ fullName: "Priya Sharma", ...about })).success, true);
   });
 

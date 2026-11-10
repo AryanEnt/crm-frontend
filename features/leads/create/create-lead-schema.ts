@@ -75,12 +75,10 @@ export const MESSAGES = {
   referrer: "Add who referred this lead",
   followUp: "Pick a follow-up date",
   country: "Choose their country",
-  nationality: "Add their nationality",
-  location: "Add where they are (city or suburb)",
 } as const;
 
 /**
- * Name plus where they are (country, nationality, location) are required on create and edit.
+ * Name and country are required on create and edit. Nationality and location are optional.
  * Source is required by the API, but it always starts filled (last used, org default
  * or "Other"), so nobody has to touch it. Referral source still needs a referrer on
  * create and edit.
@@ -106,8 +104,8 @@ export function leadSheetSchema(_mode: "create" | "edit") {
       stageId: z.string(),
       nextActivityAt: z.string().refine((v) => !v || fromLocalInput(v) !== null, MESSAGES.followUp),
       country: z.string().trim().min(1, MESSAGES.country),
-      nationality: z.string().trim().min(1, MESSAGES.nationality),
-      location: z.string().trim().min(1, MESSAGES.location),
+      nationality: z.string().trim(),
+      location: z.string().trim(),
       occupation: z.string().trim(),
       jobTitle: z.string().trim(),
       employer: z.string().trim(),

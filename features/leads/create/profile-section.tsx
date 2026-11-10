@@ -123,13 +123,13 @@ function OccupationField({ initialLabel }: { initialLabel: string | null }) {
   );
 }
 
-/** About block — required profile + optional ANZSCO occupation. */
+/** About block — country required; nationality, location and occupation optional. */
 export function AboutSection({ anzscoLabel = null }: { anzscoLabel?: string | null }) {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <CountryField required />
-      <NationalityField required />
-      <LocationField required />
+      <NationalityField />
+      <LocationField />
       <OccupationField initialLabel={anzscoLabel} />
     </div>
   );
