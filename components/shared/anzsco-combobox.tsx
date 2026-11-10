@@ -158,12 +158,19 @@ export function AnzscoCombobox({
       modal
       open={open}
       onOpenChange={(next) => {
-        setOpen(next);
-        if (!next) setQ("");
+        if (!next) {
+          setOpen(false);
+          setQ("");
+          return;
+        }
+        // Scroll first (instant) so Radix measures space below and keeps search on-screen.
+        triggerRef.current?.scrollIntoView({ block: "center", behavior: "instant" });
+        requestAnimationFrame(() => setOpen(true));
       }}
     >
       <PopoverTrigger asChild>
         <Button
+          ref={triggerRef}
           type="button"
           variant="outline"
           role="combobox"
