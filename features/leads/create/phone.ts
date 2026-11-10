@@ -28,6 +28,13 @@ export const PHONE_COUNTRIES: PhoneCountry[] = [
   { code: "US", name: "United States", dial: "1", trunk: false, groups: [3, 3, 4] },
   { code: "CA", name: "Canada", dial: "1", trunk: false, groups: [3, 3, 4] },
   { code: "ZA", name: "South Africa", dial: "27", trunk: true, groups: [2, 3, 4] },
+  { code: "IR", name: "Iran", dial: "98", trunk: true, groups: [3, 3, 4] },
+  { code: "EG", name: "Egypt", dial: "20", trunk: true, groups: [2, 4, 4] },
+  { code: "KE", name: "Kenya", dial: "254", trunk: true, groups: [3, 3, 3] },
+  { code: "AF", name: "Afghanistan", dial: "93", trunk: true, groups: [2, 3, 4] },
+  { code: "CO", name: "Colombia", dial: "57", trunk: true, groups: [3, 3, 4] },
+  { code: "DE", name: "Germany", dial: "49", trunk: true, groups: [3, 4, 4] },
+  { code: "ZM", name: "Zambia", dial: "260", trunk: true, groups: [2, 3, 4] },
 ];
 
 export const DEFAULT_PHONE_COUNTRY = "AU";

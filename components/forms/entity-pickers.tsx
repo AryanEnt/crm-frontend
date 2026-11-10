@@ -41,6 +41,15 @@ const COUNTRIES: EntityPickerOption[] = [
   { value: "Indonesia", label: "Indonesia" },
   { value: "Vietnam", label: "Vietnam" },
   { value: "South Africa", label: "South Africa" },
+  { value: "Iran", label: "Iran" },
+  { value: "Egypt", label: "Egypt" },
+  { value: "Kenya", label: "Kenya" },
+  { value: "Afghanistan", label: "Afghanistan" },
+  { value: "Colombia", label: "Colombia" },
+  { value: "Fiji", label: "Fiji" },
+  { value: "Germany", label: "Germany" },
+  { value: "Singapore", label: "Singapore" },
+  { value: "Zambia", label: "Zambia" },
 ];
 
 export function CountryPicker({

@@ -63,6 +63,9 @@ export function PhoneCountryPicker({
 
   return (
     <Popover
+      // Modal so the list can receive clicks inside the create-lead dialog
+      // (non-modal popovers portal outside the dialog and get swallowed by its focus trap).
+      modal
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
@@ -105,6 +108,12 @@ export function PhoneCountryPicker({
         sideOffset={8}
         collisionPadding={12}
         className="w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-line bg-surface p-0 shadow-lg"
+        onOpenAutoFocus={(e) => {
+          // Keep focus in the search input without fighting the sheet focus trap.
+          e.preventDefault();
+          const input = (e.currentTarget as HTMLElement).querySelector("input");
+          input?.focus();
+        }}
       >
         <div className="border-b border-line/80 px-3.5 py-3">
           <p className="text-cell font-semibold text-ink">Country code</p>
