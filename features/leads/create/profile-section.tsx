@@ -2,59 +2,18 @@
 
 import * as React from "react";
 import { useController, useFormContext } from "react-hook-form";
-import { CountryPicker } from "@/components/forms/entity-pickers";
-import { SearchableSelect } from "@/components/forms/searchable-select";
+import { CountryPicker, NationalityPicker } from "@/components/forms/entity-pickers";
 import { AnzscoCombobox } from "@/components/shared/anzsco-combobox";
-import type { EntityPickerOption } from "@/components/forms/types";
 import { cn } from "@/lib/utils";
 import type { CreateLeadInput, CreateLeadValues } from "./create-lead-schema";
 import { FIELD_CONTROL, LeadField, TRIGGER_CONTROL } from "./field-ui";
 
 const useLeadForm = () => useFormContext<CreateLeadInput, unknown, CreateLeadValues>();
 
-const NATIONALITIES: EntityPickerOption[] = [
-  { value: "Australian", label: "Australian" },
-  { value: "Nepali", label: "Nepali" },
-  { value: "Indian", label: "Indian" },
-  { value: "New Zealander", label: "New Zealander" },
-  { value: "British", label: "British" },
-  { value: "American", label: "American" },
-  { value: "Canadian", label: "Canadian" },
-  { value: "Filipino", label: "Filipino" },
-  { value: "Chinese", label: "Chinese" },
-  { value: "Sri Lankan", label: "Sri Lankan" },
-  { value: "Bangladeshi", label: "Bangladeshi" },
-  { value: "Pakistani", label: "Pakistani" },
-  { value: "Indonesian", label: "Indonesian" },
-  { value: "Vietnamese", label: "Vietnamese" },
-  { value: "South African", label: "South African" },
-  { value: "Iranian", label: "Iranian" },
-  { value: "Egyptian", label: "Egyptian" },
-  { value: "Kenyan", label: "Kenyan" },
-  { value: "Afghan", label: "Afghan" },
-  { value: "Colombian", label: "Colombian" },
-  { value: "Fijian", label: "Fijian" },
-  { value: "German", label: "German" },
-  { value: "Singaporean", label: "Singaporean" },
-  { value: "Zambian", label: "Zambian" },
-];
-
 function NationalityField({ required }: { required?: boolean }) {
   const { control, formState } = useLeadForm();
   const nationality = useController({ control, name: "nationality" });
   const error = formState.errors.nationality?.message;
-  const value = nationality.field.value?.trim() || "";
-
-  const searchNationalities = React.useCallback(async (query: string) => {
-    const q = query.trim();
-    const base = !q
-      ? NATIONALITIES
-      : NATIONALITIES.filter((n) => n.label.toLowerCase().includes(q.toLowerCase()));
-    if (q && !base.some((n) => n.value.toLowerCase() === q.toLowerCase())) {
-      return [...base, { value: q, label: `Use “${q}”` }];
-    }
-    return base;
-  }, []);
 
   return (
     <LeadField label="Nationality" required={required} group error={error}>
@@ -64,14 +23,9 @@ function NationalityField({ required }: { required?: boolean }) {
           aria-labelledby={labelId}
           className="[&_button]:h-10 [&_button]:rounded-xl [&_button]:border-line/80 [&_button]:bg-surface [&_button]:shadow-xs"
         >
-          <SearchableSelect
-            value={value || null}
-            selectedLabel={value || null}
-            onChange={(v) => nationality.field.onChange(v ?? "")}
-            onSearch={searchNationalities}
-            placeholder="Search nationality…"
-            searchPlaceholder="Search or type nationality…"
-            emptyText="No nationalities found"
+          <NationalityPicker
+            value={nationality.field.value}
+            onChange={nationality.field.onChange}
             error={Boolean(error)}
           />
         </div>

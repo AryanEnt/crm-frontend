@@ -1,3 +1,15 @@
+import {
+  AsYouType,
+  getCountries,
+  getCountryCallingCode,
+  getExampleNumber,
+  type CountryCode,
+} from "libphonenumber-js";
+import { Metadata } from "libphonenumber-js/core";
+import examples from "libphonenumber-js/mobile/examples";
+import metadataJson from "libphonenumber-js/min/metadata";
+import { countryName, PRIORITY_COUNTRY_CODES } from "../../../lib/geo/world.ts";
+
 export type PhoneCountry = {
   code: string;
   name: string;
@@ -8,34 +20,65 @@ export type PhoneCountry = {
   groups: number[];
 };
 
-export const PHONE_COUNTRIES: PhoneCountry[] = [
-  { code: "AU", name: "Australia", dial: "61", trunk: true, groups: [3, 3, 3] },
-  { code: "NZ", name: "New Zealand", dial: "64", trunk: true, groups: [2, 3, 4] },
-  { code: "NP", name: "Nepal", dial: "977", trunk: true, groups: [3, 3, 4] },
-  { code: "IN", name: "India", dial: "91", trunk: true, groups: [5, 5] },
-  { code: "PH", name: "Philippines", dial: "63", trunk: true, groups: [3, 3, 4] },
-  { code: "LK", name: "Sri Lanka", dial: "94", trunk: true, groups: [2, 3, 4] },
-  { code: "BD", name: "Bangladesh", dial: "880", trunk: true, groups: [4, 6] },
-  { code: "PK", name: "Pakistan", dial: "92", trunk: true, groups: [3, 7] },
-  { code: "CN", name: "China", dial: "86", trunk: true, groups: [3, 4, 4] },
-  { code: "VN", name: "Vietnam", dial: "84", trunk: true, groups: [3, 3, 3] },
-  { code: "ID", name: "Indonesia", dial: "62", trunk: true, groups: [3, 4, 4] },
-  { code: "MY", name: "Malaysia", dial: "60", trunk: true, groups: [2, 4, 4] },
-  { code: "SG", name: "Singapore", dial: "65", trunk: false, groups: [4, 4] },
-  { code: "FJ", name: "Fiji", dial: "679", trunk: false, groups: [3, 4] },
-  { code: "AE", name: "United Arab Emirates", dial: "971", trunk: true, groups: [2, 3, 4] },
-  { code: "GB", name: "United Kingdom", dial: "44", trunk: true, groups: [4, 6] },
-  { code: "US", name: "United States", dial: "1", trunk: false, groups: [3, 3, 4] },
-  { code: "CA", name: "Canada", dial: "1", trunk: false, groups: [3, 3, 4] },
-  { code: "ZA", name: "South Africa", dial: "27", trunk: true, groups: [2, 3, 4] },
-  { code: "IR", name: "Iran", dial: "98", trunk: true, groups: [3, 3, 4] },
-  { code: "EG", name: "Egypt", dial: "20", trunk: true, groups: [2, 4, 4] },
-  { code: "KE", name: "Kenya", dial: "254", trunk: true, groups: [3, 3, 3] },
-  { code: "AF", name: "Afghanistan", dial: "93", trunk: true, groups: [2, 3, 4] },
-  { code: "CO", name: "Colombia", dial: "57", trunk: true, groups: [3, 3, 4] },
-  { code: "DE", name: "Germany", dial: "49", trunk: true, groups: [3, 4, 4] },
-  { code: "ZM", name: "Zambia", dial: "260", trunk: true, groups: [2, 3, 4] },
-];
+type NumberingPlanWithPrefix = {
+  nationalPrefix?: () => string | undefined;
+};
+
+const metadata = new Metadata(metadataJson);
+
+function nationalPrefixFor(code: CountryCode): string {
+  metadata.selectNumberingPlan(code);
+  const plan = metadata.numberingPlan as NumberingPlanWithPrefix | undefined;
+  return plan?.nationalPrefix?.() ?? "";
+}
+
+function deriveGroups(code: CountryCode, trunk: boolean, nationalPrefix: string): number[] {
+  const example = getExampleNumber(code, examples);
+  if (!example) return [3, 3, 4];
+
+  const formatted = example.formatNational();
+  const digitStr = formatted.replace(/\D/g, "");
+  const parts = formatted.match(/\d+/g) ?? [];
+  const groups = parts.map((p) => p.length);
+
+  if (trunk && nationalPrefix && digitStr.startsWith(nationalPrefix) && groups[0]) {
+    groups[0]! -= nationalPrefix.length;
+    if (groups[0] === 0) groups.shift();
+  }
+
+  const nsnLen = example.nationalNumber.length;
+  const sum = groups.reduce((a, b) => a + b, 0);
+  if (sum !== nsnLen || groups.length === 0) return [nsnLen];
+  return groups;
+}
+
+function buildPhoneCountries(): PhoneCountry[] {
+  const list: PhoneCountry[] = [];
+
+  for (const code of getCountries()) {
+    const name = countryName(code);
+    if (!name) continue;
+
+    const nationalPrefix = nationalPrefixFor(code);
+    const trunk = nationalPrefix === "0";
+    const dial = getCountryCallingCode(code);
+    const groups = deriveGroups(code, trunk, nationalPrefix);
+
+    list.push({ code, name, dial, trunk, groups });
+  }
+
+  const priority = PRIORITY_COUNTRY_CODES as readonly string[];
+  return list.sort((a, b) => {
+    const ai = priority.indexOf(a.code);
+    const bi = priority.indexOf(b.code);
+    const ar = ai === -1 ? priority.length : ai;
+    const br = bi === -1 ? priority.length : bi;
+    if (ar !== br) return ar - br;
+    return a.name.localeCompare(b.name, "en");
+  });
+}
+
+export const PHONE_COUNTRIES: PhoneCountry[] = buildPhoneCountries();
 
 export const DEFAULT_PHONE_COUNTRY = "AU";
 
@@ -57,7 +100,9 @@ const isInternational = (raw: string) => raw.trim().startsWith("+");
 export function detectDialCountry(raw: string, current?: string): string | null {
   if (!isInternational(raw)) return null;
   const digits = phoneDigits(raw);
-  const matches = PHONE_COUNTRIES.filter((c) => digits.startsWith(c.dial)).sort((a, b) => b.dial.length - a.dial.length);
+  const matches = PHONE_COUNTRIES.filter((c) => digits.startsWith(c.dial)).sort(
+    (a, b) => b.dial.length - a.dial.length,
+  );
   if (matches.length === 0) return null;
   const best = matches[0]!.dial.length;
   const tied = matches.filter((c) => c.dial.length === best);
@@ -83,16 +128,24 @@ export function nationalNumber(raw: string, code: string): string {
   return c.trunk && digits.startsWith("0") ? digits.slice(1) : digits;
 }
 
-/** Display format while typing: "0412 345 678", "412 345 678" or "+61 412 345 678". */
+/**
+ * Display format while typing.
+ * National numbers use our digit groups; international uses libphonenumber AsYouType.
+ */
 export function formatPhone(raw: string, code: string): string {
   const digits = phoneDigits(raw);
   if (!digits) return isInternational(raw) ? "+" : "";
   const c = phoneCountry(code);
+
   if (isInternational(raw)) {
+    const typed = new AsYouType();
+    const formatted = typed.input(`+${digits}`);
+    if (formatted) return formatted;
     if (!digits.startsWith(c.dial)) return `+${group(digits, [3, 3, 3, 3, 3])}`;
     const nsn = digits.slice(c.dial.length);
     return nsn ? `+${c.dial} ${group(nsn, c.groups)}` : `+${c.dial}`;
   }
+
   if (c.trunk && digits.startsWith("0")) {
     return group(digits, [c.groups[0]! + 1, ...c.groups.slice(1)]);
   }

@@ -23,34 +23,18 @@ import { adminApi } from "@/lib/api/admin";
 import { useOwnerOptions } from "@/features/teams/scope-filters";
 import { crmApi, type Pipeline } from "@/lib/api/crm";
 import type { EntityPickerOption } from "@/components/forms/types";
+import { COUNTRY_OPTIONS, NATIONALITY_OPTIONS } from "@/lib/geo/world";
 import { cn } from "@/lib/utils";
 
-const COUNTRIES: EntityPickerOption[] = [
-  { value: "Australia", label: "Australia" },
-  { value: "Nepal", label: "Nepal" },
-  { value: "India", label: "India" },
-  { value: "New Zealand", label: "New Zealand" },
-  { value: "United Kingdom", label: "United Kingdom" },
-  { value: "United States", label: "United States" },
-  { value: "Canada", label: "Canada" },
-  { value: "Philippines", label: "Philippines" },
-  { value: "China", label: "China" },
-  { value: "Sri Lanka", label: "Sri Lanka" },
-  { value: "Bangladesh", label: "Bangladesh" },
-  { value: "Pakistan", label: "Pakistan" },
-  { value: "Indonesia", label: "Indonesia" },
-  { value: "Vietnam", label: "Vietnam" },
-  { value: "South Africa", label: "South Africa" },
-  { value: "Iran", label: "Iran" },
-  { value: "Egypt", label: "Egypt" },
-  { value: "Kenya", label: "Kenya" },
-  { value: "Afghanistan", label: "Afghanistan" },
-  { value: "Colombia", label: "Colombia" },
-  { value: "Fiji", label: "Fiji" },
-  { value: "Germany", label: "Germany" },
-  { value: "Singapore", label: "Singapore" },
-  { value: "Zambia", label: "Zambia" },
-];
+const COUNTRIES: EntityPickerOption[] = COUNTRY_OPTIONS.map(({ value, label }) => ({
+  value,
+  label,
+}));
+
+const NATIONALITIES: EntityPickerOption[] = NATIONALITY_OPTIONS.map(({ value, label }) => ({
+  value,
+  label,
+}));
 
 export function CountryPicker({
   value,
@@ -76,6 +60,43 @@ export function CountryPicker({
       placeholder="Search country…"
       searchPlaceholder="Search country…"
       emptyText="No countries found"
+      error={error}
+    />
+  );
+}
+
+/** Full demonym list; unknown existing values still appear, and search can create a custom entry. */
+export function NationalityPicker({
+  value,
+  onChange,
+  error,
+}: {
+  value?: string;
+  onChange: (v: string) => void;
+  error?: boolean;
+}) {
+  const selected = value?.trim() || "";
+
+  const search = React.useCallback(async (query: string) => {
+    const q = query.trim();
+    const base = !q
+      ? NATIONALITIES
+      : NATIONALITIES.filter((n) => n.label.toLowerCase().includes(q.toLowerCase()));
+    if (q && !base.some((n) => n.value.toLowerCase() === q.toLowerCase())) {
+      return [...base, { value: q, label: `Use “${q}”` }];
+    }
+    return base;
+  }, []);
+
+  return (
+    <SearchableSelect
+      value={selected || null}
+      selectedLabel={selected || null}
+      onChange={(v) => onChange(v ?? "")}
+      onSearch={search}
+      placeholder="Search nationality…"
+      searchPlaceholder="Search or type nationality…"
+      emptyText="No nationalities found"
       error={error}
     />
   );
