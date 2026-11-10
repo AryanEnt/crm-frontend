@@ -28,6 +28,15 @@ const NATIONALITIES: EntityPickerOption[] = [
   { value: "Indonesian", label: "Indonesian" },
   { value: "Vietnamese", label: "Vietnamese" },
   { value: "South African", label: "South African" },
+  { value: "Iranian", label: "Iranian" },
+  { value: "Egyptian", label: "Egyptian" },
+  { value: "Kenyan", label: "Kenyan" },
+  { value: "Afghan", label: "Afghan" },
+  { value: "Colombian", label: "Colombian" },
+  { value: "Fijian", label: "Fijian" },
+  { value: "German", label: "German" },
+  { value: "Singaporean", label: "Singaporean" },
+  { value: "Zambian", label: "Zambian" },
 ];
 
 function NationalityField({ required }: { required?: boolean }) {
