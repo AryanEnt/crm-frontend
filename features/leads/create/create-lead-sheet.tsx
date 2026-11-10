@@ -59,7 +59,7 @@ const FORM_ID = "create-lead-form";
 
 type Settings = Record<string, string>;
 
-const REQUIRED_KEYS = ["fullName", "source", "country", "nationality", "location"] as const;
+const REQUIRED_KEYS = ["fullName", "source", "country"] as const;
 
 export type CreateLeadSheetProps = {
   open: boolean;
