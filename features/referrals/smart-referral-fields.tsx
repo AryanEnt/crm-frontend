@@ -31,6 +31,9 @@ import {
 
 export { emptyReferralForm, referralToForm, toReferralInput, type ReferralFormState };
 
+/** Sentinel value when the referrer is a typed name (not a linked CRM record). */
+const FREE_TEXT_REFERRER = "__free_text__";
+
 /**
  * Compact referral block with searchable referrer picker + inline partner create.
  */
@@ -56,6 +59,8 @@ export function SmartReferralFields({
   const types = meta?.referrerTypes ?? [];
   const relationships = meta?.relationships ?? [];
   const typeCode = value.referrerTypeCode;
+  const allowsTypedName =
+    typeCode === "existing_customer" || typeCode === "sales_executive" || typeCode === "employee";
 
   const searchReferrer = React.useCallback(
     async (q: string) => {
@@ -93,7 +98,7 @@ export function SmartReferralFields({
     [typeCode],
   );
 
-  const selectedReferrerValue =
+  const linkedReferrerValue =
     typeCode === "existing_customer"
       ? value.referrerCustomerId !== "none"
         ? value.referrerCustomerId
@@ -107,6 +112,23 @@ export function SmartReferralFields({
             ? value.referrerPartnerId
             : null
           : null;
+
+  // Show a typed name in the picker trigger when nothing is linked from CRM.
+  const selectedReferrerValue =
+    linkedReferrerValue ??
+    (allowsTypedName && value.referrerName.trim() ? FREE_TEXT_REFERRER : null);
+
+  const useTypedName = (query: string) => {
+    const name = query.trim();
+    if (!name) return;
+    onChange({
+      ...value,
+      referrerUserId: "none",
+      referrerCustomerId: "none",
+      referrerPartnerId: "none",
+      referrerName: name,
+    });
+  };
 
   return (
     <div className="space-y-3.5 border-t border-border pt-4">
@@ -124,7 +146,7 @@ export function SmartReferralFields({
                 referrerUserId: "none",
                 referrerCustomerId: "none",
                 referrerPartnerId: "none",
-                // Free-text name is only for "Other"; clear when switching away.
+                // Keep a typed name only for "Other"; linked types start clean.
                 referrerName: v === "other" ? value.referrerName : "",
               })
             }
@@ -165,25 +187,45 @@ export function SmartReferralFields({
           <SearchableSelect
             error={Boolean(error)}
             value={selectedReferrerValue}
-            selectedLabel={value.referrerName.trim() || null}
+            selectedLabel={
+              selectedReferrerValue === FREE_TEXT_REFERRER
+                ? `${value.referrerName.trim()} (typed name)`
+                : value.referrerName.trim() || null
+            }
             onChange={(id, opt) => {
+              if (!id) {
+                onChange({
+                  ...value,
+                  referrerUserId: "none",
+                  referrerCustomerId: "none",
+                  referrerPartnerId: "none",
+                  referrerName: "",
+                });
+                return;
+              }
               if (typeCode === "existing_customer") {
                 onChange({
                   ...value,
-                  referrerCustomerId: id ?? "none",
-                  referrerName: opt?.label ?? (id ? value.referrerName : ""),
+                  referrerCustomerId: id,
+                  referrerUserId: "none",
+                  referrerPartnerId: "none",
+                  referrerName: opt?.label ?? value.referrerName,
                 });
               } else if (typeCode === "sales_executive" || typeCode === "employee") {
                 onChange({
                   ...value,
-                  referrerUserId: id ?? "none",
-                  referrerName: opt?.label ?? (id ? value.referrerName : ""),
+                  referrerUserId: id,
+                  referrerCustomerId: "none",
+                  referrerPartnerId: "none",
+                  referrerName: opt?.label ?? value.referrerName,
                 });
               } else {
                 onChange({
                   ...value,
-                  referrerPartnerId: id ?? "none",
-                  referrerName: opt?.label ?? (id ? value.referrerName : ""),
+                  referrerPartnerId: id,
+                  referrerUserId: "none",
+                  referrerCustomerId: "none",
+                  referrerName: opt?.label ?? value.referrerName,
                 });
               }
             }}
@@ -191,13 +233,18 @@ export function SmartReferralFields({
             placeholder="Search referrer…"
             searchPlaceholder="Type a name or email…"
             emptyText="No matching referrers found."
-            createLabel={
-              typeCode === "partner" || typeCode === "agent" ? "Add new referrer" : undefined
-            }
+            allowCustomValue={allowsTypedName}
+            customValueHint="No match in the list. We’ll save this as the referrer’s name."
+            createLabel={typeCode === "partner" || typeCode === "agent" ? "Add new referrer" : undefined}
             onCreate={
               typeCode === "partner" || typeCode === "agent"
-                ? () => setPartnerOpen(true)
-                : undefined
+                ? (query) => {
+                    setPartnerName(query);
+                    setPartnerOpen(true);
+                  }
+                : allowsTypedName
+                  ? useTypedName
+                  : undefined
             }
           />
         </FormFieldSlot>

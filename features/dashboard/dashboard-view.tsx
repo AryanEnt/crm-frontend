@@ -468,6 +468,25 @@ export function DashboardView() {
         )}
       </section>
 
+      <section className={cn("grid gap-4", showTargets && quickActions.length > 0 && "lg:grid-cols-3")}>
+        <DashCard className={cn("p-5", showTargets && quickActions.length > 0 && "lg:col-span-2")}>
+          <CardHeader
+            title="Lead pipeline"
+            subtitle={
+              overview?.pipeline
+                ? `${overview.pipeline.name} · open leads by stage`
+                : "Open leads by stage"
+            }
+            action={<SectionLink href={linkTo("/pipeline")}>Open pipeline</SectionLink>}
+            aside={overview && overview.openValue > 0 ? <PipelineTotal value={overview.openValue} currency={leadCurrency} /> : null}
+          />
+          <div className="mt-5">
+            <LeadPipelineStrip overview={overview} loading={canViewLeads && overviewQuery.isLoading} />
+          </div>
+        </DashCard>
+        {showTargets && quickActions.length > 0 ? <QuickActionsCard actions={quickActions} /> : null}
+      </section>
+
       {canViewLeads ? (
         <div className="space-y-3">
           <CardHeader
@@ -494,25 +513,6 @@ export function DashboardView() {
           analyticsHref={linkTo("/analytics")}
         />
       ) : null}
-
-      <section className={cn("grid gap-4", showTargets && quickActions.length > 0 && "lg:grid-cols-3")}>
-        <DashCard className={cn("p-5", showTargets && quickActions.length > 0 && "lg:col-span-2")}>
-          <CardHeader
-            title="Lead pipeline"
-            subtitle={
-              overview?.pipeline
-                ? `${overview.pipeline.name} · open leads by stage`
-                : "Open leads by stage"
-            }
-            action={<SectionLink href={linkTo("/pipeline")}>Open pipeline</SectionLink>}
-            aside={overview && overview.openValue > 0 ? <PipelineTotal value={overview.openValue} currency={leadCurrency} /> : null}
-          />
-          <div className="mt-5">
-            <LeadPipelineStrip overview={overview} loading={canViewLeads && overviewQuery.isLoading} />
-          </div>
-        </DashCard>
-        {showTargets && quickActions.length > 0 ? <QuickActionsCard actions={quickActions} /> : null}
-      </section>
 
       {isTeamLead ? (
       <section className="grid gap-4 lg:grid-cols-2">

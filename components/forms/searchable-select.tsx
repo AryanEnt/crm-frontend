@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ChevronsUpDown, Loader2, Plus, X } from "lucide-react";
+import { ChevronsUpDown, Loader2, PenLine, Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { dropdownMenuClass, dropdownTriggerClass } from "@/components/ui/dropdown-styles";
@@ -33,7 +33,15 @@ export type SearchableSelectProps = {
   className?: string;
   error?: boolean;
   createLabel?: string;
-  onCreate?: () => void;
+  /** Called with the current search text (trimmed). Used for “use typed name” / create flows. */
+  onCreate?: (query: string) => void;
+  /**
+   * When search returns nothing, show a selectable “use typed text” row inside the menu
+   * (uses the search box as the name input — no extra field outside).
+   */
+  allowCustomValue?: boolean;
+  /** Short hint under the custom-value row. */
+  customValueHint?: string;
   recent?: EntityPickerOption[];
 };
 
@@ -53,6 +61,8 @@ export function SearchableSelect({
   error,
   createLabel,
   onCreate,
+  allowCustomValue = false,
+  customValueHint = "Not in the list — use this name",
   recent,
 }: SearchableSelectProps) {
   const [open, setOpen] = React.useState(false);
@@ -63,6 +73,7 @@ export function SearchableSelect({
   const [cached, setCached] = React.useState<EntityPickerOption | null>(null);
 
   const isAsync = Boolean(onSearch);
+  const typed = q.trim();
 
   React.useEffect(() => {
     if (!value) {
@@ -109,15 +120,31 @@ export function SearchableSelect({
     (value && selectedLabel ? { value, label: selectedLabel } : null);
 
   const loading = externalLoading || searching;
+  const showCustomRow = allowCustomValue && Boolean(onCreate) && typed !== "" && list.length === 0 && !loading && !searchError;
 
   const pick = (opt: EntityPickerOption | null) => {
     setCached(opt);
     onChange(opt?.value ?? null, opt);
     setOpen(false);
+    setQ("");
+  };
+
+  const useTyped = () => {
+    if (!typed || !onCreate) return;
+    onCreate(typed);
+    setOpen(false);
+    setQ("");
   };
 
   return (
-    <Popover modal open={open} onOpenChange={setOpen}>
+    <Popover
+      modal
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) setQ("");
+      }}
+    >
       <PopoverTrigger asChild>
         <Button
           type="button"
@@ -213,26 +240,71 @@ export function SearchableSelect({
               </div>
             ) : (
               <>
-                <CommandEmpty>
-                  <div className="space-y-2 py-1 text-center">
-                    <p>{emptyText}</p>
-                    {createLabel && onCreate ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="secondary"
-                        className="gap-1"
-                        onClick={() => {
-                          setOpen(false);
-                          onCreate();
-                        }}
+                {showCustomRow ? (
+                  <div className="p-2">
+                    <p className="mb-2 px-1 text-center text-[11px] font-medium uppercase tracking-wide text-foreground-muted">
+                      {emptyText}
+                    </p>
+                    <CommandGroup className="p-0">
+                      <CommandItem
+                        value={`use-typed ${typed}`}
+                        onSelect={useTyped}
+                        className={cn(
+                          "cursor-pointer items-start gap-3 rounded-xl border border-dashed border-brand/40",
+                          "bg-brand-soft px-3 py-3 text-foreground shadow-none",
+                          "hover:bg-brand-soft data-[selected=true]:bg-brand/15 data-[selected=true]:text-foreground",
+                        )}
                       >
-                        <Plus className="size-3.5" />
-                        {createLabel}
-                      </Button>
-                    ) : null}
+                        <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-full bg-surface text-brand shadow-sm ring-1 ring-brand/25">
+                          <PenLine className="size-4" aria-hidden />
+                        </span>
+                        <span className="min-w-0 flex-1 text-left">
+                          <span className="mb-1 inline-flex rounded-full bg-brand/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand">
+                            Add as new name
+                          </span>
+                          <span className="mt-1 block truncate text-[15px] font-semibold leading-snug text-ink">
+                            “{typed}”
+                          </span>
+                          <span className="mt-1 block text-[12px] leading-snug text-foreground-muted">
+                            {customValueHint}
+                          </span>
+                          <span className="mt-2 block text-[11px] font-medium text-brand">
+                            Click or press Enter to use this name →
+                          </span>
+                        </span>
+                      </CommandItem>
+                    </CommandGroup>
                   </div>
-                </CommandEmpty>
+                ) : null}
+
+                {!showCustomRow ? (
+                  <CommandEmpty>
+                    <div className="space-y-2.5 px-1 py-2 text-center">
+                      <p className="text-sm text-foreground-muted">{emptyText}</p>
+                      {allowCustomValue && onCreate ? (
+                        <p className="text-[11px] text-foreground-subtle">
+                          Keep typing a full name above — we’ll offer to use it here.
+                        </p>
+                      ) : null}
+                      {createLabel && onCreate && !allowCustomValue ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          className="gap-1"
+                          onClick={() => {
+                            setOpen(false);
+                            onCreate(typed);
+                          }}
+                        >
+                          <Plus className="size-3.5" />
+                          {createLabel}
+                        </Button>
+                      ) : null}
+                    </div>
+                  </CommandEmpty>
+                ) : null}
+
                 {recent && recent.length > 0 && !q ? (
                   <CommandGroup heading="Recent">
                     {recent.map((o) => (
@@ -245,17 +317,19 @@ export function SearchableSelect({
                     ))}
                   </CommandGroup>
                 ) : null}
-                <CommandGroup>
-                  {list.map((o) => (
-                    <OptionItem
-                      key={o.value}
-                      option={o}
-                      selected={value === o.value}
-                      onSelect={() => pick(o)}
-                    />
-                  ))}
-                </CommandGroup>
-                {createLabel && onCreate && list.length > 0 ? (
+                {list.length > 0 ? (
+                  <CommandGroup>
+                    {list.map((o) => (
+                      <OptionItem
+                        key={o.value}
+                        option={o}
+                        selected={value === o.value}
+                        onSelect={() => pick(o)}
+                      />
+                    ))}
+                  </CommandGroup>
+                ) : null}
+                {createLabel && onCreate && list.length > 0 && !allowCustomValue ? (
                   <div className="border-t border-border p-1.5">
                     <Button
                       type="button"
@@ -264,7 +338,7 @@ export function SearchableSelect({
                       className="w-full justify-start gap-1.5 text-brand"
                       onClick={() => {
                         setOpen(false);
-                        onCreate();
+                        onCreate(typed);
                       }}
                     >
                       <Plus className="size-3.5" />

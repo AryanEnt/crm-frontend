@@ -80,17 +80,22 @@ function OccupationField({ initialLabel }: { initialLabel: string | null }) {
 
   return (
     <div className="grid grid-cols-1 gap-4 sm:col-span-2">
-      <LeadField label="Occupation / ANZSCO" optional group hint="Search by title or code">
+      <LeadField
+        label="Occupation / ANZSCO"
+        optional
+        group
+        hint="Start typing a job title, or pick from suggested"
+      >
         {(a11y, labelId) => (
           <AnzscoCombobox
             value={field.value}
             selectedLabel={field.value ? label : null}
-            placeholder="Search a job or ANZSCO code"
+            placeholder="Search job title or ANZSCO code…"
             aria-labelledby={labelId}
             aria-describedby={a11y["aria-describedby"]}
             onChange={(id, found) => {
               field.onChange(id);
-              setLabel(found ? `${found.code} — ${found.title}` : null);
+              setLabel(found ? `${found.title} · ${found.code}` : null);
               if (found) {
                 setValue("occupation", found.title, { shouldDirty: true });
               }
