@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Mail, MoreHorizontal, Plug, RefreshCw, Search, Unplug, Users } from "lucide-react";
+import { ArrowLeft, Mail, MoreHorizontal, Plug, RefreshCw, Search, Unplug, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
@@ -21,10 +21,17 @@ import { ErrorState } from "@/components/ui/error-state";
 import { Input } from "@/components/ui/input";
 import { LoadingState } from "@/components/ui/loading-state";
 import { MetricCard } from "@/components/ui/metric-card";
+import {
+  Modal,
+  ModalContent,
+  ModalDescription,
+  ModalHeader,
+  ModalTitle,
+} from "@/components/ui/modal";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { ConnectMailboxDialog } from "@/features/email/connect-mailbox-dialog";
 import { providerLabel } from "@/lib/email-providers";
-import { emailApi, type EmailThread, type TeamMailboxPerson } from "@/lib/api/email";
+import { emailApi, type EmailMessage, type EmailThread, type TeamMailboxPerson } from "@/lib/api/email";
 import { cn } from "@/lib/utils";
 
 function relative(iso?: string | null) {
@@ -61,7 +68,14 @@ export function TeamEmailView() {
   const [pageSize, setPageSize] = React.useState(25);
   const [direction, setDirection] = React.useState("");
   const [connectFor, setConnectFor] = React.useState<TeamMailboxPerson | null | undefined>(undefined);
+  const [openThreadId, setOpenThreadId] = React.useState<string | null>(null);
   const team = useQuery({ queryKey: ["email-team"], queryFn: () => emailApi.listTeamMailboxes() });
+
+  const openThread = useQuery({
+    queryKey: ["email-thread", openThreadId],
+    queryFn: () => emailApi.getThread(openThreadId!),
+    enabled: !!openThreadId,
+  });
 
   React.useEffect(() => {
     const t = window.setTimeout(() => setMailQDebounced(mailQ.trim()), 300);
@@ -308,7 +322,12 @@ export function TeamEmailView() {
             <>
               <ul className="crm-scroll min-h-0 flex-1 overflow-y-auto divide-y divide-line">
                 {threads.map((t) => (
-                  <ActivityRow key={t.id} thread={t} showOwner={!seId} />
+                  <ActivityRow
+                    key={t.id}
+                    thread={t}
+                    showOwner={!seId}
+                    onOpen={() => setOpenThreadId(t.id)}
+                  />
                 ))}
               </ul>
               <div className="shrink-0 border-t border-line px-2">
@@ -345,6 +364,21 @@ export function TeamEmailView() {
           void qc.invalidateQueries({ queryKey: ["email-team"] });
           void qc.invalidateQueries({ queryKey: ["email-threads"] });
         }}
+      />
+
+      <TeamThreadReader
+        open={!!openThreadId}
+        onOpenChange={(next) => {
+          if (!next) setOpenThreadId(null);
+        }}
+        loading={openThread.isLoading}
+        error={openThread.isError}
+        onRetry={() => void openThread.refetch()}
+        subject={openThread.data?.thread.subject}
+        ownerName={openThread.data?.thread.ownerName}
+        leadId={openThread.data?.thread.leadId}
+        leadName={openThread.data?.thread.leadName}
+        messages={openThread.data?.messages ?? []}
       />
     </div>
   );
@@ -456,14 +490,28 @@ function MailboxRow({
   );
 }
 
-function ActivityRow({ thread, showOwner }: { thread: EmailThread; showOwner?: boolean }) {
+function ActivityRow({
+  thread,
+  showOwner,
+  onOpen,
+}: {
+  thread: EmailThread;
+  showOwner?: boolean;
+  onOpen: () => void;
+}) {
   return (
     <li className="px-4 py-3 transition-colors hover:bg-surface-muted/40">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <p className="min-w-0 flex-1 truncate text-cell font-medium text-ink">{thread.subject || "(no subject)"}</p>
-        <p className="shrink-0 text-caption tabular-nums text-ink-muted">{relative(thread.lastMessageAt)}</p>
-      </div>
-      <p className="mt-0.5 line-clamp-1 text-caption text-ink-muted">{thread.lastMessagePreview}</p>
+      <button type="button" className="w-full text-left" onClick={onOpen}>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <p className="min-w-0 flex-1 truncate text-cell font-medium text-ink">
+            {thread.subject || "(no subject)"}
+          </p>
+          <p className="shrink-0 text-caption tabular-nums text-ink-muted">
+            {relative(thread.lastMessageAt)}
+          </p>
+        </div>
+        <p className="mt-0.5 line-clamp-1 text-caption text-ink-muted">{thread.lastMessagePreview}</p>
+      </button>
       <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-caption text-ink-muted">
         {showOwner ? <span>{thread.ownerName || "SE"}</span> : null}
         {thread.leadId ? (
@@ -476,15 +524,107 @@ function ActivityRow({ thread, showOwner }: { thread: EmailThread; showOwner?: b
             {thread.customerName || "Contact"}
           </Link>
         ) : null}
-        <Link
+        <button
+          type="button"
           className="font-medium text-ink-secondary hover:text-ink hover:underline"
-          href={`/email?thread=${encodeURIComponent(thread.id)}&folder=sent${
-            thread.ownerUserId ? `&se=${encodeURIComponent(thread.ownerUserId)}` : ""
-          }`}
+          onClick={onOpen}
         >
           Open
-        </Link>
+        </button>
       </div>
     </li>
+  );
+}
+
+function formatMessageWhen(iso?: string | null) {
+  if (!iso) return "";
+  return new Date(iso).toLocaleString();
+}
+
+function TeamThreadReader({
+  open,
+  onOpenChange,
+  loading,
+  error,
+  onRetry,
+  subject,
+  ownerName,
+  leadId,
+  leadName,
+  messages,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  loading: boolean;
+  error: boolean;
+  onRetry: () => void;
+  subject?: string | null;
+  ownerName?: string | null;
+  leadId?: string | null;
+  leadName?: string | null;
+  messages: EmailMessage[];
+}) {
+  return (
+    <Modal open={open} onOpenChange={onOpenChange}>
+      <ModalContent className="flex max-h-[min(90vh,760px)] max-w-2xl flex-col gap-0 overflow-hidden p-0">
+        <ModalHeader className="shrink-0 border-b border-border px-5 py-4 pr-12">
+          <ModalTitle className="pr-2 text-base leading-snug">
+            {subject?.trim() || "(no subject)"}
+          </ModalTitle>
+          <ModalDescription className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+            {ownerName ? <span>Mailbox: {ownerName}</span> : null}
+            {leadId ? (
+              <Link className="text-brand hover:underline" href={`/leads/${leadId}`}>
+                {leadName || "Open lead"}
+              </Link>
+            ) : null}
+            <span className="text-foreground-subtle">Read-only team view</span>
+          </ModalDescription>
+        </ModalHeader>
+
+        <div className="crm-scroll min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          {loading ? (
+            <LoadingState label="Loading conversation…" />
+          ) : error ? (
+            <ErrorState onRetry={onRetry} />
+          ) : messages.length === 0 ? (
+            <p className="text-sm text-foreground-muted">No messages in this conversation.</p>
+          ) : (
+            <div className="space-y-3">
+              {messages.map((m) => (
+                <article
+                  key={m.id}
+                  className={cn(
+                    "rounded-lg border border-border px-3 py-2.5",
+                    m.direction === "outbound" && "bg-brand-soft/40",
+                  )}
+                >
+                  <p className="text-sm font-medium">
+                    {m.fromName || m.from}
+                    <span className="ml-2 text-[11px] font-normal text-foreground-subtle">
+                      {formatMessageWhen(m.sentAt || m.receivedAt || m.createdAt)}
+                      {m.status ? ` · ${m.status}` : ""}
+                    </span>
+                  </p>
+                  <div
+                    className="prose prose-sm mt-2 max-w-none text-sm leading-relaxed text-foreground"
+                    dangerouslySetInnerHTML={{
+                      __html: m.bodyHtml || (m.bodyText || "").replace(/\n/g, "<br/>"),
+                    }}
+                  />
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border px-5 py-3">
+          <Button size="sm" variant="secondary" onClick={() => onOpenChange(false)}>
+            <X className="size-3.5" aria-hidden />
+            Close
+          </Button>
+        </div>
+      </ModalContent>
+    </Modal>
   );
 }
