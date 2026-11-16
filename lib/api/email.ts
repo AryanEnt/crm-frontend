@@ -315,6 +315,11 @@ export const emailApi = {
     api.post<{ disconnected: boolean }>(`/email/accounts/${id}/disconnect`, {}),
   sync: (accountId: string) =>
     api.post<{ synced: boolean }>(`/email/sync/${accountId}`, {}),
+  syncAllTeam: () =>
+    api.post<{
+      synced: number;
+      failed: { accountId: string; emailAddress: string; error: string }[];
+    }>("/email/team/sync-all", {}),
   listThreads: (params: Record<string, string | undefined>) =>
     api.get<EmailThreadList>(`/email/threads${qs(params)}`),
   getThread: (id: string) => api.get<EmailThreadDetail>(`/email/threads/${id}`),

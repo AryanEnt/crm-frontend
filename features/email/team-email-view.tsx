@@ -109,6 +109,24 @@ export function TeamEmailView() {
     },
   });
 
+  const syncAll = useMutation({
+    mutationFn: () => emailApi.syncAllTeam(),
+    onSuccess: (result) => {
+      if (result.failed.length === 0) {
+        toast.success(
+          result.synced === 1 ? "Synced 1 mailbox" : `Synced ${result.synced} mailboxes`,
+        );
+      } else if (result.synced === 0) {
+        toast.error(`Could not sync any mailbox (${result.failed.length} failed)`);
+      } else {
+        toast.warning(`Synced ${result.synced}, ${result.failed.length} failed`);
+      }
+      void qc.invalidateQueries({ queryKey: ["email-team"] });
+      void qc.invalidateQueries({ queryKey: ["email-threads", "team"] });
+    },
+    onError: () => toast.error("Could not sync team mailboxes"),
+  });
+
   const disconnect = useMutation({
     mutationFn: (id: string) => emailApi.disconnect(id),
     onSuccess: () => {
@@ -127,6 +145,7 @@ export function TeamEmailView() {
   const selected = people.find((p) => p.userId === seId) ?? null;
   const threads = activity.data?.threads ?? [];
   const total = activity.data?.total ?? 0;
+  const connectedCount = overview?.connected ?? 0;
 
   const selectPerson = (id: string) => {
     setSeId(id);
@@ -139,10 +158,21 @@ export function TeamEmailView() {
         title="Team Email Management"
         description="Connect Migadu, Spacemail, or custom IMAP mailboxes for assigned sales executives. They never see the password."
         actions={
-          <Button size="sm" onClick={() => setConnectFor(null)}>
-            <Plug className="size-3.5" />
-            Connect mailbox
-          </Button>
+          <>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={syncAll.isPending || connectedCount === 0}
+              onClick={() => syncAll.mutate()}
+            >
+              <RefreshCw className={cn("size-3.5", syncAll.isPending && "animate-spin")} />
+              {syncAll.isPending ? "Syncing…" : "Sync all"}
+            </Button>
+            <Button size="sm" onClick={() => setConnectFor(null)}>
+              <Plug className="size-3.5" />
+              Connect mailbox
+            </Button>
+          </>
         }
       />
 
