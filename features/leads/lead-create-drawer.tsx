@@ -30,6 +30,7 @@ import {
 import {
   CountryPicker,
   LeadSourceSelect,
+  NationalityPicker,
   PipelineStagePickers,
   PriorityToggle,
   UserPicker,
@@ -543,7 +544,7 @@ function LeadFormBody({
                   <CrmFormSection title="Profile" divided>
                     <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                       <CountryField control={form.control} />
-                      <TextField name="nationality" label="Nationality" />
+                      <NationalityField control={form.control} />
                       <TextField name="location" label="Location" className="sm:col-span-2" />
                       <TextField name="occupation" label="Occupation" />
                       <TextField name="jobTitle" label="Job title" />
@@ -660,6 +661,15 @@ function CountryField({ control }: { control: LeadControl }) {
   return (
     <FormFieldSlot label="Country of Residency">
       <CountryPicker value={field.value} onChange={field.onChange} />
+    </FormFieldSlot>
+  );
+}
+
+function NationalityField({ control }: { control: LeadControl }) {
+  const { field } = useController({ control, name: "nationality" });
+  return (
+    <FormFieldSlot label="Nationality">
+      <NationalityPicker value={field.value} onChange={field.onChange} />
     </FormFieldSlot>
   );
 }

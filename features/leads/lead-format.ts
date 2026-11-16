@@ -42,6 +42,15 @@ const COUNTRY_LABELS = new Map(
     "Indonesia",
     "Vietnam",
     "South Africa",
+    "Iran",
+    "Egypt",
+    "Kenya",
+    "Afghanistan",
+    "Colombia",
+    "Fiji",
+    "Germany",
+    "Singapore",
+    "Zambia",
   ].map((name) => [name.toLowerCase(), name]),
 );
 

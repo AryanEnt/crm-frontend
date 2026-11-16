@@ -622,8 +622,10 @@ async function mutateWithDuplicateCheck<T>(
 }
 
 export const crmApi = {
-  searchAnzsco: (q: string) =>
-    api.get<AnzscoOccupation[]>(`/anzsco?q=${encodeURIComponent(q)}&limit=20`),
+  searchAnzsco: (q: string, limit = 20) =>
+    api.get<AnzscoOccupation[]>(
+      `/anzsco?q=${encodeURIComponent(q)}&limit=${encodeURIComponent(String(limit))}`,
+    ),
   listPipelines: (kind?: string, includeInactive = false) =>
     api.get<Pipeline[]>(
       `/pipelines?${new URLSearchParams({

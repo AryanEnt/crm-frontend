@@ -36,7 +36,7 @@ import {
 } from "@/features/analytics/charts";
 import { TeamMemberFilter } from "@/features/teams/team-member-filter";
 import { flagEmoji } from "@/features/leads/create/phone-country-picker";
-import { PHONE_COUNTRIES } from "@/features/leads/create/phone";
+import { countryCodeFromName } from "@/lib/geo/world";
 import { adminApi } from "@/lib/api/admin";
 import {
   crmApi,
@@ -166,8 +166,8 @@ function kpiDelta(curr: number, prev: number | undefined): number | undefined {
 
 function countryMark(name: string): { emoji?: string; label: string } {
   if (name === "(Unknown)") return { label: "Unknown" };
-  const hit = PHONE_COUNTRIES.find((c) => c.name.toLowerCase() === name.toLowerCase());
-  if (hit) return { emoji: flagEmoji(hit.code), label: name };
+  const code = countryCodeFromName(name);
+  if (code) return { emoji: flagEmoji(code), label: name };
   return { label: name };
 }
 

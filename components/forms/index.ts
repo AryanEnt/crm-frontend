@@ -11,6 +11,7 @@ export { DraftIndicator, AutoSaveIndicator } from "./draft-indicator";
 export { SearchableSelect, EntityPicker } from "./searchable-select";
 export {
   CountryPicker,
+  NationalityPicker,
   UserPicker,
   TeamPicker,
   PipelineStagePickers,
