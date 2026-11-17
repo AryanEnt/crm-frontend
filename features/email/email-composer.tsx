@@ -34,6 +34,7 @@ import { ApiError } from "@/types/api";
 import { cn } from "@/lib/utils";
 
 const MAX_ATTACH_BYTES = 15 * 1024 * 1024;
+const MAX_ATTACH_TOTAL_BYTES = 20 * 1024 * 1024;
 const MAX_ATTACH_COUNT = 10;
 
 type PendingAttachment = {
@@ -164,6 +165,7 @@ export function EmailComposer({
   const addFiles = (list: FileList | File[] | null) => {
     if (!list || list.length === 0) return;
     const next = [...attachments];
+    let total = next.reduce((n, a) => n + a.file.size, 0);
     for (const file of Array.from(list)) {
       if (next.length >= MAX_ATTACH_COUNT) {
         toast.error(`You can attach up to ${MAX_ATTACH_COUNT} files`);
@@ -173,6 +175,11 @@ export function EmailComposer({
         toast.error(`“${file.name}” is over 15 MB`);
         continue;
       }
+      if (total + file.size > MAX_ATTACH_TOTAL_BYTES) {
+        toast.error("Attachments together are over 20 MB");
+        continue;
+      }
+      total += file.size;
       next.push({ id: `${file.name}-${file.size}-${file.lastModified}-${Math.random()}`, file });
     }
     setAttachments(next);
@@ -641,7 +648,7 @@ export function EmailComposer({
             />
             {attachments.length > 0 ? (
               <span className="text-xs text-foreground-muted">
-                {attachments.length} file{attachments.length === 1 ? "" : "s"} · max 15 MB each
+                {attachments.length} file{attachments.length === 1 ? "" : "s"} · max 15 MB each · 20 MB total
               </span>
             ) : (
               <span className="text-xs text-foreground-muted">PDF, images, Office docs</span>
