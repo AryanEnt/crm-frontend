@@ -1,7 +1,7 @@
 import type { PipelineStatus } from "./pipeline-totals.ts";
 import { closedRangeLabel, isIsoDate, setIntervalParams, type ClosedRange, type Interval } from "./closed-range.ts";
 
-export type NextActionFilter = "" | "overdue" | "today" | "week" | "none";
+export type NextActionFilter = "" | "overdue" | "today" | "week" | "none" | "stale";
 export type ClosedSortKey = "name" | "value" | "closed" | "next";
 export type SortOrder = "asc" | "desc";
 /** Board column card order (display only). */
@@ -142,6 +142,7 @@ export const NEXT_ACTION_OPTIONS: { value: NextActionFilter; label: string }[] =
   { value: "today", label: "Today" },
   { value: "week", label: "This week" },
   { value: "none", label: "None" },
+  { value: "stale", label: "Quiet 7+ days" },
 ];
 
 /** URL keys owned by the filters; anything else (e.g. leadId) is left alone. */
@@ -207,7 +208,7 @@ export function parsePipelineFilters(sp: URLSearchParams): PipelineFilters {
   return {
     status: oneOf(sp.get("status"), ["open", "won", "lost", "complete", "all"] as const, DEFAULT_PIPELINE_FILTERS.status),
     q: (sp.get("q") ?? "").trim(),
-    next: oneOf(sp.get("next"), ["", "overdue", "today", "week", "none"] as const, ""),
+    next: oneOf(sp.get("next"), ["", "overdue", "today", "week", "none", "stale"] as const, ""),
     owner: sp.get("owner") ?? "",
     team: sp.get("team") ?? "",
     source: sp.get("source") ?? "",
@@ -380,8 +381,12 @@ export function activeFilterChips(
     chips.push({ key: "closed", label: `${closedStatusLabel(f.status, names.nurturing)} ${closedRangeLabel(f)}` });
   }
   if (f.next && !closedView) {
-    const label = NEXT_ACTION_OPTIONS.find((o) => o.value === f.next)?.label ?? f.next;
-    chips.push({ key: "next", label: `Next action: ${label.toLowerCase()}` });
+    if (f.next === "stale") {
+      chips.push({ key: "next", label: "Quiet 7+ days" });
+    } else {
+      const label = NEXT_ACTION_OPTIONS.find((o) => o.value === f.next)?.label ?? f.next;
+      chips.push({ key: "next", label: `Next action: ${label.toLowerCase()}` });
+    }
   }
   if (f.attention && !closedView) {
     chips.push({
@@ -459,7 +464,8 @@ export const PIPELINE_WORK_CHIPS = [
   { id: "overdue", label: "Overdue", next: "overdue" as const, attention: "" },
   { id: "today", label: "Today", next: "today" as const, attention: "" },
   { id: "none", label: "No next step", next: "none" as const, attention: "" },
-  { id: "stuck", label: "Stuck", next: "" as const, attention: "over_sla" },
+  /** Matches SE dashboard Stuck / my-day stale: no activity in 7+ days. */
+  { id: "stuck", label: "Stuck", next: "stale" as const, attention: "" },
 ] as const;
 
 export type PipelineWorkId = (typeof PIPELINE_WORK_CHIPS)[number]["id"];
@@ -470,7 +476,7 @@ export function isWorkChipActive(f: PipelineFilters, id: PipelineWorkId): boolea
   return f.next === chip.next && f.attention === chip.attention;
 }
 
-/** Toggle a Work chip: overdue / today / no next step / stuck in stage. */
+/** Toggle a Work chip: overdue / today / no next step / stuck (quiet 7+ days). */
 export function applyPipelineWork(f: PipelineFilters, id: PipelineWorkId): PipelineFilters {
   const chip = PIPELINE_WORK_CHIPS.find((c) => c.id === id);
   if (!chip) return f;

@@ -237,17 +237,17 @@ describe("filter chips", () => {
     assert.equal(clearFilter(custom, "closed").closedFrom, "");
   });
 
-  it("toggles Work chips and writes attention for stuck leads", () => {
+  it("toggles Work chips and filters stuck leads as quiet 7+ days", () => {
     const overdue = applyPipelineWork(DEFAULT_PIPELINE_FILTERS, "overdue");
     assert.equal(overdue.next, "overdue");
     assert.equal(isWorkChipActive(overdue, "overdue"), true);
     assert.equal(applyPipelineWork(overdue, "overdue").next, "");
     const stuck = applyPipelineWork(DEFAULT_PIPELINE_FILTERS, "stuck");
-    assert.equal(stuck.attention, "over_sla");
-    assert.equal(stuck.next, "");
-    assert.equal(boardParams("p1", stuck).get("attention"), "over_sla");
+    assert.equal(stuck.next, "stale");
+    assert.equal(stuck.attention, "");
+    assert.equal(boardParams("p1", stuck).get("activity"), "stale");
     assert.equal(hasNarrowingFilters(stuck), true);
     assert.match(pipelineWorkHref("today", "p1"), /next=today/);
-    assert.match(pipelineWorkHref("stuck", "p1"), /attention=over_sla/);
+    assert.match(pipelineWorkHref("stuck", "p1"), /next=stale/);
   });
 });
