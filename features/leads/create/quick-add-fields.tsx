@@ -41,6 +41,7 @@ export function QuickAddFields({
   onApplyExtract,
   showScreenshot = true,
   anzscoLabel = null,
+  countryRequired = true,
 }: {
   nameRef: React.RefObject<HTMLInputElement | null>;
   sources: readonly string[];
@@ -55,6 +56,8 @@ export function QuickAddFields({
   onApplyExtract: (found: { fullName?: string; phone?: string; email?: string }) => void;
   showScreenshot?: boolean;
   anzscoLabel?: string | null;
+  /** False for roles that may create leads without a country. */
+  countryRequired?: boolean;
 }) {
   const { control, register, formState } = useLeadForm();
   const source = useWatch({ control, name: "source" });
@@ -123,7 +126,7 @@ export function QuickAddFields({
       </FormSection>
 
       <FormSection title="About" description="Where they are and what they do.">
-        <AboutSection anzscoLabel={anzscoLabel} />
+        <AboutSection anzscoLabel={anzscoLabel} countryRequired={countryRequired} />
       </FormSection>
 
       <FormSection title="Lead source" description="Where this opportunity came from.">
