@@ -33,8 +33,8 @@ import { cn } from "@/lib/utils";
 import {
   CREATE_LEAD_PRIORITIES,
   DETAIL_SECTION_FIELDS,
-  createLeadSchema,
-  editLeadSchema,
+  isCountryRequired,
+  leadSheetSchema,
   emptyCreateLead,
   leadToForm,
   parseTags,
@@ -59,7 +59,8 @@ const FORM_ID = "create-lead-form";
 
 type Settings = Record<string, string>;
 
-const REQUIRED_KEYS = ["fullName", "source", "country"] as const;
+const requiredKeys = (countryRequired: boolean) =>
+  countryRequired ? (["fullName", "source", "country"] as const) : (["fullName", "source"] as const);
 
 export type CreateLeadSheetProps = {
   open: boolean;
@@ -225,9 +226,10 @@ function CreateLeadHeader({ editing, onClose }: { editing: boolean; onClose: () 
   );
 }
 
-function RequiredProgress({ values }: { values: CreateLeadInput }) {
-  const filled = REQUIRED_KEYS.filter((key) => String(values[key] ?? "").trim().length > 0).length;
-  const total = REQUIRED_KEYS.length;
+function RequiredProgress({ values, countryRequired }: { values: CreateLeadInput; countryRequired: boolean }) {
+  const keys = requiredKeys(countryRequired);
+  const filled = keys.filter((key) => String(values[key] ?? "").trim().length > 0).length;
+  const total = keys.length;
   const pct = Math.round((filled / total) * 100);
   return (
     <div className="flex items-center gap-3" aria-label={`${filled} of ${total} required fields complete`}>
@@ -317,6 +319,7 @@ function CreateLeadForm({
 }) {
   const { can } = useAuth();
   const canAssignOwner = can("leads:assign") && user.roleCode !== "sales_executive";
+  const countryRequired = isCountryRequired(user.roleCode);
   const canAttachScreenshot = canAttachLeadScreenshot(can, user);
   const timeZone = user.timezone || undefined;
   const me = React.useMemo(() => ({ id: user.id, fullName: user.fullName }), [user.id, user.fullName]);
@@ -344,7 +347,8 @@ function CreateLeadForm({
         }
       : undefined,
   );
-  const form = useZodForm(editing ? editLeadSchema : createLeadSchema, {
+  const [schema] = React.useState(() => leadSheetSchema(editing ? "edit" : "create", { countryRequired }));
+  const form = useZodForm(schema, {
     defaultValues: editing ? editing.initial : emptyCreateLead(defaults),
   });
   const { isSubmitting, isDirty, errors } = useFormState({ control: form.control });
@@ -495,7 +499,7 @@ function CreateLeadForm({
     <FormProvider {...form}>
       <div className="flex min-h-0 flex-1 flex-col" onKeyDown={onKeyDown}>
         <div className="shrink-0 border-b border-[color:var(--aurora-line)] px-5 py-2.5 sm:px-7">
-          <RequiredProgress values={values} />
+          <RequiredProgress values={values} countryRequired={countryRequired} />
         </div>
 
         <div ref={bodyRef} className="crm-scroll min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-7 sm:py-6">
@@ -523,6 +527,7 @@ function CreateLeadForm({
               onApplyExtract={applyExtract}
               showScreenshot={canAttachScreenshot}
               anzscoLabel={anzscoLabel}
+              countryRequired={countryRequired}
             />
 
             <MoreDetailsAccordion<DetailSection>

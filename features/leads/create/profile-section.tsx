@@ -123,11 +123,17 @@ function OccupationField({ initialLabel }: { initialLabel: string | null }) {
   );
 }
 
-/** About block — country required; nationality, location and occupation optional. */
-export function AboutSection({ anzscoLabel = null }: { anzscoLabel?: string | null }) {
+/** About block — country required unless the role may skip it; nationality, location and occupation optional. */
+export function AboutSection({
+  anzscoLabel = null,
+  countryRequired = true,
+}: {
+  anzscoLabel?: string | null;
+  countryRequired?: boolean;
+}) {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-      <CountryField required />
+      <CountryField required={countryRequired} />
       <NationalityField />
       <LocationField />
       <OccupationField initialLabel={anzscoLabel} />

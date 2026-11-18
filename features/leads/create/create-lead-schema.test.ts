@@ -6,6 +6,8 @@ import {
   editLeadSchema,
   emptyCreateLead,
   formatAmount,
+  isCountryRequired,
+  leadSheetSchema,
   leadToForm,
   parseAmount,
   sectionForField,
@@ -85,6 +87,17 @@ describe("create lead schema", () => {
       true,
     );
     assert.equal(editLeadSchema.safeParse(form({ fullName: "Priya Sharma", ...about })).success, true);
+  });
+
+  it("lets team leads and sales executives skip country on create and edit", () => {
+    for (const role of ["sales_manager", "sales_executive"]) assert.equal(isCountryRequired(role), false);
+    for (const role of ["super_admin", "admin", undefined]) assert.equal(isCountryRequired(role), true);
+
+    const blankCountry = form({ fullName: "Priya Sharma", country: "" });
+    for (const mode of ["create", "edit"] as const) {
+      assert.equal(leadSheetSchema(mode, { countryRequired: false }).safeParse(blankCountry).success, true);
+      assert.equal(leadSheetSchema(mode, { countryRequired: true }).safeParse(blankCountry).success, false);
+    }
   });
 
   it("leaves phone optional and does not block on incomplete numbers", () => {

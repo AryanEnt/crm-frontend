@@ -77,13 +77,22 @@ export const MESSAGES = {
   country: "Choose their country",
 } as const;
 
+/** Team leads (sales_manager) and sales executives may leave country blank — same rule as the backend. */
+const COUNTRY_OPTIONAL_ROLES: ReadonlySet<string> = new Set(["sales_manager", "sales_executive"]);
+
+export function isCountryRequired(roleCode: string | undefined) {
+  return !COUNTRY_OPTIONAL_ROLES.has(roleCode ?? "");
+}
+
 /**
- * Name and country are required on create and edit. Nationality and location are optional.
+ * Name is required on create and edit; country too, unless the user's role may skip it
+ * (see isCountryRequired). Nationality and location are optional.
  * Source is required by the API, but it always starts filled (last used, org default
  * or "Other"), so nobody has to touch it. Referral source still needs a referrer on
  * create and edit.
  */
-export function leadSheetSchema(_mode: "create" | "edit") {
+export function leadSheetSchema(_mode: "create" | "edit", opts: { countryRequired?: boolean } = {}) {
+  const countryRequired = opts.countryRequired ?? true;
   return z
     .object({
       fullName: z.string().trim().min(1, MESSAGES.name),
@@ -103,7 +112,7 @@ export function leadSheetSchema(_mode: "create" | "edit") {
       pipelineId: z.string(),
       stageId: z.string(),
       nextActivityAt: z.string().refine((v) => !v || fromLocalInput(v) !== null, MESSAGES.followUp),
-      country: z.string().trim().min(1, MESSAGES.country),
+      country: countryRequired ? z.string().trim().min(1, MESSAGES.country) : z.string().trim(),
       nationality: z.string().trim(),
       location: z.string().trim(),
       occupation: z.string().trim(),
