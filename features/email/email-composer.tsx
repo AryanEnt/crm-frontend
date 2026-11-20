@@ -73,7 +73,30 @@ export type ComposerContext = {
   inReplyTo?: string;
   quoteHtml?: string;
   mode?: "compose" | "reply" | "forward";
+  /** Resume a saved draft: sending/saving updates this message instead of creating a new one. */
+  draftId?: string;
+  cc?: string[];
+  bcc?: string[];
+  bodyHtml?: string;
 };
+
+/** Build a composer context that resumes a saved draft message. */
+export function draftToContext(
+  m: EmailMessage,
+  extra: Pick<ComposerContext, "threadId" | "leadId" | "customerId" | "dealId"> = {},
+): ComposerContext {
+  return {
+    ...extra,
+    mode: "compose",
+    draftId: m.id,
+    to: m.to,
+    cc: m.cc,
+    bcc: m.bcc,
+    subject: m.subject,
+    bodyHtml: m.bodyHtml || m.bodyText.replace(/\n/g, "<br/>"),
+    inReplyTo: m.inReplyTo ?? undefined,
+  };
+}
 
 function splitAddrs(v: string) {
   return v
@@ -147,7 +170,10 @@ export function EmailComposer({
     if (!open) return;
     setTo((context.to ?? []).join(", "));
     setSubject(context.subject ?? "");
-    setDraftId(null);
+    setCc((context.cc ?? []).join(", "));
+    setBcc((context.bcc ?? []).join(", "));
+    setShowCc((context.cc?.length ?? 0) > 0 || (context.bcc?.length ?? 0) > 0);
+    setDraftId(context.draftId ?? null);
     setSaveState("idle");
     setShowPreview(false);
     setAttachments([]);
@@ -155,12 +181,14 @@ export function EmailComposer({
     clearLockedTemplate();
     window.setTimeout(() => {
       if (editorRef.current) {
-        editorRef.current.innerHTML = context.quoteHtml
+        editorRef.current.innerHTML = context.bodyHtml
+          ? context.bodyHtml
+          : context.quoteHtml
           ? `<p><br/></p><blockquote class="border-l-2 border-border pl-3 text-foreground-muted">${context.quoteHtml}</blockquote>`
           : "";
       }
     }, 0);
-  }, [open, context.to, context.subject, context.threadId, context.inReplyTo, context.quoteHtml, clearLockedTemplate]);
+  }, [open, context.to, context.subject, context.threadId, context.inReplyTo, context.quoteHtml, context.draftId, context.bodyHtml, context.cc, context.bcc, clearLockedTemplate]);
 
   const addFiles = (list: FileList | File[] | null) => {
     if (!list || list.length === 0) return;

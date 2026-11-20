@@ -8,7 +8,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { LoadingState } from "@/components/ui/loading-state";
 import { useAuth } from "@/features/auth/auth-provider";
 import { emailApi, type EmailAccount, type EmailMessage, type EmailThread } from "@/lib/api/email";
-import { EmailComposer, type ComposerContext } from "@/features/email/email-composer";
+import { EmailComposer, draftToContext, type ComposerContext } from "@/features/email/email-composer";
 import { cn } from "@/lib/utils";
 
 function formatWhen(iso?: string | null) {
@@ -246,6 +246,22 @@ function ThreadMessages({
             </p>
           ) : null}
           <div className="mt-2 flex gap-2">
+            {m.status === "draft" ? (
+              <Button
+                size="sm"
+                onClick={() =>
+                  onReply(
+                    draftToContext(m, {
+                      threadId: thread.id,
+                      leadId: thread.leadId ?? undefined,
+                      customerId: thread.customerId ?? undefined,
+                    }),
+                  )
+                }
+              >
+                Edit &amp; send
+              </Button>
+            ) : null}
             <Button
               size="sm"
               variant="outline"

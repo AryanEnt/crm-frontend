@@ -28,7 +28,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { LeadCombobox } from "@/components/forms/entity-pickers";
 import { leadHref } from "@/features/activities/activity-href";
 import { emailApi, type EmailAccount, type EmailThread } from "@/lib/api/email";
-import { EmailComposer, type ComposerContext } from "@/features/email/email-composer";
+import { EmailComposer, draftToContext, type ComposerContext } from "@/features/email/email-composer";
 import { useAuth } from "@/features/auth/auth-provider";
 import { cn } from "@/lib/utils";
 
@@ -388,6 +388,22 @@ export function EmailWorkspace() {
                     ) : null}
                     {account ? (
                       <div className="mt-2 flex gap-2">
+                        {m.status === "draft" ? (
+                          <Button
+                            size="sm"
+                            onClick={() =>
+                              setCompose(
+                                draftToContext(m, {
+                                  threadId: thread.id,
+                                  leadId: thread.leadId ?? undefined,
+                                  customerId: thread.customerId ?? undefined,
+                                }),
+                              )
+                            }
+                          >
+                            Edit &amp; send
+                          </Button>
+                        ) : null}
                         <Button
                           size="sm"
                           variant="outline"
