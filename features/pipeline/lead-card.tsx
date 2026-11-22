@@ -26,6 +26,7 @@ import { NegotiationTagControl } from "./negotiation-tag-control";
 import { isNegotiationStage } from "./negotiation-tag";
 import { NextFollowUpRemarksControl } from "./next-follow-up-remarks-control";
 import { requiresNextFollowUpRemarks } from "./next-follow-up-remarks";
+import { FileDeliveredEmailControl } from "./file-delivered-email-control";
 import { FileReceivedControl } from "./file-received-control";
 import { isClientsStage, isFileDeliveredStage, isOutcomeStage } from "./nurturing-stages";
 import { OutcomeLetterControl } from "./outcome-letter-control";
@@ -34,6 +35,7 @@ import { showsAddDocumentSection } from "./pipeline-lead-documents";
 import { formatDate } from "./pipeline-format";
 import { OwnerAvatar } from "./pipeline-ui";
 import { formatStageAgeLabel, stageAge, type StageAgeTone } from "./stage-age";
+import { TransferLeadControl } from "./transfer-lead-control";
 import { useHourlyNow } from "./use-hourly-now";
 
 const AGE_BORDER: Record<StageAgeTone, string> = {
@@ -96,24 +98,38 @@ export function LeadCard({
   const closed = won || lost;
   const tone = nextActionTone(lead.nextActivityAt, timezone);
   const stage = stages?.find((s) => s.id === lead.stageId);
-  const age = stageAge(lead.stageEnteredAt, stage?.slaHours, { closed, now });
+  const fileDelivered = isFileDeliveredStage(stage?.name);
+  const emailSent = Boolean(lead.fileDeliveredEmailSentAt);
+  const age = stageAge(lead.stageEnteredAt, stage?.slaHours, {
+    closed,
+    now,
+    dueAt: fileDelivered ? lead.documentDeadlineAt : undefined,
+    emailSentAt: fileDelivered ? lead.fileDeliveredEmailSentAt : undefined,
+  });
   const showMenu = !overlay && canEdit && !!stages?.length;
   // Team Leads / admins see whose book the lead sits in; SEs already know their own cards.
   const showOwner = user?.roleCode !== "sales_executive";
 
   const urgency = closed
     ? "ok"
-    : tone === "overdue"
-      ? "overdue"
-      : age.tone === "over"
-        ? "stuck"
-        : tone === "today"
-          ? "today"
-          : tone === "none"
-            ? "none"
-            : age.tone === "warn"
-              ? "soon"
-              : "ok";
+    : emailSent
+      ? "ok"
+      : tone === "overdue" && !(fileDelivered && lead.documentDeadlineAt)
+        ? "overdue"
+        : !emailSent &&
+            fileDelivered &&
+            lead.documentDeadlineAt &&
+            nextActionTone(lead.documentDeadlineAt, timezone) === "overdue"
+          ? "stuck"
+          : age.tone === "over"
+            ? "stuck"
+            : tone === "today"
+              ? "today"
+              : tone === "none"
+                ? "none"
+                : age.tone === "warn"
+                  ? "soon"
+                  : "ok";
 
   const needFollowUp =
     !overlay && !closed && requiresNextFollowUpRemarks(stage?.name) && !(lead.nextFollowUpRemarks ?? "").trim();
@@ -123,8 +139,10 @@ export function LeadCard({
   const showAddDocument =
     !overlay && showsAddDocumentSection(stage?.name ?? (lost ? "Lost" : won ? "Purchased" : null), lead.status);
   const showClientsEmail = !overlay && isClientsStage(stage?.name) && !!stages?.length;
-  const showFileReceived = !overlay && isFileDeliveredStage(stage?.name);
+  const showFileReceived = !overlay && fileDelivered;
+  const showFileDeliveredEmail = !overlay && fileDelivered;
   const showOutcomeLetter = !overlay && isOutcomeStage(stage?.name);
+  const cardTone: StageAgeTone = emailSent ? "ok" : age.tone;
 
   return (
     <article
@@ -133,24 +151,28 @@ export function LeadCard({
         "relative overflow-hidden rounded-xl border bg-surface p-3.5 shadow-xs",
         "transition-[box-shadow,border-color,background-color,opacity] duration-150 motion-reduce:transition-none",
         "group-hover/card:border-line-strong group-hover/card:shadow-card",
-        urgency === "overdue" || urgency === "stuck"
-          ? "border-danger/70 bg-danger-soft/40"
-          : urgency === "today"
-            ? "border-warning/60 bg-warning-soft/40"
-            : AGE_BORDER[age.tone],
-        urgency === "overdue" || urgency === "stuck" || urgency === "today" ? "" : AGE_SURFACE[age.tone],
+        emailSent
+          ? "border-success/70 bg-success-soft/50"
+          : urgency === "overdue" || urgency === "stuck"
+            ? "border-danger/70 bg-danger-soft/40"
+            : urgency === "today"
+              ? "border-warning/60 bg-warning-soft/40"
+              : AGE_BORDER[cardTone],
+        !emailSent && urgency !== "overdue" && urgency !== "stuck" && urgency !== "today"
+          ? AGE_SURFACE[cardTone]
+          : "",
         overlay && "cursor-grabbing border-line-strong shadow-card",
         dragging && "opacity-40",
       )}
     >
-      {age.tone !== "none" && urgency !== "overdue" ? (
+      {emailSent || (cardTone !== "none" && urgency !== "overdue") ? (
         <span aria-hidden className="absolute inset-x-0 top-0 h-1 bg-surface-muted/80">
           <span
             className={cn(
               "block h-full transition-[width] duration-300 motion-reduce:transition-none",
-              AGE_BAR[age.tone],
+              AGE_BAR[cardTone],
             )}
-            style={{ width: `${Math.max(12, age.fillPercent)}%` }}
+            style={{ width: `${Math.max(12, emailSent ? 100 : age.fillPercent)}%` }}
           />
         </span>
       ) : (
@@ -195,15 +217,21 @@ export function LeadCard({
           <p
             className={cn(
               "flex items-center gap-1.5 text-[0.8125rem] font-medium",
-              nextActionTone(lead.documentDeadlineAt, timezone) === "overdue"
-                ? "text-danger"
-                : nextActionTone(lead.documentDeadlineAt, timezone) === "today"
-                  ? "text-warning"
-                  : "text-ink-secondary",
+              emailSent
+                ? "text-success"
+                : nextActionTone(lead.documentDeadlineAt, timezone) === "overdue"
+                  ? "text-danger"
+                  : nextActionTone(lead.documentDeadlineAt, timezone) === "today"
+                    ? "text-warning"
+                    : "text-ink-secondary",
             )}
           >
             <CalendarClock className="size-3.5 shrink-0" aria-hidden />
-            <span className="truncate">{formatDocumentDeadline(lead.documentDeadlineAt, timezone)}</span>
+            <span className="truncate">
+              {emailSent
+                ? `Emailed · ${formatDocumentDeadline(lead.documentDeadlineAt, timezone)}`
+                : formatDocumentDeadline(lead.documentDeadlineAt, timezone)}
+            </span>
           </p>
         ) : (
           <p
@@ -236,7 +264,11 @@ export function LeadCard({
               {lead.potentialValue != null ? formatLeadMoney(lead.potentialValue, lead.currency) : "No value yet"}
             </span>
             <span className="ml-auto flex min-w-0 items-center gap-1.5">
-              {urgency === "stuck" ? (
+              {emailSent ? (
+                <span className="inline-flex shrink-0 items-center rounded-full bg-success-soft px-1.5 py-px text-[0.6875rem] font-medium text-success">
+                  Emailed
+                </span>
+              ) : urgency === "stuck" ? (
                 <span className="inline-flex shrink-0 items-center rounded-full bg-danger-soft px-1.5 py-px text-[0.6875rem] font-medium text-danger">
                   Stuck
                 </span>
@@ -246,8 +278,14 @@ export function LeadCard({
                 </span>
               ) : null}
               <span
-                className={cn("max-w-[9.5rem] truncate text-caption tabular-nums", AGE_DAYS[age.tone])}
-                title={`${AGE_TITLE[age.tone]} · ${formatStageAgeLabel(age)}`}
+                className={cn("max-w-[9.5rem] truncate text-caption tabular-nums", AGE_DAYS[cardTone])}
+                title={
+                  emailSent
+                    ? `Email sent — overdue stopped · ${formatStageAgeLabel(age)}`
+                    : fileDelivered && lead.documentDeadlineAt
+                      ? `Counts from due date · ${AGE_TITLE[cardTone]} · ${formatStageAgeLabel(age)}`
+                      : `${AGE_TITLE[cardTone]} · ${formatStageAgeLabel(age)}`
+                }
               >
                 {formatStageAgeLabel(age)}
               </span>
@@ -278,8 +316,10 @@ export function LeadCard({
         />
       ) : null}
       {showClientsEmail ? <ClientsEmailControl lead={lead} stages={stages!} canEdit={!!canEdit} /> : null}
+      {showFileDeliveredEmail ? <FileDeliveredEmailControl lead={lead} canEdit={!!canEdit} /> : null}
       {showFileReceived ? <FileReceivedControl lead={lead} canEdit={!!canEdit} /> : null}
       {showOutcomeLetter ? <OutcomeLetterControl lead={lead} canEdit={!!canEdit} /> : null}
+      {!overlay && lost && (canEdit || lead.transferredToLeadId) ? <TransferLeadControl lead={lead} /> : null}
       {!overlay ? <DocumentDelayRemarksControl lead={lead} canEdit={!!canEdit} /> : null}
     </article>
   );

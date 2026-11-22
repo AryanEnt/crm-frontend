@@ -187,6 +187,7 @@ export type Lead = {
   contactRatedByName?: string | null;
   nextFollowUpRemarks?: string;
   documentDelayRemarks?: string;
+  fileDeliveredEmailSentAt?: string | null;
   documentDelayRemarksAt?: string | null;
   documentDelayRemarksBy?: string | null;
   documentDelayRemarksByName?: string | null;
@@ -256,7 +257,11 @@ export type LeadBoardCard = {
   documentDeadlineAt?: string | null;
   /** Latest overdue document-delay remark. */
   documentDelayRemarks?: string;
+  fileDeliveredEmailSentAt?: string | null;
   documentDelayRemarksAt?: string | null;
+  /** Lost leads only: set once a Team Lead has transferred it as a new lead. */
+  transferredToLeadId?: string | null;
+  transferredToOwnerName?: string | null;
 };
 
 export type DocumentDelayRemark = {
@@ -682,6 +687,9 @@ export const crmApi = {
     api.get<DocumentDelayRemark[]>(`/leads/${id}/document-delay-remarks`),
   addDocumentDelayRemark: (id: string, body: string) =>
     api.post<{ lead: Lead; remark: DocumentDelayRemark }>(`/leads/${id}/document-delay-remarks`, { body }),
+  markFileDeliveredEmailSent: (id: string) =>
+    api.post<Lead>(`/leads/${id}/file-delivered-email-sent`, {}),
+  transferLead: (id: string, ownerUserId: string) => api.post<Lead>(`/leads/${id}/transfer`, { ownerUserId }),
   leadOverview: (params: URLSearchParams) => api.get<LeadOverview>(`/leads/insights/overview?${params}`),
   leadMyDay: (params: URLSearchParams) => api.get<LeadMyDay>(`/leads/insights/my-day?${params}`),
   leadForecast: (params: URLSearchParams) => api.get<LeadForecast>(`/leads/insights/forecast?${params}`),
