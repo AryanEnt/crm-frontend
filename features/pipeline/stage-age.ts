@@ -13,23 +13,52 @@ export type StageAge = {
   fillPercent: number;
 };
 
+export type StageAgeOpts = {
+  closed?: boolean;
+  now?: number;
+  /**
+   * File Delivered: age starts at this due date (not stage entry).
+   * Before the due date, elapsed time stays at zero.
+   */
+  dueAt?: string | null;
+  /** File Delivered: when set, force green and freeze age at this instant. */
+  emailSentAt?: string | null;
+};
+
 /** Matches backend attention SLA thresholds: warn at 80%, over at 100%. */
 export function stageAge(
   stageEnteredAt: string | null | undefined,
   slaHours: number | null | undefined,
-  opts: { closed?: boolean; now?: number } = {},
+  opts: StageAgeOpts = {},
 ): StageAge {
-  const now = opts.now ?? Date.now();
-  const days = daysSince(stageEnteredAt, now);
+  const wallNow = opts.now ?? Date.now();
+  const sentMs = opts.emailSentAt ? new Date(opts.emailSentAt).getTime() : Number.NaN;
+  const frozen = Number.isFinite(sentMs);
+  const now = frozen ? sentMs : wallNow;
+
+  const dueMs = opts.dueAt ? new Date(opts.dueAt).getTime() : Number.NaN;
   const enteredMs = stageEnteredAt ? new Date(stageEnteredAt).getTime() : Number.NaN;
-  const hours = Number.isFinite(enteredMs) ? Math.max(0, Math.floor((now - enteredMs) / 3_600_000)) : 0;
+  const anchorMs = Number.isFinite(dueMs) ? dueMs : enteredMs;
+
+  // Before the due date (and not yet emailed), countdown has not started.
+  if (!frozen && Number.isFinite(dueMs) && wallNow < dueMs) {
+    return { tone: "ok", days: 0, hours: 0, hoursPart: 0, fillPercent: 0 };
+  }
+
+  const anchorIso = Number.isFinite(anchorMs) ? new Date(anchorMs).toISOString() : stageEnteredAt;
+  const days = daysSince(anchorIso, now);
+  const hours = Number.isFinite(anchorMs) ? Math.max(0, Math.floor((now - anchorMs) / 3_600_000)) : 0;
   const hoursPart = hours % 24;
+
+  if (frozen) {
+    return { tone: "ok", days, hours, hoursPart, fillPercent: Math.min(100, days > 0 || hours > 0 ? 40 : 0) };
+  }
 
   if (opts.closed || !slaHours || slaHours <= 0) {
     return { tone: "none", days, hours, hoursPart, fillPercent: 0 };
   }
 
-  const exactHours = Number.isFinite(enteredMs) ? Math.max(0, (now - enteredMs) / 3_600_000) : 0;
+  const exactHours = Number.isFinite(anchorMs) ? Math.max(0, (now - anchorMs) / 3_600_000) : 0;
   const ratio = exactHours / slaHours;
   const fillPercent = Math.min(100, Math.round(ratio * 100));
   // At the SLA limit the card goes red so a lead at the limit is clearly rotten.

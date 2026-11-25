@@ -39,6 +39,36 @@ describe("stageAge", () => {
     assert.equal(age.hours, 26);
     assert.equal(age.hoursPart, 2);
   });
+
+  it("File Delivered: does not count days before the due date", () => {
+    const entered = "2026-10-01T00:00:00.000Z";
+    const due = "2026-10-20T00:00:00.000Z";
+    const beforeDue = Date.parse("2026-10-15T00:00:00.000Z");
+    const age = stageAge(entered, 72, { now: beforeDue, dueAt: due });
+    assert.equal(age.tone, "ok");
+    assert.equal(age.days, 0);
+    assert.equal(age.hours, 0);
+  });
+
+  it("File Delivered: counts from the due date once reached", () => {
+    const entered = "2026-10-01T00:00:00.000Z";
+    const due = "2026-10-20T00:00:00.000Z";
+    const twoDaysAfter = Date.parse("2026-10-22T00:00:00.000Z");
+    const age = stageAge(entered, 72, { now: twoDaysAfter, dueAt: due });
+    assert.equal(age.days, 2);
+    assert.equal(age.hours, 48);
+  });
+
+  it("File Delivered: email sent freezes age and stays green", () => {
+    const entered = "2026-10-01T00:00:00.000Z";
+    const due = "2026-10-20T00:00:00.000Z";
+    const sent = "2026-10-23T00:00:00.000Z";
+    const later = Date.parse("2026-11-01T00:00:00.000Z");
+    const age = stageAge(entered, 72, { now: later, dueAt: due, emailSentAt: sent });
+    assert.equal(age.tone, "ok");
+    assert.equal(age.days, 3);
+    assert.equal(age.hours, 72);
+  });
 });
 
 describe("formatStageAgeLabel", () => {

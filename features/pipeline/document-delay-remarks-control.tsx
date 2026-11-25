@@ -38,7 +38,10 @@ export function DocumentDelayRemarksControl({
   const { user } = useAuth();
   const timezone = user?.timezone || undefined;
   const deadlineTone = nextActionTone(lead.documentDeadlineAt ?? null, timezone);
-  const overdue = Boolean(lead.documentDeadlineAt) && deadlineTone === "overdue";
+  const overdue =
+    Boolean(lead.documentDeadlineAt) &&
+    deadlineTone === "overdue" &&
+    !lead.fileDeliveredEmailSentAt;
   const qc = useQueryClient();
   const [open, setOpen] = React.useState(false);
   const saved = (lead.documentDelayRemarks ?? "").trim();

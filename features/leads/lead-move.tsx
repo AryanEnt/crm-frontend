@@ -28,13 +28,28 @@ import {
   LostReasonFields,
   useLostReasonDraft,
 } from "@/features/leads/lost-reason-dialog";
+import { CountryPicker, NationalityPicker } from "@/components/forms/entity-pickers";
 import { isContactRatingBlocker } from "@/features/pipeline/contact-rating";
 import { ContactRatingFields, contactRatingReady } from "@/features/pipeline/contact-rating-fields";
+import {
+  isNegotiationProfileBlocker,
+  negotiationProfileMissing,
+  type NegotiationProfileField,
+} from "@/features/pipeline/negotiation-profile";
 import {
   isNextFollowUpRemarksBlocker,
   nextFollowUpRemarksProblem,
 } from "@/features/pipeline/next-follow-up-remarks";
 import { Textarea } from "@/components/ui/console/textarea";
+import { cn } from "@/lib/utils";
+import { FIELD_CONTROL } from "@/features/leads/create/field-ui";
+import { PhoneCountryPicker } from "@/features/leads/create/phone-country-picker";
+import {
+  DEFAULT_PHONE_COUNTRY,
+  detectDialCountry,
+  formatPhone,
+  phoneCountry,
+} from "@/features/leads/create/phone";
 
 export { LEAD_LOST_REASONS } from "@/features/leads/lost-reason-dialog";
 
@@ -156,7 +171,9 @@ export function useLeadMove({
             ? "Add a contact rating and remarks before leaving Contacted."
             : isNextFollowUpRemarksBlocker(err.details)
               ? "Add next follow-up remarks before moving this lead."
-              : "Stage move blocked. Review the requirements.",
+              : isNegotiationProfileBlocker(err.details)
+                ? "Add country, nationality, and phone before moving to Negotiation."
+                : "Stage move blocked. Review the requirements.",
         );
         return;
       }
@@ -262,11 +279,27 @@ export function useLeadMove({
         onCancel={() => setPending(null)}
         onSavedAndMove={() => pending?.kind === "blocked" && mutation.mutate(pending.vars)}
       />
+      <NegotiationProfileMoveModal
+        open={
+          pending?.kind === "blocked" &&
+          !isContactRatingBlocker(pending.details) &&
+          !isNextFollowUpRemarksBlocker(pending.details) &&
+          isNegotiationProfileBlocker(pending.details)
+        }
+        leadName={pending?.kind === "blocked" ? pending.vars.leadName : ""}
+        destinationName={pending?.kind === "blocked" ? pending.vars.to.name : ""}
+        leadId={pending?.kind === "blocked" ? pending.vars.leadId : ""}
+        missingFields={pending?.kind === "blocked" ? negotiationProfileMissing(pending.details) : []}
+        movePending={mutation.isPending}
+        onCancel={() => setPending(null)}
+        onSavedAndMove={() => pending?.kind === "blocked" && mutation.mutate(pending.vars)}
+      />
       <RequirementsModal
         open={
           pending?.kind === "blocked" &&
           !isContactRatingBlocker(pending.details) &&
-          !isNextFollowUpRemarksBlocker(pending.details)
+          !isNextFollowUpRemarksBlocker(pending.details) &&
+          !isNegotiationProfileBlocker(pending.details)
         }
         details={pending?.kind === "blocked" ? pending.details : null}
         destinationName={pending?.kind === "blocked" ? pending.vars.to.name : ""}
@@ -432,6 +465,8 @@ function friendlyRequirementLabel(raw: string): string {
     next_follow_up_remarks: "Next follow-up remarks",
     email: "Email",
     phone: "Phone",
+    country: "Country",
+    nationality: "Nationality",
     source: "Source",
     value: "Estimated value",
     company: "Company",
@@ -533,6 +568,157 @@ function NextFollowUpMoveModal({
             Cancel
           </Button>
           <Button loading={busy} disabled={!canSave} onClick={() => void saveAndMove()}>
+            Save and move
+          </Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
+  );
+}
+
+function NegotiationProfileMoveModal({
+  open,
+  leadName,
+  destinationName,
+  leadId,
+  missingFields,
+  movePending,
+  onCancel,
+  onSavedAndMove,
+}: {
+  open: boolean;
+  leadName: string;
+  destinationName: string;
+  leadId: string;
+  missingFields: NegotiationProfileField[];
+  movePending: boolean;
+  onCancel: () => void;
+  onSavedAndMove: () => void;
+}) {
+  const [country, setCountry] = React.useState("");
+  const [nationality, setNationality] = React.useState("");
+  const [phone, setPhone] = React.useState("");
+  const [phoneCode, setPhoneCode] = React.useState(DEFAULT_PHONE_COUNTRY);
+  const [saving, setSaving] = React.useState(false);
+  const [wasOpen, setWasOpen] = React.useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) {
+      setCountry("");
+      setNationality("");
+      setPhone("");
+      setPhoneCode(DEFAULT_PHONE_COUNTRY);
+      setSaving(false);
+    }
+  }
+
+  const need = React.useMemo(() => new Set(missingFields), [missingFields]);
+  const filled =
+    (!need.has("country") || country.trim() !== "") &&
+    (!need.has("nationality") || nationality.trim() !== "") &&
+    (!need.has("phone") || phone.trim() !== "");
+  const busy = saving || movePending;
+
+  const [wasMovePending, setWasMovePending] = React.useState(movePending);
+  if (movePending !== wasMovePending) {
+    setWasMovePending(movePending);
+    if (!movePending) setSaving(false);
+  }
+
+  const saveAndMove = async () => {
+    if (!filled || !leadId || busy) return;
+    setSaving(true);
+    try {
+      const payload: Record<string, unknown> = { forceUpdate: true };
+      if (need.has("country")) payload.country = country.trim();
+      if (need.has("nationality")) payload.nationality = nationality.trim();
+      if (need.has("phone")) {
+        payload.phone = formatPhone(phone, phoneCode) || phone.trim();
+        payload.phoneCountryCode = phoneCode;
+      }
+      await crmApi.updateLead(leadId, payload);
+      onSavedAndMove();
+    } catch (err) {
+      toast.error("Couldn't save lead details", {
+        description: err instanceof Error && err.message ? err.message : undefined,
+      });
+      setSaving(false);
+    }
+  };
+
+  const name = leadName.trim() || "this lead";
+  const stageLabel = destinationName.trim() || "Negotiation";
+  const phoneSelectId = React.useId();
+
+  return (
+    <Modal open={open} onOpenChange={(o) => !o && !busy && onCancel()}>
+      <ModalContent className="max-w-md">
+        <ModalHeader>
+          <ModalTitle>Complete lead details</ModalTitle>
+          <ModalDescription>
+            Country, nationality, and phone are required before moving {name} to {stageLabel}. Fill in
+            what&apos;s missing, then we&apos;ll continue the move.
+          </ModalDescription>
+        </ModalHeader>
+        <div className="space-y-3">
+          {need.has("country") ? (
+            <div className="space-y-1.5">
+              <Label required>Country</Label>
+              <CountryPicker value={country} onChange={setCountry} />
+            </div>
+          ) : null}
+          {need.has("nationality") ? (
+            <div className="space-y-1.5">
+              <Label required>Nationality</Label>
+              <NationalityPicker value={nationality} onChange={setNationality} />
+            </div>
+          ) : null}
+          {need.has("phone") ? (
+            <div className="space-y-1.5">
+              <Label htmlFor="negotiation-profile-phone" required>
+                Phone
+              </Label>
+              <div className="flex min-w-0 gap-1.5">
+                <label htmlFor={phoneSelectId} className="sr-only">
+                  Country code
+                </label>
+                <PhoneCountryPicker
+                  id={phoneSelectId}
+                  value={phoneCode}
+                  onChange={(next) => {
+                    setPhoneCode(next);
+                    if (phone) setPhone(formatPhone(phone, next));
+                  }}
+                />
+                <input
+                  id="negotiation-profile-phone"
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="off"
+                  placeholder={phoneCountry(phoneCode).trunk ? "0412 345 678" : "Phone number"}
+                  value={phone}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    const detected = detectDialCountry(raw, phoneCode);
+                    const nextCode = detected ?? phoneCode;
+                    if (detected && detected !== phoneCode) setPhoneCode(detected);
+                    const atEnd = e.target.selectionStart === raw.length;
+                    setPhone(atEnd ? formatPhone(raw, nextCode) : raw);
+                  }}
+                  onBlur={() => {
+                    if (phone) setPhone(formatPhone(phone, phoneCode));
+                  }}
+                  className={cn(FIELD_CONTROL, "tabular-nums")}
+                />
+              </div>
+            </div>
+          ) : null}
+        </div>
+        <ModalFooter>
+          <Button variant="outline" onClick={onCancel} disabled={busy}>
+            Cancel
+          </Button>
+          <Button loading={busy} disabled={!filled} onClick={() => void saveAndMove()}>
             Save and move
           </Button>
         </ModalFooter>
